@@ -516,10 +516,10 @@
         <button
           type="button"
           class="context-menu-item"
-          disabled
-          title="暂时禁用"
+          :disabled="isGenerating || isVariablePersistInProgress"
+          @click="handleRegenerateVariablesOnly"
         >
-          <span style="opacity: 0.5; text-decoration: line-through;">🎲 单独重roll变量（已禁用）</span>
+          {{ isGenerating ? '⏳ 处理中...' : '🎲 单独重roll变量' }}
         </button>
         <button
           type="button"
@@ -1050,10 +1050,8 @@ function onFabClick(e: MouseEvent) {
     e.stopPropagation();
     return;
   }
-  // 只有真正的点击才打开对话框
-  if (!isDraggingFab.value) {
-    openVariableUpdateDialog();
-  }
+  // 真正的点击，打开对话框（不检查 isDraggingFab，避免与 onFabMouseUp 的时序竞争）
+  openVariableUpdateDialog();
 }
 
 // 触摸结束处理
@@ -2285,34 +2283,51 @@ async function confirmVariableRerollApply() {
 
   try {
     isGenerating.value = true;
+    console.log('🔄 [App] 开始应用变量更新到楼层:', pending.messageId);
 
-    // 把用户编辑后的 patch 写回到消息中（仍保持正文/选项/sum 不变）
+    // 构建包含新 UpdateVariable 的消息内容
     const withoutOld = pending.filteredMessage.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
     const updatedMessage = `${withoutOld}\n\n<UpdateVariable>\n${patchText}\n</UpdateVariable>`;
 
-    await setChatMessages(
-      [{ message_id: pending.messageId, message: updatedMessage }],
-      { refresh: 'affected' },
-    );
-
-    // 解析并写回本楼层变量
+    // 使用 MVU 方式直接更新变量数据（不修改消息内容，避免楼层重新渲染）
     try {
       await waitGlobalInitialized('Mvu');
       const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
+      
+      console.log('🔄 [App] 使用 Mvu.parseMessage 解析变量更新...');
       const parsed = (typeof Mvu?.parseMessage === 'function')
         ? await Mvu.parseMessage(updatedMessage, base)
         : null;
+        
       if (parsed) {
-        await replaceVariables(parsed, { type: 'message', message_id: pending.messageId });
+        console.log('✅ [App] MVU 解析成功，准备使用 replaceMvuData 写回变量...');
+        // 关键修改：使用 Mvu.replaceMvuData 直接替换变量数据，不修改消息内容
+        await Mvu.replaceMvuData(parsed, { type: 'message', message_id: pending.messageId });
+        console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', pending.messageId);
       } else {
         console.warn('⚠️ [App] MVU 解析返回空，跳过写回变量');
       }
     } catch (e) {
-      console.warn('⚠️ [App] 写回本楼层变量失败:', e);
+      console.warn('⚠️ [App] MVU 方式更新变量失败，尝试降级到 replaceVariables:', e);
+      // 降级方案：使用 replaceVariables
+      try {
+        await waitGlobalInitialized('Mvu');
+        const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
+        const parsed = await Mvu.parseMessage(updatedMessage, base);
+        if (parsed) {
+          await replaceVariables(parsed, { type: 'message', message_id: pending.messageId });
+          console.log('✅ [App] 变量已通过 replaceVariables 降级方案应用到楼层');
+        }
+      } catch (e2) {
+        console.error('❌ [App] 降级方案也失败:', e2);
+        throw e2;
+      }
     }
 
     closeVariableRerollDialog();
-    refreshMessage();
+    // 使用轻量级刷新，避免界面闪烁
+    currentMessageId.value = undefined;
+    await loadMessageContent();
     toastr.success('变量已应用到当前楼层');
   } catch (e) {
     console.error('❌ [App] 应用变量更新失败:', e);
