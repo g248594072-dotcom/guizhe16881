@@ -12,7 +12,13 @@
     v-else-if="gamePhase === GamePhase.GAME"
     id="app-root"
     class="rule-modifier cyber-bg"
-    :class="{ 'dark': isDarkMode, 'light': !isDarkMode, 'layout-pending': uiLayout.maxHeight === undefined, 'animate-shake': isShaking }"
+    :class="{
+      dark: isDarkMode,
+      light: !isDarkMode,
+      'layout-pending': uiLayout.maxHeight === undefined,
+      'animate-shake': isShaking,
+      'has-mvu-missing-tip': showMvuMissingTip,
+    }"
     :style="rootStyle"
   >
     <!-- 赛博朋克特效层 -->
@@ -28,8 +34,15 @@
         <i class="fa-solid fa-triangle-exclamation"></i>
         <span>MVU变量缺失</span>
       </div>
-      <button class="close-btn" @click="onCloseMvuMissingTip" title="关闭提示">
-        <i class="fa-solid fa-xmark"></i>
+      <button
+        type="button"
+        class="mvu-missing-tip__close"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+        @click="onCloseMvuMissingTip"
+        title="关闭提示"
+        aria-label="关闭 MVU 变量缺失提示"
+      >
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
     </div>
     <!-- Sidebar -->
@@ -3391,85 +3404,102 @@ onUnmounted(() => {
 // 导入赛博朋克全局样式
 @use './styles/cyber-effects' as *;
 
-// MVU 缺失提示条
+// MVU 缺失提示条：全宽置顶、实心底、关闭按钮高对比
 .mvu-missing-tip {
   position: fixed;
-  top: 12px;
-  left: 12px;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  z-index: 9999;
-  max-width: 200px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  animation: slideDown 0.3s ease;
+  padding: 10px calc(16px * var(--ui-scale, 1));
+  min-height: 44px;
+  box-sizing: border-box;
+  border-radius: 0;
+  font-size: calc(13px * var(--ui-scale, 1));
+  line-height: 1.4;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  animation: slideDown 0.25s ease;
 
   .tip-content {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
 
     i {
-      font-size: 14px;
+      flex-shrink: 0;
+      font-size: calc(16px * var(--ui-scale, 1));
     }
   }
 
-  .close-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
+  // 深色模式：实心琥珀底
+  &.dark {
+    background: #854d0e;
     border: none;
-    border-radius: 4px;
-    background: transparent;
-    cursor: pointer;
-    transition: all 0.2s;
+    border-bottom: 2px solid #ca8a04;
+    color: #fffbeb;
+
+    .tip-content i {
+      color: #fde047;
+    }
+  }
+
+  // 浅色模式：实心浅琥珀底
+  &.light {
+    background: #fef3c7;
+    border: none;
+    border-bottom: 2px solid #f59e0b;
+    color: #713f12;
+
+    .tip-content i {
+      color: #b45309;
+    }
+  }
+}
+
+.mvu-missing-tip__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+  font-size: calc(16px * var(--ui-scale, 1));
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  &.dark {
+    border: 2px solid rgba(255, 255, 255, 0.65);
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.5);
+      border-color: #fff;
     }
   }
 
-  // 深色模式
-  &.dark {
-    background: rgba(234, 179, 8, 0.15);
-    border: 1px solid rgba(234, 179, 8, 0.3);
-    color: #fde68a;
-
-    i {
-      color: #fbbf24;
-    }
-
-    .close-btn {
-      color: #fde68a;
-
-      &:hover {
-        background: rgba(255, 255, 255, 0.15);
-      }
-    }
-  }
-
-  // 浅色模式
   &.light {
-    background: rgba(251, 191, 36, 0.2);
-    border: 1px solid rgba(251, 191, 36, 0.4);
-    color: #92400e;
+    border: 2px solid #b45309;
+    background: #fff;
+    color: #78350f;
 
-    i {
-      color: #d97706;
-    }
-
-    .close-btn {
-      color: #92400e;
-
-      &:hover {
-        background: rgba(0, 0, 0, 0.1);
-      }
+    &:hover {
+      background: #fff7ed;
+      border-color: #92400e;
     }
   }
 }
@@ -3658,6 +3688,11 @@ onUnmounted(() => {
   max-height: var(--ui-max-height, 100%);
   margin: 0 auto;
   overflow: hidden;
+  // MVU 顶栏占位，避免正文与侧栏被 fixed 条挡住（与 .mvu-missing-tip min-height 一致）
+  &.has-mvu-missing-tip {
+    padding-top: 44px;
+    box-sizing: border-box;
+  }
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: calc(14px * var(--ui-scale, 1));
   line-height: 1.5;
