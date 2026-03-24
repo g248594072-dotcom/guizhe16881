@@ -43,6 +43,64 @@ const WORLDBOOK_ENTRIES = {
   dualApiMainFormat: '多API正文格式',
 } as const;
 
+/** 变量相关世界书：优先按条目标题前缀识别（与 MVU 脚本命名一致） */
+export const MVU_WORLDBOOK_ENTRY_PREFIXES = ['[mvu_update]', '[mvu]'] as const;
+
+/**
+ * 是否为 MVU 前缀的变量世界书条目（第二 API 优先聚合此类条目）
+ */
+export function isMvUVariableWorldbookEntryName(entryName: string): boolean {
+  const n = String(entryName || '').trim();
+  return MVU_WORLDBOOK_ENTRY_PREFIXES.some((p) => n.startsWith(p));
+}
+
+function joinWorldbookEntryBlocks(entries: WorldbookEntry[]): string {
+  return entries
+    .map((e) => `## ${(e.name || '').trim()}\n${(e.content || '').trim()}`)
+    .filter((block) => block.replace(/^##\s[^\n]*\n/, '').trim().length > 0)
+    .join('\n\n---\n\n');
+}
+
+/**
+ * 从世界书条目解析「变量更新规则 / 变量列表 / 变量输出格式」三段内容。
+ * - 若存在任一条目标题以 `[mvu_update]` 或 `[mvu]` 开头：只聚合这些条目（按名称含「输出格式」「变量列表」分流，其余进更新规则）。
+ * - 否则回退为按名称子串匹配单条条目（与旧行为兼容）。
+ */
+export function collectVariableWorldbookContentsFromEntries(entries: WorldbookEntry[]): {
+  variableUpdateRule: string;
+  variableList: string;
+  variableOutputFormat: string;
+} {
+  const mvu = entries.filter((e) => isMvUVariableWorldbookEntryName(e.name || ''));
+  if (mvu.length > 0) {
+    const formatEntries: WorldbookEntry[] = [];
+    const listEntries: WorldbookEntry[] = [];
+    const ruleEntries: WorldbookEntry[] = [];
+    for (const e of mvu) {
+      const n = e.name || '';
+      if (n.includes('输出格式')) {
+        formatEntries.push(e);
+      } else if (n.includes('变量列表')) {
+        listEntries.push(e);
+      } else {
+        ruleEntries.push(e);
+      }
+    }
+    return {
+      variableUpdateRule: joinWorldbookEntryBlocks(ruleEntries).trim(),
+      variableList: joinWorldbookEntryBlocks(listEntries).trim(),
+      variableOutputFormat: joinWorldbookEntryBlocks(formatEntries).trim(),
+    };
+  }
+
+  const findByIncludes = (sub: string) => entries.find((e) => (e.name || '').includes(sub));
+  return {
+    variableUpdateRule: (findByIncludes(WORLDBOOK_ENTRIES.variableUpdateRule)?.content || '').trim(),
+    variableList: (findByIncludes(WORLDBOOK_ENTRIES.variableList)?.content || '').trim(),
+    variableOutputFormat: (findByIncludes(WORLDBOOK_ENTRIES.variableOutputFormat)?.content || '').trim(),
+  };
+}
+
 /**
  * 根据输出模式更新世界书条目启用状态
  * @param mode 输出模式
@@ -72,10 +130,14 @@ export async function updateWorldbookEntriesByMode(mode: OutputMode): Promise<bo
 
       if (mode === 'dual') {
         // 双API模式：关闭单API相关条目，启用双API格式条目
-        if (entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
+        // 不自动关闭 [mvu] / [mvu_update] 前缀条目（供 MVU / 第二 API 读取，由用户自行开关）
+        if (
+          !isMvUVariableWorldbookEntryName(entryName) &&
+          (entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
             entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
             entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
-            entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat)) {
+            entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat))
+        ) {
           return { ...entry, enabled: false };
         }
         if (entryName.includes(WORLDBOOK_ENTRIES.dualApiMainFormat)) {
@@ -299,22 +361,8 @@ async function getWorldbookContentsForSecondaryApi(): Promise<{
     throw new Error('世界书条目为空');
   }
 
-  // 查找变量相关条目（即使被禁用也能读取内容）
-  const variableUpdateRuleEntry = entries.find(
-    (e) => e.name?.includes(WORLDBOOK_ENTRIES.variableUpdateRule),
-  );
-  const variableListEntry = entries.find(
-    (e) => e.name?.includes(WORLDBOOK_ENTRIES.variableList),
-  );
-  const variableOutputFormatEntry = entries.find(
-    (e) => e.name?.includes(WORLDBOOK_ENTRIES.variableOutputFormat),
-  );
-
-  return {
-    variableUpdateRule: variableUpdateRuleEntry?.content || '',
-    variableList: variableListEntry?.content || '',
-    variableOutputFormat: variableOutputFormatEntry?.content || '',
-  };
+  // 优先聚合 [mvu] / [mvu_update] 前缀条目（即使被禁用也能读取 content）
+  return collectVariableWorldbookContentsFromEntries(entries);
 }
 
 /**

@@ -1687,6 +1687,43 @@ async function onRecoverLastUserMessage() {
   }
 }
 
+/**
+ * 若消息文本含 &lt;UpdateVariable&gt;，以 baseMvu 为基线解析并写入指定楼层（与 assistant 解析路径一致）。
+ * 用于用户消息内自带的变量补丁（例如开局说明里附带的 JSON Patch）。
+ */
+async function applyMvuParseToMessageFloor(
+  messageText: string,
+  baseMvu: Mvu.MvuData,
+  messageId: number,
+): Promise<void> {
+  if (!/<UpdateVariable>/i.test(messageText)) return;
+  if (typeof Mvu?.parseMessage !== 'function') return;
+  try {
+    await waitGlobalInitialized('Mvu');
+    let baseForParse: Mvu.MvuData;
+    try {
+      baseForParse = structuredClone(baseMvu);
+    } catch {
+      baseForParse = JSON.parse(JSON.stringify(baseMvu)) as Mvu.MvuData;
+    }
+    const parsed = await Mvu.parseMessage(messageText, baseForParse);
+    if (!parsed) {
+      console.log('ℹ️ [App] 消息含 <UpdateVariable> 但 parseMessage 未产生新数据，楼层:', messageId);
+      return;
+    }
+    try {
+      await Mvu.replaceMvuData(parsed, { type: 'message', message_id: messageId });
+      console.log('✅ [App] 已解析消息中 <UpdateVariable> 并写入 MVU，楼层:', messageId);
+    } catch (e) {
+      console.warn('⚠️ [App] replaceMvuData 失败，尝试 replaceVariables:', e);
+      await replaceVariables(parsed, { type: 'message', message_id: messageId });
+      console.log('✅ [App] MVU 已通过 replaceVariables 写入楼层:', messageId);
+    }
+  } catch (e) {
+    console.warn('⚠️ [App] 解析消息中 <UpdateVariable> 失败:', e);
+  }
+}
+
 // 发送消息（同层前端界面核心功能）
 async function sendMessage() {
   const content = userInput.value.trim();
@@ -1789,6 +1826,7 @@ async function sendMessage() {
       } catch (e) {
         // 忽略
       }
+      const userMessageBaseMvu = mvuData as Mvu.MvuData;
       await createChatMessages(
         [{ role: 'user', message: content, data: mvuData }],
         { refresh: 'none' },
@@ -1797,6 +1835,11 @@ async function sendMessage() {
       await new Promise(r => setTimeout(r, 50));
       pendingUserMessageId.value = getLastMessageId();
       console.log('✅ [App] 已写入 user 消息，message_id:', pendingUserMessageId.value);
+
+      const uid = pendingUserMessageId.value;
+      if (uid != null) {
+        await applyMvuParseToMessageFloor(content, userMessageBaseMvu, uid);
+      }
     }
 
     // 调用 generate 生成 AI 回复
@@ -2248,15 +2291,13 @@ async function handleRegenerateVariablesOnly() {
       let variableList = '';
       let variableOutputFormat = '';
       try {
-        // 复用 apiSettings 里的常量名，避免写死字符串
-        const { WORLDBOOK_ENTRIES } = await import('./utils/apiSettings');
+        const { collectVariableWorldbookContentsFromEntries } = await import('./utils/apiSettings');
         const worldbookName = ((SillyTavern as any).getCharacterInfo?.()?.worldbook_name) || '规则系统';
         const entries = await getWorldbook(worldbookName);
-        const findContent = (name: string) =>
-          (entries.find((e: any) => (e?.name || '').includes(name))?.content || '').trim();
-        variableUpdateRule = findContent(WORLDBOOK_ENTRIES.variableUpdateRule);
-        variableList = findContent(WORLDBOOK_ENTRIES.variableList);
-        variableOutputFormat = findContent(WORLDBOOK_ENTRIES.variableOutputFormat);
+        const sections = collectVariableWorldbookContentsFromEntries(entries);
+        variableUpdateRule = sections.variableUpdateRule;
+        variableList = sections.variableList;
+        variableOutputFormat = sections.variableOutputFormat;
       } catch (e) {
         console.warn('⚠️ [App] 读取世界书变量条目失败，将使用默认格式:', e);
       }
@@ -3199,6 +3240,7 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
             mvuData = baseData;
           }
         } catch (e) { /* 忽略 */ }
+        const openingUserBaseMvu = mvuData as Mvu.MvuData;
         await createChatMessages(
           [{ role: 'user', message: userPrompt, data: mvuData }],
           { refresh: 'none' },
@@ -3206,6 +3248,10 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
         await new Promise(r => setTimeout(r, 50));
         pendingUserMessageId.value = getLastMessageId();
         console.log('✅ [App] 已写入开局 user 消息，message_id:', pendingUserMessageId.value);
+        const ouid = pendingUserMessageId.value;
+        if (ouid != null) {
+          await applyMvuParseToMessageFloor(userPrompt, openingUserBaseMvu, ouid);
+        }
       }
 
       // 调用 generate

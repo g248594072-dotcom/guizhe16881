@@ -237,12 +237,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import type { CharacterData, RuleData } from '../types';
 import StatRow from './StatRow.vue';
 import StatBar from './StatBar.vue';
 import Badge from './Badge.vue';
 import RuleCard from './RuleCard.vue';
+import { useCharacters, usePersonalRules } from '../store';
 
 const props = defineProps<{
   characterId: string;
@@ -326,7 +327,6 @@ const characterStatusText = ref('出场中');
 
 onMounted(() => {
   try {
-    const { useCharacters, usePersonalRules } = import('../store');
     const characters = useCharacters();
     const allPersonalRules = usePersonalRules();
 
@@ -379,9 +379,11 @@ onMounted(() => {
       }
 
       editForm.value = { ...savedForm.value };
-      
-      // 数据已加载，停止监听
-      unwatch();
+
+      // 数据已加载，停止监听（须 nextTick：immediate 首次回调同步执行时 const unwatch 尚未完成赋值）
+      nextTick(() => {
+        unwatch();
+      });
     }, { immediate: true });
   } catch (e) {
     console.warn('加载角色数据失败', e);
