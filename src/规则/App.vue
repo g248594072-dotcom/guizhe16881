@@ -41,7 +41,7 @@
       <header class="panel-header">
         <h1>
           系统设置
-          <span class="version-badge">A</span>
+          <span class="version-badge">B</span>
         </h1>
         <button type="button" class="close-btn" @click.stop="openingSettingsOpen = false">
           <i class="fa-solid fa-xmark"></i>
@@ -139,7 +139,7 @@
         <header class="panel-header">
           <h1>
             {{ panelTitle }}
-            <span v-if="activeTab === 'settings'" class="version-badge">A</span>
+            <span v-if="activeTab === 'settings'" class="version-badge">B</span>
           </h1>
           <button class="close-btn" @click.stop="activeTab = null">
             <i class="fa-solid fa-xmark"></i>
