@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useCharacters } from '../store';
 
 interface CharacterCardView {
@@ -87,12 +87,42 @@ const visibleCharacters = computed((): CharacterCardView[] => {
   }));
 });
 
-// 监听数据加载完成
-watch(characters, (val) => {
-  if (val) {
-    isLoading.value = false;
+/** 空数组 [] 在 JS 中为 truthy，原先 `if (val)` 会在首帧就结束加载并显示「暂无角色」，而角色档案往往晚于世界规则 / 第二 API 写入。 */
+let emptyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(
+  characters,
+  (val) => {
+    if (val.length > 0) {
+      isLoading.value = false;
+      if (emptyFallbackTimer) {
+        clearTimeout(emptyFallbackTimer);
+        emptyFallbackTimer = null;
+      }
+    }
+  },
+  { immediate: true },
+);
+
+onMounted(() => {
+  void nextTick(() => {
+    if (characters.value.length > 0) {
+      isLoading.value = false;
+      return;
+    }
+    emptyFallbackTimer = setTimeout(() => {
+      isLoading.value = false;
+      emptyFallbackTimer = null;
+    }, 2800);
+  });
+});
+
+onUnmounted(() => {
+  if (emptyFallbackTimer) {
+    clearTimeout(emptyFallbackTimer);
+    emptyFallbackTimer = null;
   }
-}, { immediate: true });
+});
 
 function toDisplayName(name: unknown, fallback: string) {
   const n = String(name ?? '').trim();

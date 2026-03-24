@@ -1,11 +1,63 @@
 <template>
+  <Teleport to="body">
+    <Transition name="secondary-api-banner-tx">
+      <div
+        v-if="secondaryApiBannerVisible"
+        class="secondary-api-banner"
+        role="status"
+        aria-live="polite"
+      >
+        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+        <span>{{ secondaryApiBannerText }}</span>
+      </div>
+    </Transition>
+  </Teleport>
+
   <!-- 开局表单界面 -->
   <OpeningForm
     v-if="gamePhase === GamePhase.OPENING"
     ref="openingFormRef"
     :key="openingFormKey"
     @submit="handleOpeningSubmit"
+    @open-settings="openingSettingsOpen = true"
   />
+
+  <!-- 开局打开设置时：全屏实色遮罩，避免背后书本与 HUD 透出 -->
+  <div
+    v-if="gamePhase === GamePhase.OPENING && openingSettingsOpen"
+    class="opening-settings-scrim"
+    aria-hidden="true"
+    @click="openingSettingsOpen = false"
+  />
+
+  <!-- 开局阶段：系统设置侧栏（与主界面同一 SettingsPanel，可切换单/双 API） -->
+  <aside
+    v-if="gamePhase === GamePhase.OPENING && openingSettingsOpen"
+    class="middle-panel opening-settings-drawer"
+    :class="{ dark: isDarkMode, light: !isDarkMode }"
+    @click.stop
+  >
+    <div class="panel-inner">
+      <header class="panel-header">
+        <h1>
+          系统设置
+          <span class="version-badge">A</span>
+        </h1>
+        <button type="button" class="close-btn" @click.stop="openingSettingsOpen = false">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </header>
+      <div class="panel-content">
+        <SettingsPanel
+          :is-dark-mode="isDarkMode"
+          :ui-layout="uiLayout"
+          @mode-change="onOutputModeChange"
+          @update-worldbook="onUpdateWorldbook"
+          @layout-change="onLayoutChange"
+        />
+      </div>
+    </div>
+  </aside>
 
   <!-- 游戏主界面 -->
   <div
@@ -711,8 +763,10 @@
     >
       <div class="opening-generating-content">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
-        <span class="opening-generating-text">正在生成开场白...</span>
-        <span class="opening-generating-hint">AI 正在根据您的设定创作故事</span>
+        <span class="opening-generating-text">{{
+          openingSecondaryApiPhase ? '开场白设计完毕，正在解析变量。' : '正在生成开场白...'
+        }}</span>
+        <span v-if="!openingSecondaryApiPhase" class="opening-generating-hint">AI 正在根据您的设定创作故事</span>
         <button class="opening-generating-stop-btn" @click="stopOpeningGeneration">
           <i class="fa-solid fa-stop"></i>
           <span>停止生成</span>
@@ -912,7 +966,11 @@ import {
   createOpeningStoryMessage,
   isNewGame,
 } from './utils/gameInitializer';
-import { updateWorldbookEntriesByMode, isSecondaryApiConfigured } from './utils/apiSettings';
+import {
+  updateWorldbookEntriesByMode,
+  isSecondaryApiConfigured,
+  SECONDARY_API_START_EVENT,
+} from './utils/apiSettings';
 import { startIframeHeightFix } from './utils/iframeHeightFix';
 import type { UiLayoutSettings } from './utils/uiLayoutLimits';
 import { clampMainUiHeightPx } from './utils/uiLayoutLimits';
@@ -926,6 +984,10 @@ const isStoreReady = ref(false); // store 数据是否就绪
 const showMvuMissingTip = ref(false); // 是否显示 MVU 缺失提示
 const mvuMissingTipDismissed = ref(false); // 用户是否已关闭过提示（本次会话）
 const isGeneratingOpening = ref(false); // 开场白生成中（显示加载弹窗）
+/** 开局生成流程中，第二 API 已开始请求时切换遮罩文案 */
+const openingSecondaryApiPhase = ref(false);
+/** 开局界面是否打开系统设置（与主界面 SettingsPanel 一致） */
+const openingSettingsOpen = ref(false);
 const openingGenerationId = ref<string>(''); // 开场白生成的唯一标识符，用于停止生成
 /** 标签确认后：写入楼层、MVU 解析、开局第二 API 等进行中；不挡正文，仅顶栏提示并禁止发送 */
 const isVariablePersistInProgress = ref(false);
@@ -943,6 +1005,10 @@ let lastIframeMinHeightApplied: number | null = null;
 const activeTab = ref<string | null>(null);
 /** 打开个人规则面板时要展开的分组名（与 rule.target / 角色名一致）；由子组件消费后清空 */
 const personalRulesExpandGroup = ref<string | null>(null);
+/** 第二 API 开始请求时顶部绿色横幅 */
+const secondaryApiBannerVisible = ref(false);
+const secondaryApiBannerText = ref('正在调用第二 API 生成变量更新…');
+let secondaryApiBannerHideTimer: ReturnType<typeof setTimeout> | null = null;
 const isModalOpen = ref(false);
 const modalType = ref('');
 const modalPayload = ref<Record<string, any> | null>(null);
@@ -1290,7 +1356,7 @@ async function onUpdateWorldbook(mode: OutputMode) {
     console.log('✅ [App] 世界书条目更新完成');
   } catch (error) {
     console.error('❌ [App] 更新世界书条目失败:', error);
-    toastr.error('世界书更新失败');
+    toastr.error('切换失败');
   }
 }
 
@@ -3309,6 +3375,7 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
       console.log('🎮 [App] 步骤3: 触发 AI 生成开场白...');
       isGenerating.value = true;
       isGeneratingOpening.value = true;
+      openingSecondaryApiPhase.value = false;
       openingGenerationId.value = `opening-${Date.now()}`;
 
       const userPrompt = storyResult.promptContent || '';
@@ -3453,13 +3520,38 @@ watch(
     if (phase === GamePhase.GAME) {
       setTimeout(() => maybeOfferOrphanUserFloorFix(), 500);
     }
+    if (phase !== GamePhase.OPENING) {
+      openingSettingsOpen.value = false;
+    }
   },
 );
+
+watch(isGeneratingOpening, (v) => {
+  if (!v) openingSecondaryApiPhase.value = false;
+});
 
 function onPageShowStaleUserCheck() {
   if (gamePhase.value === GamePhase.GAME) {
     setTimeout(() => maybeOfferOrphanUserFloorFix(), 400);
   }
+}
+
+function onSecondaryApiStartEvent(ev: Event) {
+  const custom = ev as CustomEvent<{ attempt?: number }>;
+  const attempt = custom.detail?.attempt;
+  if (isGeneratingOpening.value) {
+    openingSecondaryApiPhase.value = true;
+  }
+  secondaryApiBannerText.value =
+    attempt != null && attempt > 1
+      ? `第二 API 重试中（第 ${attempt} 次）…`
+      : '正在调用第二 API 生成变量更新…';
+  secondaryApiBannerVisible.value = true;
+  if (secondaryApiBannerHideTimer) clearTimeout(secondaryApiBannerHideTimer);
+  secondaryApiBannerHideTimer = setTimeout(() => {
+    secondaryApiBannerVisible.value = false;
+    secondaryApiBannerHideTimer = null;
+  }, 4500);
 }
 
 onMounted(() => {
@@ -3512,6 +3604,7 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange);
   // 监听工具层发来的“写入前端对话框”事件
   window.addEventListener('th:copy-to-input', onCopyToInputEvent as EventListener);
+  window.addEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
 
   // 监听酒馆消息更新事件（用于检测外部消息变化，如分支切换）
   try {
@@ -3551,7 +3644,12 @@ onUnmounted(() => {
   // 清理事件监听
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   window.removeEventListener('th:copy-to-input', onCopyToInputEvent as EventListener);
+  window.removeEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
   window.removeEventListener('pageshow', onPageShowStaleUserCheck);
+  if (secondaryApiBannerHideTimer) {
+    clearTimeout(secondaryApiBannerHideTimer);
+    secondaryApiBannerHideTimer = null;
+  }
   if (typeof unsubscribeMessageUpdate === 'function') {
     unsubscribeMessageUpdate();
   }
@@ -3567,6 +3665,44 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 // 导入赛博朋克全局样式
 @use './styles/cyber-effects' as *;
+
+// 第二 API 开始请求：全宽绿色横幅（开局与主界面均通过 processWithSecondaryApi 触发）
+.secondary-api-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 16px;
+  min-height: 44px;
+  box-sizing: border-box;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #ecfdf5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(90deg, #047857 0%, #10b981 45%, #059669 100%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+}
+
+.secondary-api-banner-tx-enter-active,
+.secondary-api-banner-tx-leave-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.28s ease;
+}
+
+.secondary-api-banner-tx-enter-from,
+.secondary-api-banner-tx-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+}
 
 // MVU 缺失提示条：全宽置顶、实心底、关闭按钮高对比
 .mvu-missing-tip {
@@ -4080,6 +4216,42 @@ onUnmounted(() => {
   animation: slideIn 0.3s ease;
 }
 
+.opening-settings-scrim {
+  position: fixed;
+  inset: 0;
+  /* 低于 .opening-settings-drawer(110)，否则会挡住侧栏、点击穿透关闭 */
+  z-index: 85;
+  /* 仅适度压暗背后内容，避免与侧栏糊成一片纯黑 */
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: none;
+}
+
+// 开局界面无 #app-root 侧栏时，设置抽屉固定于视口左侧（与主界面中间面板同宽）
+.opening-settings-drawer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  /* 高于 scrim(85) 与手机端 .middle-panel(60)，保证可点击 */
+  z-index: 110;
+  height: 100vh;
+  max-height: 100vh;
+  width: min(calc(700px * var(--ui-scale, 1)), 92vw);
+  --middle-panel-width: min(calc(700px * var(--ui-scale, 1)), 92vw);
+  backdrop-filter: none;
+  pointer-events: auto;
+
+  &.dark {
+    background: #1f1f23;
+    box-shadow: 8px 0 28px rgba(0, 0, 0, 0.35);
+  }
+
+  &.light {
+    background: #f4f4f5;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.12);
+  }
+}
+
 @keyframes slideIn {
   from {
     opacity: 0;
@@ -4092,13 +4264,13 @@ onUnmounted(() => {
 }
 
 .dark .middle-panel {
-  background: #080808;
-  border-color: rgba(255, 255, 255, 0.05);
+  background: #1f1f23;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .light .middle-panel {
-  background: #fff;
-  border-color: rgba(0, 0, 0, 0.05);
+  background: #f4f4f5;
+  border-color: rgba(0, 0, 0, 0.08);
 }
 
 .panel-inner {
@@ -4118,7 +4290,6 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.02);
 
   h1 {
     font-size: calc(24px * var(--ui-scale, 1));
@@ -4158,8 +4329,13 @@ onUnmounted(() => {
 }
 
 .dark .panel-header {
-  border-color: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: #1f1f23;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fafafa;
+
+  h1 {
+    font-weight: 500;
+  }
 
   .close-btn {
     color: #a1a1aa;
@@ -4171,9 +4347,9 @@ onUnmounted(() => {
 }
 
 .light .panel-header {
-  border-color: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
   color: #18181b;
-  background: rgba(255, 255, 255, 0.6);
+  background: #f4f4f5;
 
   .close-btn {
     color: #71717a;
@@ -4200,6 +4376,14 @@ onUnmounted(() => {
     min-height: 0;
     max-height: 100%;
   }
+}
+
+.dark .panel-content {
+  background: #1f1f23;
+}
+
+.light .panel-content {
+  background: #f4f4f5;
 }
 
 .fade-enter-active,
@@ -5083,6 +5267,14 @@ onUnmounted(() => {
     border-left: none;
     border-right: none;
     border-radius: 0;
+  }
+
+  // 开局系统设置：不得用 z-index:60，否则低于全屏 scrim(85)，点击会穿透关闭
+  .opening-settings-drawer.middle-panel {
+    z-index: 110;
+    width: 100%;
+    max-width: 100%;
+    --middle-panel-width: 100%;
   }
 
   .panel-inner {

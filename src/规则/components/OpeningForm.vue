@@ -550,40 +550,40 @@
             </div>
           </div>
 
-          <div class="confirm-actions">
-            <button
-              class="confirm-btn cyber-start-btn"
-              :disabled="!canSubmit || isSubmitting"
-              @click="handleSubmit"
-            >
-              <span class="btn-glow"></span>
-              <span class="btn-content">
-                <i v-if="isSubmitting" class="fa-solid fa-circle-notch fa-spin"></i>
-                <span v-else>
-                  <i class="fa-solid fa-play"></i>
-                  开始游戏
+          <div class="confirm-bottom">
+            <div class="confirm-presets-bar">
+              <button type="button" class="preset-action-btn cyber-preset-btn" @click="savePresetDialogOpen = true">
+                <i class="fa-solid fa-floppy-disk"></i>
+                <span>保存为开场预设</span>
+              </button>
+              <button type="button" class="preset-action-btn cyber-preset-btn" @click="presetPickerOpen = true">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>读取开场预设</span>
+              </button>
+            </div>
+            <div class="confirm-actions">
+              <button
+                class="confirm-btn cyber-start-btn"
+                :disabled="!canSubmit || isSubmitting"
+                @click="handleSubmit"
+              >
+                <span class="btn-glow"></span>
+                <span class="btn-content">
+                  <i v-if="isSubmitting" class="fa-solid fa-circle-notch fa-spin"></i>
+                  <span v-else>
+                    <i class="fa-solid fa-play"></i>
+                    开始游戏
+                  </span>
                 </span>
-              </span>
-              <span class="btn-particles">
-                <span class="particle"></span>
-                <span class="particle"></span>
-                <span class="particle"></span>
-              </span>
-            </button>
-            <p v-if="!canSubmit" class="hint-text">请选择一个场景或填写自定义场景描述</p>
+                <span class="btn-particles">
+                  <span class="particle"></span>
+                  <span class="particle"></span>
+                  <span class="particle"></span>
+                </span>
+              </button>
+              <p v-if="!canSubmit" class="hint-text">请选择一个场景或填写自定义场景描述</p>
+            </div>
           </div>
-        </div>
-
-        <!-- 底部预设按钮 -->
-        <div class="confirm-presets-bar">
-          <button type="button" class="preset-action-btn cyber-preset-btn" @click="savePresetDialogOpen = true">
-            <i class="fa-solid fa-floppy-disk"></i>
-            <span>保存为开场预设</span>
-          </button>
-          <button type="button" class="preset-action-btn cyber-preset-btn" @click="presetPickerOpen = true">
-            <i class="fa-solid fa-folder-open"></i>
-            <span>读取开场预设</span>
-          </button>
         </div>
       </div>
     </div>
@@ -592,6 +592,17 @@
     <button type="button" class="chronicle-clear-btn" @click="clearChronicleDialogOpen = true">
       <i class="fa-solid fa-eraser"></i>
       <span>清除编年史</span>
+    </button>
+
+    <!-- 系统设置（与主界面一致，可切换单/双 API） -->
+    <button
+      type="button"
+      class="opening-settings-btn"
+      title="系统设置"
+      aria-label="系统设置"
+      @click="emit('open-settings')"
+    >
+      <i class="fa-solid fa-gear" aria-hidden="true"></i>
     </button>
 
     <!-- 主题切换按钮 -->
@@ -846,6 +857,7 @@ import {
 
 const emit = defineEmits<{
   (e: 'submit', data: OpeningFormData): void;
+  (e: 'open-settings'): void;
 }>();
 
 // 主题
@@ -3180,21 +3192,33 @@ defineExpose({
 
 .confirm-page {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr;
   height: 100%;
 }
 
 .confirm-content {
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow-y: auto;
+}
+
+// 摘要在上，底部为「小预设按钮 + 开始游戏」成组贴底，避免预设条单独占一行挡住主按钮
+.confirm-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding-top: 8px;
 }
 
 .confirm-actions {
   display: grid;
   justify-items: center;
-  margin-top: auto;
-  padding: 40px 0;
+  width: 100%;
+  padding: 0 0 12px;
 }
 
 // 炫酷开始游戏按钮
@@ -3342,31 +3366,38 @@ defineExpose({
   }
 }
 
-// 底部预设按钮栏
+// 开场预设：与文字行高接近的小按钮，横向并排，置于「开始游戏」正上方
 .confirm-presets-bar {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 16px;
-  padding: 16px 0 24px;
-  border-top: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.02);
+  align-items: center;
+  gap: 8px 10px;
+  width: 100%;
+  padding: 0;
+  border-top: none;
+  background: transparent;
 }
 
 .cyber-preset-btn {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 20px;
-  border-radius: 12px;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  gap: 6px;
+  padding: 5px 12px;
+  min-height: 0;
+  line-height: 1.35;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 85, 247, 0.35);
   background: rgba(168, 85, 247, 0.08);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
+  flex: 0 1 auto;
 
   &::before {
     content: '';
@@ -3380,10 +3411,8 @@ defineExpose({
   &:hover {
     color: #fff;
     border-color: rgba(6, 182, 212, 0.5);
-    transform: translateY(-2px);
-    box-shadow:
-      0 8px 20px rgba(168, 85, 247, 0.2),
-      0 0 15px rgba(6, 182, 212, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(168, 85, 247, 0.18);
 
     &::before {
       opacity: 1;
@@ -3393,13 +3422,14 @@ defineExpose({
   i {
     position: relative;
     z-index: 1;
-    font-size: 14px;
-    color: rgba(168, 85, 247, 0.9);
+    font-size: 11px;
+    color: rgba(168, 85, 247, 0.95);
   }
 
   span {
     position: relative;
     z-index: 1;
+    white-space: nowrap;
   }
 }
 
@@ -3519,6 +3549,35 @@ defineExpose({
 .opening-form.light .chronicle-dialog-btn.danger {
   border-color: rgba(220, 60, 60, 0.35);
   background: rgba(220, 60, 60, 0.12);
+}
+
+.opening-settings-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 76px;
+  z-index: 50;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--text-soft);
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: all 0.18s ease;
+  display: grid;
+  place-items: center;
+  padding: 0;
+
+  &:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.28);
+    transform: translateY(-1px);
+  }
+
+  i {
+    font-size: 18px;
+  }
 }
 
 .theme-toggle {
@@ -3882,15 +3941,12 @@ defineExpose({
     font-size: 16px;
   }
 
-  .confirm-presets-bar {
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 16px 20px;
+  .confirm-bottom {
+    gap: 14px;
+  }
 
-    .cyber-preset-btn {
-      width: 100%;
-      justify-content: center;
-    }
+  .confirm-presets-bar {
+    gap: 8px;
   }
 }
 
@@ -4288,6 +4344,14 @@ defineExpose({
 
   .char-gender-select {
     width: 100%;
+  }
+
+  .opening-settings-btn {
+    right: 12px;
+    bottom: 60px;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
   }
 
   .theme-toggle {

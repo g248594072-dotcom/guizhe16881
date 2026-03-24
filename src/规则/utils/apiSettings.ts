@@ -252,6 +252,14 @@ export async function testSecondaryApiTavernPlug(modelOverride?: string): Promis
   await generateRaw(cfg);
 }
 
+/** 第二 API 即将发起网络请求时派发，供界面显示横幅（`App.vue` 监听） */
+export const SECONDARY_API_START_EVENT = 'rule-modifier-secondary-api-start' as const;
+
+export function notifySecondaryApiStart(detail?: { attempt?: number }): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(SECONDARY_API_START_EVENT, { detail: detail ?? {} }));
+}
+
 /**
  * 使用第二API处理变量更新
  * @param maintext 主API生成的正文内容
@@ -312,6 +320,8 @@ export async function processWithSecondaryApi(
         currentVariables,
         worldbookContents,
       );
+
+      notifySecondaryApiStart({ attempt: attempt + 1 });
 
       // 调用第二API（酒馆插头走 generateRaw，不经 fetch 读密钥）
       const response = config.useTavernMainConnection
