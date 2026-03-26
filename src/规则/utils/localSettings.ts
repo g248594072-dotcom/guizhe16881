@@ -143,7 +143,7 @@ export function saveOtherSettingsLocal(settings: OtherSettings): void {
 /** 与 `types.DEFAULT_OTHER_SETTINGS` 保持一致（此处不引用 types 默认值，避免与 apiSettings 的循环依赖） */
 const DEFAULT_OTHER_LOCAL: OtherSettings = {
   inputActionMode: 'append',
-  enableShujukuManualUpdateAfterConfirm: false,
+  enableShujukuManualUpdateAfterConfirm: true,
 };
 
 export function loadOtherSettings(): OtherSettings {

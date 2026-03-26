@@ -339,8 +339,8 @@ const outputMode = ref<OutputMode>('dual');
 
 const inputActionMode = ref<InputActionMode>('append');
 
-/** 标签确认写入楼层后是否调用神·数据库 manualUpdate（默认关，避免未装插件用户困惑） */
-const enableShujukuManualUpdateAfterConfirm = ref(false);
+/** 标签确认写入楼层后是否调用神·数据库 manualUpdate（默认开；未装插件时静默跳过） */
+const enableShujukuManualUpdateAfterConfirm = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 

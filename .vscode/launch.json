@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "编译代码并调试酒馆网页 (Chrome)",
+        "name": "编译代码并调试酒馆网页 (Chrome)",
       "type": "chrome",
       "request": "launch",
       "preLaunchTask": "开始任务",

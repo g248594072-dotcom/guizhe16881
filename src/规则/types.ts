@@ -266,5 +266,5 @@ export interface OtherSettings {
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   inputActionMode: 'append', // 默认使用追加模式（更安全，不自动发送）
-  enableShujukuManualUpdateAfterConfirm: false,
+  enableShujukuManualUpdateAfterConfirm: true,
 };

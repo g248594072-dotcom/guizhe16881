@@ -118,18 +118,24 @@
             <i :class="item.icon"></i>
             <span class="nav-label">{{ item.label }}</span>
           </button>
+          <div class="nav-items-bottom-spacer">
+            <button type="button" class="nav-btn nav-btn-theme" @click="isDarkMode = !isDarkMode">
+              <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
+              <span class="nav-label">{{ isDarkMode ? '浅色模式' : '深色模式' }}</span>
+            </button>
+            <button
+              id="nav-settings"
+              type="button"
+              class="nav-btn"
+              :class="{ active: activeTab === 'settings' }"
+              @click.stop="toggleTab('settings')"
+            >
+              <span v-if="activeTab === 'settings'" class="active-indicator"></span>
+              <i class="fa-solid fa-gear"></i>
+              <span class="nav-label">系统设置</span>
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="sidebar-bottom">
-        <button class="nav-btn" @click="isDarkMode = !isDarkMode">
-          <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
-          <span class="nav-label">{{ isDarkMode ? '浅色模式' : '深色模式' }}</span>
-        </button>
-        <button id="nav-settings" class="nav-btn" :class="{ active: activeTab === 'settings' }" @click.stop="toggleTab('settings')">
-          <span v-if="activeTab === 'settings'" class="active-indicator"></span>
-          <i class="fa-solid fa-gear"></i>
-          <span class="nav-label">系统设置</span>
-        </button>
       </div>
     </nav>
 
@@ -408,14 +414,14 @@
       <div v-if="isModalOpen" id="modal-overlay" class="modal-overlay" @click.self="closeModal">
         <div class="modal-content rule-modal-content" :class="{ dark: isDarkMode, light: !isDarkMode }">
           <div class="modal-header rule-modal-header">
-            <button type="button" class="btn-complete" @click="onModalComplete">
-              <i class="fa-solid fa-check"></i>
-              <span>编辑完成</span>
+            <button type="button" class="btn-complete" aria-label="编辑完成" @click="onModalComplete">
+              <i class="fa-solid fa-check" aria-hidden="true"></i>
+              <span class="btn-complete-text">编辑完成</span>
             </button>
             <h2>{{ modalTitle }}</h2>
-            <button type="button" id="btn-cancel-modal" class="btn-cancel" @click="closeModal">
-              <i class="fa-solid fa-xmark"></i>
-              <span>取消</span>
+            <button type="button" id="btn-cancel-modal" class="btn-cancel" aria-label="取消" @click="closeModal">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              <span class="btn-cancel-text">取消</span>
             </button>
           </div>
           <div class="modal-body">
@@ -980,7 +986,7 @@ import {
 } from './utils/apiSettings';
 import { startIframeHeightFix } from './utils/iframeHeightFix';
 import type { UiLayoutSettings } from './utils/uiLayoutLimits';
-import { clampMainUiHeightPx } from './utils/uiLayoutLimits';
+import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits';
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
@@ -1057,9 +1063,10 @@ const rootStyle = computed(() => {
 
   // 全屏时使用视口尺寸，非全屏时使用用户设置
   const isFS = isFullscreen.value;
+  const w = clampMainUiWidthPx(uiLayout.value.maxWidth);
   const maxWidth = isFS
     ? '100vw' // 全屏时占满视口宽度
-    : `${Math.round(Number(uiLayout.value.maxWidth) || 900)}px`;
+    : `min(${w}px, 100vw)`; // 窄屏（如 300 宽）不超过视口
 
   // 若尚未水合（undefined），CSS 用 auto 避免闪现；水合后用固定值
   const rawMaxHeight = uiLayout.value.maxHeight;
@@ -1356,7 +1363,10 @@ function formatGenerationDurationMs(ms: number): string {
 }
 
 function onLayoutChange(layout: UiLayoutSettings) {
-  uiLayout.value = { ...uiLayout.value, ...layout };
+  const next = { ...uiLayout.value, ...layout };
+  if (layout.maxWidth !== undefined) next.maxWidth = clampMainUiWidthPx(layout.maxWidth);
+  if (layout.maxHeight !== undefined) next.maxHeight = clampMainUiHeightPx(layout.maxHeight);
+  uiLayout.value = next;
 }
 
 // 更新世界书条目
@@ -3254,7 +3264,7 @@ function loadUiLayoutFromStorage(): void {
     const safeMaxWidth = Number(uiLayout.value.maxWidth);
     const safeMaxHeight = Number(uiLayout.value.maxHeight);
     uiLayout.value.scale = Number.isFinite(safeScale) ? Math.min(1.3, Math.max(0.8, safeScale)) : 0.8;
-    uiLayout.value.maxWidth = Number.isFinite(safeMaxWidth) ? Math.min(2400, Math.max(800, safeMaxWidth)) : 900;
+    uiLayout.value.maxWidth = Number.isFinite(safeMaxWidth) ? clampMainUiWidthPx(safeMaxWidth) : 900;
     uiLayout.value.maxHeight = clampMainUiHeightPx(safeMaxHeight);
 
     console.log('✅ [App] uiLayout 从 localStorage 加载成功:', uiLayout.value);
@@ -4064,7 +4074,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.02);
   overflow: hidden;
@@ -4082,6 +4092,10 @@ onUnmounted(() => {
 .sidebar-top {
   position: relative;
   z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 
   .logo {
     position: relative;
@@ -4116,7 +4130,19 @@ onUnmounted(() => {
     padding: var(--space-lg);
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     gap: var(--space-sm);
+
+    .nav-items-bottom-spacer {
+      margin-top: auto;
+      padding-top: var(--space-md);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
   }
 }
 
@@ -4130,22 +4156,8 @@ onUnmounted(() => {
   color: #18181b;
 }
 
-.sidebar-bottom {
-  position: relative;
-  z-index: 1;
-  padding: var(--space-lg);
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.dark .sidebar-bottom {
-  border-color: rgba(255, 255, 255, 0.05);
-}
-
-.light .sidebar-bottom {
-  border-color: rgba(0, 0, 0, 0.05);
+.light .sidebar-top .nav-items .nav-items-bottom-spacer {
+  border-top-color: rgba(0, 0, 0, 0.05);
 }
 
 .nav-btn {
@@ -5249,22 +5261,25 @@ onUnmounted(() => {
     // 手机端高度使用 CSS 变量，支持自定义高度
     height: var(--ui-max-height, 100dvh);
     max-height: var(--ui-max-height, 100dvh);
-    // 为底部导航留出空间
-    padding-bottom: 72px;
+    // 底部栏可多行换行，预留足够空间（含安全区）；用 vh 避免窄宽度下 vmin 过小
+    padding-bottom: calc(env(safe-area-inset-bottom) + clamp(72px, 22vh, 260px));
   }
 
-  // Sidebar 变成底部栏
+  // Sidebar 变成底部栏（图标 flex-wrap，一行放不下自动多行）
   .sidebar {
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     width: 100%;
-    height: 72px;
-    max-height: none;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
+    height: auto;
+    min-height: 56px;
+    // 图标极多时允许内部滚动，避免占满整屏
+    max-height: min(48vh, 320px);
+    overflow-y: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-end;
     border-right: none;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 50;
@@ -5274,28 +5289,50 @@ onUnmounted(() => {
     border-top-color: rgba(0, 0, 0, 0.08);
   }
 
-  // 底部栏不显示 logo 区与分组布局，改为水平排列
+  // 底部栏不显示 logo 区；导航项同一 flex 容器内换行
   .sidebar-top .logo {
     display: none;
   }
 
-  .sidebar-top,
-  .sidebar-bottom {
+  .sidebar-top {
+    flex: 0 0 auto;
+    min-height: 0;
+    width: 100%;
     padding: 0;
     border: none;
   }
 
   .sidebar-top .nav-items {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: visible;
+    overflow-x: hidden;
     padding: 8px 10px;
     flex-direction: row;
-    gap: 10px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 10px;
     align-items: center;
-    justify-content: space-around;
+    align-content: center;
+    justify-content: center;
     width: 100%;
+    box-sizing: border-box;
+
+    .nav-items-bottom-spacer {
+      display: contents;
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
   }
 
-  // 底部栏按钮：仅图标为主，文字隐藏
+  // 底部栏按钮：仅图标为主，文字隐藏；宽度随内容，便于多行排列
   .nav-btn {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 44px;
+    justify-content: center;
     padding: 10px 12px;
     border-radius: 14px;
   }
@@ -5346,11 +5383,62 @@ onUnmounted(() => {
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
-  // 右下角浮动按钮在手机上抬高一点，避免和底部栏/输入框打架
+  // 右下角浮动按钮：随多行底栏抬高，避免与底部导航重叠
   .variable-fab {
-    bottom: calc(152px * var(--ui-scale, 1));
+    bottom: calc(
+      (env(safe-area-inset-bottom) + clamp(100px, 24vh, 240px)) * var(--ui-scale, 1)
+    );
     right: var(--space-lg);
     // 手机端也保持fixed定位，支持拖动
+  }
+}
+
+// 极窄屏（约 300×800 等）：再压缩边距与字号，避免横向溢出
+@media (max-width: 300px) {
+  .rule-modifier {
+    font-size: calc(12px * var(--ui-scale, 1));
+  }
+
+  .main-header {
+    padding: 0 8px;
+    gap: 4px;
+  }
+
+  .header-title h2 {
+    font-size: 14px;
+  }
+
+  .header-actions .header-btn {
+    padding: 6px 8px;
+    min-width: 0;
+  }
+
+  .panel-content {
+    padding: 12px 10px;
+  }
+
+  .panel-header {
+    padding: 0 10px;
+  }
+
+  .input-area {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .option-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .options-toggle {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .variable-persist-banner {
+    font-size: 11px;
+    padding: 6px 8px;
   }
 }
 
@@ -6469,6 +6557,63 @@ body.has-dragging-fab {
   }
 }
 
+// 规则类弹窗：窄屏标题独占一行（正文区 min-height 见 .modal-body 后的覆盖）
+@media (max-width: 768px) {
+  .modal-overlay {
+    padding: 10px;
+  }
+
+  .rule-modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: min(92dvh, 100vh);
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-overlay {
+    padding: 8px;
+  }
+
+  .rule-modal-header {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 12px 12px;
+    align-items: stretch;
+
+    h2 {
+      order: -1;
+      flex: 0 0 100%;
+      width: 100%;
+      min-width: 0;
+      text-align: center;
+      font-size: 1rem;
+      line-height: 1.35;
+      white-space: normal;
+    }
+  }
+
+  .btn-complete,
+  .btn-cancel {
+    flex: 1 1 calc(50% - 6px);
+    justify-content: center;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .btn-complete-text,
+  .btn-cancel-text {
+    display: none;
+  }
+
+  .btn-complete,
+  .btn-cancel {
+    padding: 10px 12px;
+  }
+}
+
 .rule-form {
   display: flex;
   flex-direction: column;
@@ -6573,6 +6718,16 @@ body.has-dragging-fab {
 .modal-body {
   padding: 24px;
   min-height: 300px;
+}
+
+@media (max-width: 768px) {
+  .rule-modal-content .modal-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 14px;
+  }
 }
 
 .modal-placeholder {

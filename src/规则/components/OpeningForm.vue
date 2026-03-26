@@ -4198,6 +4198,64 @@ defineExpose({
   }
 }
 
+/* 极窄屏（≤300px 宽，如 300×800 设备） */
+@media (max-width: 300px) {
+  .opening-form {
+    padding: 4px;
+  }
+
+  .book-container {
+    border-radius: 10px;
+    max-width: 100%;
+  }
+
+  .cover-page {
+    padding: 12px 8px 8px;
+  }
+
+  .center-card {
+    min-height: 180px;
+    padding: 16px 10px;
+
+    .card-content {
+      .book-icon {
+        font-size: 28px;
+      }
+
+      .book-title {
+        font-size: 20px;
+      }
+
+      .book-subtitle {
+        font-size: 8px;
+      }
+
+      .book-desc {
+        font-size: 10px;
+      }
+    }
+  }
+
+  .start-btn-wrapper .start-btn {
+    padding: 8px 18px;
+    font-size: 12px;
+  }
+
+  .bottom-tools .tool-btn {
+    padding: 5px 8px;
+    font-size: 9px;
+  }
+
+  .chapter-title {
+    font-size: 18px;
+  }
+
+  .rule-item,
+  .scene-card {
+    padding: 10px;
+  }
+}
+
 /* 高度限制适配 (短屏幕) */
 @media (max-height: 700px) {
   .book-container {
@@ -4396,13 +4454,25 @@ defineExpose({
   }
 
   // 弹窗适配
+  .chronicle-dialog-backdrop {
+    padding: 12px 10px;
+  }
+
   .chronicle-dialog-panel {
     padding: 18px;
     border-radius: 16px;
+    max-height: min(88dvh, 800px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
   }
 
   .opening-dialog-panel--wide {
-    max-width: calc(100vw - 32px);
+    max-width: calc(100vw - 20px);
+  }
+
+  .opening-dialog-list--scroll {
+    max-height: min(48vh, 320px);
   }
 
   .opening-dialog-list-item {
@@ -4417,6 +4487,64 @@ defineExpose({
       padding: 8px 14px;
       font-size: 13px;
     }
+  }
+}
+
+/* 窄手机：规则/角色表单与工具条纵向铺满，避免横向挤压 */
+@media (max-width: 420px) {
+  .library-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .library-toolbar-btn {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .add-rule-btn,
+  .add-char-btn {
+    width: 100%;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+
+  .custom-rules-section,
+  .character-form {
+    padding: 12px 10px;
+  }
+
+  .custom-rule-input {
+    gap: 8px;
+  }
+
+  .chronicle-dialog-backdrop {
+    padding: 8px;
+  }
+
+  .chronicle-dialog-panel {
+    padding: 14px 14px 12px;
+  }
+
+  .chronicle-dialog-title {
+    font-size: 16px;
+  }
+
+  .chronicle-dialog-desc {
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+
+  .opening-dialog-list-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .opening-dialog-list-item--stack .opening-dialog-list-actions {
+    align-self: stretch;
+    justify-content: flex-end;
   }
 }
 </style>
