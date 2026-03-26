@@ -17,13 +17,19 @@
 
 本地调试 `phone_ui_url` 时，可用 Live Server 打开 **`dist/手机`** 目录，例如 `http://127.0.0.1:5500/index.html`（端口以实际为准）。
 
+开发时可在仓库根目录并行运行 **`pnpm watch`**（webpack 壳脚本等）与 **`pnpm watch:phone`**（Vite 监听 `src/手机`，产物在 **`src/手机/dist`**）。同步到仓库根 **`dist/手机`** 仅在执行 **`pnpm build:phone`** 或完整 **`pnpm build`** 时由 `sync-phone-dist` 完成；若 `phone_ui_url` 指向 `dist/手机`，手机代码变更后需再跑一次 **`pnpm build:phone`**，或把本地服务根目录指到 **`src/手机/dist`**。配合酒馆助手实时监听壳脚本时，改壳代码可热重载。
+
+## 壳与 iframe 尺寸
+
+壳脚本将内嵌 iframe 设为固定 **375×812（CSS 像素）**，再按父页面视口**整体等比缩放**（见 `index.ts` 中 `applyLayout`）。`src/手机` 内使用 `100dvh` 等时，视口即该 iframe，与外壳缩放无关。
+
 ## 脚本变量
 
 在本脚本的变量表中配置（`type: script`，对应当前脚本 ID）：
 
 | 键 | 说明 |
 |----|------|
-| `phone_ui_url` | **必填**。手机界面 `index.html` 的完整 **HTTPS** URL（例如 GitHub Pages、Cloudflare Pages 部署后的地址）。 |
+| `phone_ui_url` | **必填**。手机界面 `index.html` 的完整 URL（含协议），例如 HTTPS 部署地址，或本地调试 `http://127.0.0.1:3000/index.html`。若酒馆页面为 **HTTPS** 而此处为 **HTTP**，浏览器会拦截混合内容（mixed content），需同协议或 HTTPS 部署。 |
 
 可选别名：`tavern_phone_ui_url`（与 `phone_ui_url` 二选一即可）。
 
@@ -50,4 +56,11 @@ window.parent.TavernPhone?.close();
 
 ## 与 `src/手机` 的协议
 
-内嵌页面通过 `postMessage` 与壳通信，类型常量见 `src/手机/src/tavernPhoneBridge.ts`（如 `tavern-phone:request-close` 关闭浮层）。
+双方通过 `postMessage` 通信，类型常量见 `src/手机/src/tavernPhoneBridge.ts` 与 `src/小手机壳/index.ts` 中 `MSG`（需保持一致）。
+
+| 方向 | `type` | 说明 |
+|------|--------|------|
+| 手机 → 壳 | `tavern-phone:request-close` | 请求关闭浮层（如手机 UI 右上角关闭按钮） |
+| 手机 → 壳 | `tavern-phone:ready` | 手机页面加载后向壳声明就绪（壳当前未强制依赖） |
+| 壳 → 手机 | `tavern-phone:opened` | 浮层打开且 iframe `load` 后由壳发往手机 |
+| 壳 → 手机 | `tavern-phone:closed` | 关闭浮层时由壳发往手机 |

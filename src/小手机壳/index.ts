@@ -3,7 +3,7 @@
  * 主界面或其它前端通过 window.parent.TavernPhone.open/toggle/close 调用。
  *
  * 脚本变量（type: script）可配置：
- * - phone_ui_url: 部署后的手机界面 index.html 完整 HTTPS URL（必填才能显示内容）
+ * - phone_ui_url / tavern_phone_ui_url: 手机界面 index.html 的完整 URL（必填才能显示内容）
  */
 import { createScriptIdDiv } from '../../util/script';
 
@@ -200,7 +200,7 @@ $(() => {
   function open() {
     phoneUiUrl = getPhoneUiUrl();
     if (!phoneUiUrl) {
-      toastr.warning('请在本脚本变量中配置 phone_ui_url（手机界面 index.html 的完整 HTTPS URL）');
+      toastr.warning('请在本脚本变量中配置 phone_ui_url（手机界面 index.html 的完整 URL，含协议）');
       return;
     }
 

@@ -41,10 +41,46 @@
       "isBackground": true
     },
     {
+      "label": "开始监听手机界面 (Vite)",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "watch:phone"],
+      "problemMatcher": [
+        {
+          "pattern": [
+            {
+              "regexp": "^(.*)$",
+              "file": 1,
+              "location": 1,
+              "message": 1
+            }
+          ],
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".",
+            "endsPattern": "built in"
+          }
+        }
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false,
+        "revealProblems": "never"
+      },
+      "isBackground": true
+    },
+    {
       "label": "开始任务",
       "dependsOn": [
         "开始监听源代码并编译",
-      ]
+        "开始监听手机界面 (Vite)"
+      ],
+      "dependsOrder": "parallel"
     },
     {
       "label": "结束任务",

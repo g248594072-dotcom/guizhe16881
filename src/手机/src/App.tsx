@@ -12,7 +12,7 @@ import {
   Settings as SettingsIcon,
   X,
 } from 'lucide-react';
-import {postRequestCloseTavernPhone} from './tavernPhoneBridge';
+import { postRequestCloseTavernPhone } from './tavernPhoneBridge';
 
 // Import Apps (we will create these later)
 import ForumApp from './components/apps/ForumApp';
@@ -62,27 +62,39 @@ export default function App() {
   const ActiveAppComponent = activeConfig?.component;
   const showPlaceholder = Boolean(activeApp && ActiveAppComponent && isPlaceholderApp(activeApp));
 
+  /** 设计稿 375×812，在窄屏/矮屏下等比缩小，避免出现整页滚动条 */
+  const phoneShellStyle: React.CSSProperties = {
+    aspectRatio: '375 / 812',
+    width: 'min(375px, calc(100vw - 16px), calc((100dvh - 56px) * 375 / 812))',
+    maxHeight: 'min(812px, calc(100dvh - 56px))',
+    height: 'auto',
+  };
+
   return (
-    <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4 font-sans relative">
+    <div className="relative box-border flex h-dvh w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden bg-neutral-900 px-2 py-2 font-sans">
       <button
         type="button"
-        className="absolute top-3 right-3 z-[100] flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-md transition hover:bg-black/55"
+        className="absolute right-2 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-md transition hover:bg-black/55"
         title="关闭小手机"
         aria-label="关闭小手机"
         onClick={() => postRequestCloseTavernPhone()}
       >
         <X size={18} strokeWidth={2.5} />
       </button>
-      {/* Phone Frame */}
-      <div className="relative w-[375px] h-[812px] bg-black rounded-[55px] shadow-2xl border-[8px] border-neutral-800 overflow-hidden ring-1 ring-white/10">
-        
-        {/* Screen Content */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center transition-all duration-500"
-          style={{ backgroundImage: `url(${wallpaper})` }}
-        >
+      {/* Phone Frame：宽高随视口自适应，保持比例 */}
+      <div
+        className="relative shrink-0 overflow-hidden rounded-[55px] border-8 border-neutral-800 bg-black shadow-2xl ring-1 ring-white/10"
+        style={phoneShellStyle}
+      >
+        {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；勿用 mix-blend-difference 以免黑底上文字/图标看不见 */}
+        <div className="absolute inset-0 bg-linear-to-b from-slate-700 via-slate-800 to-slate-950">
+          <div
+            className="absolute inset-0 bg-cover bg-center transition-all duration-500"
+            style={{ backgroundImage: `url(${wallpaper})` }}
+          />
+          <div className="absolute inset-0 flex flex-col">
           {/* Status Bar */}
-          <div className="absolute top-0 inset-x-0 h-14 flex items-center justify-between px-7 z-50 text-white text-[15px] font-semibold mix-blend-difference">
+          <div className="absolute top-0 inset-x-0 z-50 flex h-14 items-center justify-between px-7 text-[15px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
             <span className="mt-1">{timeString}</span>
             <div className="flex items-center gap-1.5 mt-1">
               <Signal size={17} strokeWidth={2.5} />
@@ -107,7 +119,7 @@ export default function App() {
                   className="flex flex-col items-center gap-1.5 group"
                 >
                   <div className={`w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 ${app.color} relative overflow-hidden`}>
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-50"></div>
+                    <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
                     {app.icon}
                   </div>
                   <span className="text-white text-[11px] font-medium tracking-wide drop-shadow-md">{app.name}</span>
@@ -125,7 +137,7 @@ export default function App() {
                   className="flex flex-col items-center group"
                 >
                   <div className={`w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 ${app.color} relative overflow-hidden`}>
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent opacity-50"></div>
+                    <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
                     {app.icon}
                   </div>
                 </button>
@@ -133,7 +145,7 @@ export default function App() {
           </div>
 
           {/* Home Indicator */}
-          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1/3 h-1 bg-white rounded-full z-50 mix-blend-difference"></div>
+          <div className="absolute bottom-1.5 left-1/2 z-50 h-1 w-1/3 -translate-x-1/2 rounded-full bg-white/90 shadow-sm"></div>
 
           {/* Active App Overlay */}
           <AnimatePresence>
@@ -175,7 +187,7 @@ export default function App() {
                       setWallpaper={activeApp === 'settings' ? setWallpaper : undefined}
                     />
                     <div
-                      className="absolute bottom-0 inset-x-0 z-50 flex h-8 cursor-pointer items-end justify-center bg-gradient-to-t from-white/80 to-transparent pb-1.5"
+                      className="absolute bottom-0 inset-x-0 z-50 flex h-8 cursor-pointer items-end justify-center bg-linear-to-t from-white/80 to-transparent pb-1.5"
                       onClick={() => setActiveApp(null)}
                     >
                       <div className="h-1 w-1/3 rounded-full bg-black" />
@@ -186,6 +198,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          </div>
         </div>
       </div>
     </div>

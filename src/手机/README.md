@@ -21,6 +21,9 @@ npm run dev
   若只想打 webpack、不构建手机，用：**`pnpm run build:webpack`**。  
   若只构建手机：**`pnpm build:phone`**。
 
+**调试（F5）时：** `.vscode` 里「开始任务」会并行启动 **`pnpm watch`**（webpack）与 **`pnpm run watch:phone`**（`vite build --watch`，产物在 **`src/手机/dist`**）。  
+若 `phone_ui_url` 指向 **`dist/手机`**，保存后需再执行一次 **`pnpm build:phone`** 同步，或开发时把静态服务根目录指到 **`src/手机/dist`**。
+
 **仅构建在子目录：**
 
 ```bash
