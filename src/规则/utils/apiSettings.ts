@@ -8,6 +8,9 @@ import type { WorldbookEntry } from '../types';
 import { normalizeOpenAiUrl } from './openaiUrl';
 import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
 import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
+import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
+
+export { DEFAULT_SECONDARY_API_CONFIG };
 
 /** 失败后的最大重试次数（0–10） */
 export function clampSecondaryApiRetries(n: unknown): number {
@@ -15,20 +18,6 @@ export function clampSecondaryApiRetries(n: unknown): number {
   if (Number.isNaN(x)) return 2;
   return Math.min(10, Math.max(0, x));
 }
-
-/** 无存档或未配置第二 API 时使用的默认：双 API 流程中的第二路走酒馆插头 */
-export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
-  url: '',
-  key: '',
-  model: '',
-  maxRetries: 2,
-  useTavernMainConnection: true,
-  tasks: {
-    includeVariableUpdate: true,
-    includeWorldTrend: false,
-    includeResidentLife: false,
-  },
-};
 
 // 类型声明
 declare function waitGlobalInitialized<T>(global: 'Mvu' | string): Promise<T>;

@@ -3,9 +3,9 @@
  * 使用浏览器 localStorage 持久化存储设置
  */
 
-import type { OutputMode, SecondaryApiConfig, InputActionMode } from '../types';
+import type { OutputMode, SecondaryApiConfig, InputActionMode, OtherSettings } from '../types';
 import type { UiLayoutSettings } from './uiLayoutLimits';
-import { DEFAULT_SECONDARY_API_CONFIG } from './apiSettings';
+import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
 
 function clampSecondaryRetriesLoaded(n: unknown): number {
   const x = Math.floor(Number(n));
@@ -20,16 +20,6 @@ const STORAGE_KEYS = {
   uiLayout: 'rule_modifier_ui_layout',
   otherSettings: 'rule_modifier_other_settings',
 } as const;
-
-/** 其他设置类型 */
-interface OtherSettings {
-  inputActionMode: InputActionMode;
-}
-
-/** 默认其他设置 */
-const DEFAULT_OTHER_SETTINGS: OtherSettings = {
-  inputActionMode: 'append',
-};
 
 /** 默认界面布局设置 */
 const DEFAULT_UI_LAYOUT: UiLayoutSettings = {
@@ -150,19 +140,29 @@ export function saveOtherSettingsLocal(settings: OtherSettings): void {
 /**
  * 从 localStorage 加载其他设置
  */
+/** 与 `types.DEFAULT_OTHER_SETTINGS` 保持一致（此处不引用 types 默认值，避免与 apiSettings 的循环依赖） */
+const DEFAULT_OTHER_LOCAL: OtherSettings = {
+  inputActionMode: 'append',
+  enableShujukuManualUpdateAfterConfirm: false,
+};
+
 export function loadOtherSettings(): OtherSettings {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.otherSettings);
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
-        inputActionMode: parsed.inputActionMode || DEFAULT_OTHER_SETTINGS.inputActionMode,
+        inputActionMode: (parsed.inputActionMode as InputActionMode) || DEFAULT_OTHER_LOCAL.inputActionMode,
+        enableShujukuManualUpdateAfterConfirm:
+          typeof parsed.enableShujukuManualUpdateAfterConfirm === 'boolean'
+            ? parsed.enableShujukuManualUpdateAfterConfirm
+            : DEFAULT_OTHER_LOCAL.enableShujukuManualUpdateAfterConfirm,
       };
     }
   } catch (error) {
     console.warn('⚠️ [localSettings] 加载其他设置失败:', error);
   }
-  return { ...DEFAULT_OTHER_SETTINGS };
+  return { ...DEFAULT_OTHER_LOCAL };
 }
 
 /**
@@ -179,5 +179,5 @@ export function clearAllLocalSettings(): void {
   }
 }
 
-/** 导出常量供外部使用 */
-export { DEFAULT_UI_LAYOUT, DEFAULT_OTHER_SETTINGS, STORAGE_KEYS };
+/** 导出常量供外部使用（DEFAULT_OTHER_LOCAL 与 types.DEFAULT_OTHER_SETTINGS 一致） */
+export { DEFAULT_UI_LAYOUT, DEFAULT_OTHER_LOCAL as DEFAULT_OTHER_SETTINGS, STORAGE_KEYS };

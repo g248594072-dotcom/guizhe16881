@@ -264,6 +264,28 @@
           </div>
         </div>
       </div>
+
+      <div
+        class="shujuku-bridge-block"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <h4 class="shujuku-bridge-title">
+          <i class="fa-solid fa-database"></i>
+          神·数据库（可选）
+        </h4>
+        <p class="option-behavior-hint shujuku-bridge-lead">
+          安装「神·数据库」扩展后，可在本界面确认标签并写入 AI 楼层后，自动调用插件的「立即手动更新」以同步表格（与
+          <code>manualUpdate()</code> 一致）。未安装扩展时不会执行任何操作。
+        </p>
+        <label class="field-row checkbox-row">
+          <input
+            v-model="enableShujukuManualUpdateAfterConfirm"
+            type="checkbox"
+            @change="persistShujukuManualUpdateOption"
+          />
+          <span>确认标签后触发神·数据库「立即手动更新」</span>
+        </label>
+      </div>
     </div>
 
     <!-- 保存成功提示 -->
@@ -317,6 +339,9 @@ const outputMode = ref<OutputMode>('dual');
 
 const inputActionMode = ref<InputActionMode>('append');
 
+/** 标签确认写入楼层后是否调用神·数据库 manualUpdate（默认关，避免未装插件用户困惑） */
+const enableShujukuManualUpdateAfterConfirm = ref(false);
+
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
 const fontSettings = ref<FontSettings>({ ...DEFAULT_FONT_SETTINGS });
@@ -350,7 +375,9 @@ function loadSettings() {
     const loaded = loadSecondaryApiConfig();
     loaded.maxRetries = clampSecondaryApiRetries(loaded.maxRetries);
     secondaryApi.value = loaded;
-    inputActionMode.value = getOtherSettings().inputActionMode;
+    const other = getOtherSettings();
+    inputActionMode.value = other.inputActionMode;
+    enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
     console.log('✅ [SettingsPanel] 设置从 localStorage 加载成功:', {
@@ -420,6 +447,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
     saveUiLayout(layout);
     saveOtherSettings({
       inputActionMode: inputActionMode.value,
+      enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
     });
     showSaveSuccess.value = true;
     setTimeout(() => {
@@ -429,6 +457,21 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
     console.error('保存设置失败:', error);
     throttledErrorToast('设置保存失败');
   }
+}
+
+function persistShujukuManualUpdateOption() {
+  saveOtherSettings({
+    enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
+  });
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+  toastr.success(
+    enableShujukuManualUpdateAfterConfirm.value
+      ? '已开启：确认标签后将尝试调用神·数据库'
+      : '已关闭：确认标签后不再调用神·数据库',
+  );
 }
 
 function selectInputActionMode(mode: InputActionMode) {
@@ -546,6 +589,49 @@ async function selectMode(mode: OutputMode) {
 .settings-tab-panel {
   flex: 1;
   min-height: 0;
+}
+
+.shujuku-bridge-block {
+  margin-top: 20px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dark .shujuku-bridge-block {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.light .shujuku-bridge-block {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.shujuku-bridge-title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shujuku-bridge-lead {
+  margin-bottom: 12px !important;
+}
+
+.shujuku-bridge-lead code {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.dark .shujuku-bridge-lead code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.light .shujuku-bridge-lead code {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .option-behavior-hint {

@@ -982,6 +982,7 @@ import { startIframeHeightFix } from './utils/iframeHeightFix';
 import type { UiLayoutSettings } from './utils/uiLayoutLimits';
 import { clampMainUiHeightPx } from './utils/uiLayoutLimits';
 import { loadUiLayout } from './utils/localSettings';
+import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
 
 /** 构建时注入，见 webpack DefinePlugin `__APP_VERSION__` */
@@ -3015,6 +3016,7 @@ async function onTagDialogIgnore() {
   try {
     await recordAssistantMessage(snapshotRaw);
     await normalizeLatestChineseStatData();
+    await runShujukuManualUpdateAfterAssistantSaved();
 
     // 注意：开场白不再手动调用 refineOpeningAssistantWithSecondaryApi
     // 让MVU框架自动触发额外模型解析

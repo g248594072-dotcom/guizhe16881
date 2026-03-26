@@ -31,6 +31,12 @@ export function getOtherSettings(): OtherSettings {
         settings?.inputActionMode ??
         local?.inputActionMode ??
         DEFAULT_OTHER_SETTINGS.inputActionMode,
+      enableShujukuManualUpdateAfterConfirm:
+        typeof settings?.enableShujukuManualUpdateAfterConfirm === 'boolean'
+          ? settings.enableShujukuManualUpdateAfterConfirm
+          : typeof local?.enableShujukuManualUpdateAfterConfirm === 'boolean'
+            ? local.enableShujukuManualUpdateAfterConfirm
+            : DEFAULT_OTHER_SETTINGS.enableShujukuManualUpdateAfterConfirm,
     };
   } catch (error) {
     console.warn('⚠️ [otherSettings] 获取其他设置失败，使用默认值:', error);
@@ -40,8 +46,13 @@ export function getOtherSettings(): OtherSettings {
 
 /**
  * 保存其他设置（同时写入 MVU 与 localStorage，供 `getInputActionMode` 与界面一致）
+ * 传入部分字段时会与当前设置合并，避免覆盖未传入的项。
  */
-export function saveOtherSettings(settings: OtherSettings): boolean {
+export function saveOtherSettings(partial: Partial<OtherSettings>): boolean {
+  const settings: OtherSettings = {
+    ...getOtherSettings(),
+    ...partial,
+  };
   try {
     saveOtherSettingsLocal(settings);
 
@@ -70,6 +81,11 @@ export function saveOtherSettings(settings: OtherSettings): boolean {
  */
 export function setInputActionMode(mode: InputActionMode): boolean {
   return saveOtherSettings({ inputActionMode: mode });
+}
+
+/** 是否在本界面确认标签并写入 AI 楼层后调用神·数据库「立即手动更新」 */
+export function getEnableShujukuManualUpdateAfterConfirm(): boolean {
+  return getOtherSettings().enableShujukuManualUpdateAfterConfirm;
 }
 
 /**

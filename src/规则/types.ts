@@ -257,8 +257,14 @@ export type InputActionMode = 'send' | 'append';
 export interface OtherSettings {
   /** 输入框行为模式：'send' 直接发送，'append' 追加到输入框 */
   inputActionMode: InputActionMode;
+  /**
+   * 标签验证确认并将 AI 楼层写入后，调用神·数据库 `manualUpdate()`（与插件「立即手动更新」一致）。
+   * 未安装插件时自动跳过，无影响。
+   */
+  enableShujukuManualUpdateAfterConfirm: boolean;
 }
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   inputActionMode: 'append', // 默认使用追加模式（更安全，不自动发送）
+  enableShujukuManualUpdateAfterConfirm: false,
 };
