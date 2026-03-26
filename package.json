@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "build:phone:vite": "npm run build --prefix src/手机",
+    "build:phone": "pnpm run build:phone:vite && node scripts/sync-phone-dist.mjs",
     "build:dev": "webpack --mode development",
     "build": "webpack --mode production",
     "watch": "webpack --mode development --watch --progress",

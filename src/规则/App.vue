@@ -176,7 +176,7 @@
                 @layout-change="onLayoutChange"
               />
               <div
-                v-else-if="activeTab === 'phone' || activeTab === 'world_life'"
+                v-else-if="activeTab === 'world_life'"
                 class="phone-placeholder-panel"
                 :class="{ dark: isDarkMode, light: !isDarkMode }"
               >
@@ -1464,6 +1464,17 @@ const modalTitle = computed(() => modalTitles[modalType.value] || (modalType.val
 
 // 防抖：防止短时间内重复点击
 let lastClickTime = 0;
+
+/** 小手机壳脚本挂在酒馆页面 window.TavernPhone，由 iframe 内通过 parent 调用 */
+function toggleTavernPhone() {
+  const tp = window.parent.TavernPhone;
+  if (!tp) {
+    toastr.warning('请先启用「小手机壳」脚本，并在脚本变量中配置 phone_ui_url');
+    return;
+  }
+  tp.toggle();
+}
+
 function toggleTab(tabId: string) {
   const now = Date.now();
   if (now - lastClickTime < 150) {
@@ -1471,6 +1482,11 @@ function toggleTab(tabId: string) {
     return;
   }
   lastClickTime = now;
+
+  if (tabId === 'phone') {
+    toggleTavernPhone();
+    return;
+  }
 
   if (activeTab.value === tabId) {
     // 再次点击同一个 tab，关闭面板
