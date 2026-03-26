@@ -3,7 +3,11 @@ import HtmlInlineScriptWebpackPlugin from 'html-inline-script-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import _ from 'lodash';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
+<<<<<<< HEAD
 import { ChildProcess, exec, execSync, spawn } from 'node:child_process';
+=======
+import { ChildProcess, exec, spawn } from 'node:child_process';
+>>>>>>> b80a86e4d72312ede7f291df2c1c65bd1f7e93eb
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -20,6 +24,7 @@ import WebpackObfuscator from 'webpack-obfuscator';
 const require = createRequire(import.meta.url);
 const HTMLInlineCSSWebpackPlugin = require('html-inline-css-webpack-plugin').default;
 
+<<<<<<< HEAD
 const WEBPACK_ROOT = import.meta.dirname;
 
 /** 供前端角标：优先展示 Git 标签（git describe），避免用分支名 master/main 盖住 tag */
@@ -52,6 +57,8 @@ function getBuildVersion(): string {
 
 const BUILD_VERSION = getBuildVersion();
 
+=======
+>>>>>>> b80a86e4d72312ede7f291df2c1c65bd1f7e93eb
 interface Config {
   port: number;
   entries: Entry[];
@@ -331,11 +338,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             {
               resourceQuery: /url/,
               type: 'asset/inline',
+<<<<<<< HEAD
               exclude: [/(node_modules|\.ttf|\.otf|\.woff|\.woff2)$/],
             },
             {
               test: /\.(ttf|otf|woff|woff2)(\?url)?$/,
               type: 'asset/inline',
+=======
+              exclude: /node_modules/,
+>>>>>>> b80a86e4d72312ede7f291df2c1c65bd1f7e93eb
             },
             {
               test: /\.tsx?$/,
@@ -381,6 +392,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               test: /\.ya?ml$/,
               loader: 'yaml-loader',
             },
+<<<<<<< HEAD
             {
               test: /\.(ttf|otf|woff|woff2)$/,
               type: 'asset/resource',
@@ -388,6 +400,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 filename: 'fonts/[name][ext]',
               },
             },
+=======
+>>>>>>> b80a86e4d72312ede7f291df2c1c65bd1f7e93eb
           ].concat(
             entry.html === undefined
               ? ([
@@ -508,7 +522,10 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           __VUE_OPTIONS_API__: false,
           __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+<<<<<<< HEAD
           __APP_VERSION__: JSON.stringify(BUILD_VERSION),
+=======
+>>>>>>> b80a86e4d72312ede7f291df2c1c65bd1f7e93eb
         }),
       )
       .concat(
