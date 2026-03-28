@@ -1,125 +1,185 @@
-import React from 'react';
-import { ChevronLeft, ChevronRight, Search, Wifi, Bluetooth, Battery, Image as ImageIcon, Smartphone } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ChevronLeft, Loader2, Smartphone } from 'lucide-react';
 import { TAVERN_PHONE_UI_LABEL, TAVERN_PHONE_UI_VERSION } from '../../tavernPhoneVersion';
+import {
+  loadTavernPhoneApiConfig,
+  saveTavernPhoneApiConfig,
+  type TavernPhoneApiConfig,
+} from '../../tavernPhoneApiConfig';
+import { fetchOpenAiCompatibleModelIds, testOpenAiCompatibleConnection } from '../../openaiCompatible';
 
-export default function SettingsApp({ onClose, setWallpaper }: { onClose: () => void, setWallpaper?: (url: string) => void }) {
-  const wallpapers = [
-    'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop', // Default
-    'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop', // Gradient
-    'https://images.unsplash.com/photo-1506744626753-eba7bc368f8e?q=80&w=2070&auto=format&fit=crop', // Nature
-    'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?q=80&w=2342&auto=format&fit=crop', // Space
-  ];
+export default function SettingsApp({
+  onClose,
+}: {
+  onClose: () => void;
+  /** 保留与 App 传参兼容；壁纸改由桌面侧统一处理时可不传 */
+  setWallpaper?: (url: string) => void;
+}) {
+  const [cfg, setCfg] = useState<TavernPhoneApiConfig>(() => loadTavernPhoneApiConfig());
+  const [testState, setTestState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    saveTavernPhoneApiConfig(cfg);
+  }, [cfg]);
+
+  const setField = useCallback(<K extends keyof TavernPhoneApiConfig>(key: K, value: TavernPhoneApiConfig[K]) => {
+    setCfg(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const onMaxRetriesChange = (raw: string) => {
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n)) {
+      setField('maxRetries', 0);
+      return;
+    }
+    setField('maxRetries', Math.max(0, Math.min(10, n)));
+  };
+
+  const handleTest = async () => {
+    setTestState('loading');
+    setTestMessage('');
+    const r = await testOpenAiCompatibleConnection(cfg.apiBaseUrl, cfg.apiKey);
+    setTestMessage(r.message);
+    setTestState(r.ok ? 'success' : 'error');
+  };
+
+  const handleFetchModels = async () => {
+    setModelsLoading(true);
+    setModelsError('');
+    try {
+      if (!cfg.apiBaseUrl.trim()) {
+        throw new Error('请先填写 API URL');
+      }
+      if (!cfg.apiKey.trim()) {
+        throw new Error('请先填写 API Key');
+      }
+      const ids = await fetchOpenAiCompatibleModelIds(cfg.apiBaseUrl, cfg.apiKey);
+      setModelOptions(ids);
+      if (ids.length === 0) {
+        setModelsError('列表为空（接口返回 0 个模型）');
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setModelsError(msg.includes('Failed to fetch') ? '网络失败（可能是 CORS）' : msg);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#F2F2F7]">
-      {/* Header */}
-      <div className="bg-[#F2F2F7] pt-12 pb-3 px-4 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-[#F2F2F7] pt-12 pb-3 px-4 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-2">
-          <button onClick={onClose} className="p-1 -ml-1 text-blue-500">
+          <button type="button" onClick={onClose} className="p-1 -ml-1 text-blue-500">
             <ChevronLeft size={28} />
           </button>
           <span className="text-blue-500 font-medium text-lg">Settings</span>
         </div>
       </div>
 
-      <div className="px-4 pb-2 pt-4">
-        <h1 className="text-[34px] font-bold text-black mb-2 tracking-tight">设置</h1>
-        
-        {/* Search */}
-        <div className="bg-[#E3E3E8] rounded-[10px] flex items-center px-2 py-1.5 mb-6">
-          <Search size={18} className="text-[#8E8E93] mr-1.5 ml-1" />
-          <input 
-            type="text" 
-            placeholder="Search" 
-            className="bg-transparent border-none outline-none text-[17px] w-full placeholder-[#8E8E93]"
-          />
-        </div>
+      <div className="px-4 pb-2 pt-2 shrink-0">
+        <h1 className="text-[28px] font-bold text-black tracking-tight">设置</h1>
+        <p className="text-[13px] text-[#8E8E93] mt-1">API（OpenAI 兼容）为小手机各功能统一入口</p>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-8">
-        
-        {/* Apple ID */}
-        <div className="bg-white rounded-[10px] p-4 flex items-center gap-4 mb-6 shadow-sm">
-          <div className="w-[60px] h-[60px] bg-gray-200 rounded-full flex items-center justify-center text-gray-500 overflow-hidden">
-            <img src="https://i.pravatar.cc/150?u=me" alt="User" className="w-full h-full object-cover" />
+      <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-0">
+        <div className="bg-white rounded-[10px] overflow-hidden shadow-sm mb-4">
+          <div className="px-3 pt-3 pb-1">
+            <p className="text-[13px] text-[#8E8E93] font-medium uppercase tracking-wide">API 配置</p>
           </div>
-          <div className="flex-1">
-            <h2 className="text-[20px] font-normal text-black">User Name</h2>
-            <p className="text-[13px] text-black/60 mt-0.5">Apple ID, iCloud, Media & Purchases</p>
-          </div>
-          <ChevronRight size={20} className="text-[#C7C7CC]" />
-        </div>
+          <div className="px-3 pb-3 space-y-3 border-t border-gray-100 pt-3">
+            <label className="block">
+              <span className="text-[13px] text-[#8E8E93]">API URL</span>
+              <input
+                type="url"
+                autoComplete="off"
+                placeholder="https://api.openai.com/v1"
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-[#F2F2F7] px-3 py-2 text-[15px] text-black outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                value={cfg.apiBaseUrl}
+                onChange={e => setField('apiBaseUrl', e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[13px] text-[#8E8E93]">API Key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder="sk-…"
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-[#F2F2F7] px-3 py-2 text-[15px] text-black outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                value={cfg.apiKey}
+                onChange={e => setField('apiKey', e.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="text-[13px] text-[#8E8E93]">模型</span>
+              <input
+                type="text"
+                list="tavern-phone-model-datalist"
+                autoComplete="off"
+                placeholder="手动输入或先获取列表后选择"
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-[#F2F2F7] px-3 py-2 text-[15px] text-black outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                value={cfg.model}
+                onChange={e => setField('model', e.target.value)}
+              />
+              <datalist id="tavern-phone-model-datalist">
+                {modelOptions.map(id => (
+                  <option key={id} value={id} />
+                ))}
+              </datalist>
+            </label>
+            <label className="block">
+              <span className="text-[13px] text-[#8E8E93]">最大重试次数（0–10）</span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-[#F2F2F7] px-3 py-2 text-[15px] text-black outline-none focus:ring-2 focus:ring-[#007AFF]/30"
+                value={cfg.maxRetries}
+                onChange={e => onMaxRetriesChange(e.target.value)}
+              />
+            </label>
 
-        {/* Network Settings */}
-        <div className="bg-white rounded-[10px] overflow-hidden mb-6 shadow-sm">
-          <div className="flex items-center justify-between p-3 border-b border-gray-100 ml-10">
-            <div className="flex items-center gap-3 -ml-10">
-              <div className="w-[28px] h-[28px] bg-[#007AFF] rounded-md flex items-center justify-center text-white">
-                <Wifi size={16} />
-              </div>
-              <span className="text-[17px] text-black">Wi-Fi</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[17px] text-[#8E8E93]">Home_Network</span>
-              <ChevronRight size={20} className="text-[#C7C7CC]" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between p-3 ml-10">
-            <div className="flex items-center gap-3 -ml-10">
-              <div className="w-[28px] h-[28px] bg-[#007AFF] rounded-md flex items-center justify-center text-white">
-                <Bluetooth size={16} />
-              </div>
-              <span className="text-[17px] text-black">Bluetooth</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="text-[17px] text-[#8E8E93]">On</span>
-              <ChevronRight size={20} className="text-[#C7C7CC]" />
-            </div>
-          </div>
-        </div>
-
-        {/* Wallpaper Settings */}
-        <div className="bg-white rounded-[10px] overflow-hidden mb-6 shadow-sm">
-          <div className="p-3 border-b border-gray-100 ml-10">
-            <div className="flex items-center gap-3 -ml-10 mb-3">
-              <div className="w-[28px] h-[28px] bg-[#5AC8FA] rounded-md flex items-center justify-center text-white">
-                <ImageIcon size={16} />
-              </div>
-              <span className="text-[17px] text-black">Wallpaper</span>
-            </div>
-            
-            <p className="text-[13px] text-[#8E8E93] mb-3 -ml-10">Choose a new wallpaper for your Home Screen.</p>
-            
-            <div className="grid grid-cols-2 gap-3 -ml-10 pb-2">
-              {wallpapers.map((url, index) => (
-                <button 
-                  key={index}
-                  onClick={() => setWallpaper && setWallpaper(url)}
-                  className="relative aspect-[9/16] rounded-lg overflow-hidden border-2 border-transparent focus:border-[#007AFF] transition-colors"
+            <div className="flex flex-col gap-2 pt-1">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={testState === 'loading'}
+                  onClick={() => void handleTest()}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-[#007AFF] py-2.5 text-[15px] font-semibold text-white active:opacity-90 disabled:opacity-50"
                 >
-                  <img src={url} alt={`Wallpaper ${index + 1}`} className="w-full h-full object-cover" />
+                  {testState === 'loading' ? <Loader2 className="animate-spin" size={18} /> : null}
+                  连接测试
                 </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Battery */}
-        <div className="bg-white rounded-xl overflow-hidden mb-6 shadow-sm">
-          <div className="flex items-center justify-between p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white">
-                <Battery size={18} />
+                <button
+                  type="button"
+                  disabled={modelsLoading}
+                  onClick={() => void handleFetchModels()}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-neutral-800 py-2.5 text-[15px] font-semibold text-white active:opacity-90 disabled:opacity-50"
+                >
+                  {modelsLoading ? <Loader2 className="animate-spin" size={18} /> : null}
+                  获取可用模型
+                </button>
               </div>
-              <span className="text-base text-black">Battery</span>
+              {testState !== 'idle' && testMessage && (
+                <p
+                  className={`text-[13px] px-1 ${testState === 'success' ? 'text-green-600' : testState === 'error' ? 'text-red-600' : 'text-[#8E8E93]'}`}
+                >
+                  {testMessage}
+                </p>
+              )}
+              {modelsError ? <p className="text-[13px] text-red-600 px-1">{modelsError}</p> : null}
+              {modelOptions.length > 0 && !modelsError && (
+                <p className="text-[12px] text-[#8E8E93] px-1">已载入 {modelOptions.length} 个模型，可在上方输入框中从列表选择</p>
+              )}
             </div>
-            <ChevronRight size={20} className="text-gray-400" />
           </div>
         </div>
 
-        {/* 小手机版本：与 tavernPhoneVersion.ts 同步，便于确认是否已更新构建 */}
-        <div className="bg-white rounded-[10px] overflow-hidden mb-6 shadow-sm">
+        <div className="bg-white rounded-[10px] overflow-hidden shadow-sm">
           <div className="px-3 pt-3 pb-1">
             <p className="text-[13px] text-[#8E8E93] font-medium uppercase tracking-wide">关于小手机</p>
           </div>
@@ -136,7 +196,6 @@ export default function SettingsApp({ onClose, setWallpaper }: { onClose: () => 
             <span className="text-[17px] font-semibold text-[#007AFF] tabular-nums">v{TAVERN_PHONE_UI_VERSION}</span>
           </div>
         </div>
-
       </div>
     </div>
   );
