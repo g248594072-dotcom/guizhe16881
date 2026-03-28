@@ -1414,12 +1414,25 @@ defineExpose({
 @use '../styles/cyber-effects' as *;
 
 // ===== 赛博朋克风格封面页 =====
+// 与主界面 #app-root.rule-modifier 一致：由 App 注入 --ui-scale、--ui-max-width、--ui-max-height（localStorage uiLayout）
 .opening-form {
+  font-size: calc(14px * var(--ui-scale, 1));
+  line-height: 1.5;
+  --space-xs: calc(4px * var(--ui-scale, 1));
+  --space-sm: calc(8px * var(--ui-scale, 1));
+  --space-md: calc(12px * var(--ui-scale, 1));
+  --space-lg: calc(16px * var(--ui-scale, 1));
+  --space-xl: calc(24px * var(--ui-scale, 1));
+  --radius-sm: calc(6px * var(--ui-scale, 1));
+  --radius-md: calc(8px * var(--ui-scale, 1));
+  --radius-lg: calc(12px * var(--ui-scale, 1));
+  --radius-xl: calc(16px * var(--ui-scale, 1));
+
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
+  padding: calc(32px * var(--ui-scale, 1));
   position: relative;
   overflow: hidden;
 
@@ -1431,11 +1444,11 @@ defineExpose({
 // 书本容器
 .book-container {
   width: 100%;
-  max-width: 1400px;
+  max-width: min(1400px, var(--ui-max-width, 100%));
   height: 85vh;
-  max-height: 900px;
+  max-height: min(85vh, calc(900px * var(--ui-scale, 1)));
   position: relative;
-  border-radius: 28px;
+  border-radius: calc(28px * var(--ui-scale, 1));
   overflow: hidden;
   margin: 0 auto;
 }
@@ -2129,7 +2142,8 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px;
+  padding: calc(32px * var(--ui-scale, 1));
+  font-size: calc(14px * var(--ui-scale, 1));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
   color: var(--text);
   background:
@@ -2153,15 +2167,15 @@ defineExpose({
 
 .book-container {
   width: 100%;
-  max-width: 880px;
-  min-height: 690px;
+  max-width: min(880px, var(--ui-max-width, 100%));
+  min-height: calc(690px * var(--ui-scale, 1));
   position: relative;
-  border-radius: 28px;
+  border-radius: calc(28px * var(--ui-scale, 1));
   overflow: hidden;
   background: var(--glass);
   border: 1px solid var(--line);
   box-shadow:
-    0 30px 80px rgba(0, 0, 0, 0.32),
+    0 calc(30px * var(--ui-scale, 1)) calc(80px * var(--ui-scale, 1)) rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
   backdrop-filter: blur(20px) saturate(140%);
 
@@ -2197,7 +2211,7 @@ defineExpose({
 .book-page {
   position: relative;
   width: 100%;
-  min-height: 690px;
+  min-height: calc(690px * var(--ui-scale, 1));
   overflow-x: hidden;
   overflow-y: auto;
   box-sizing: border-box;
@@ -2457,21 +2471,21 @@ defineExpose({
 }
 
 .opening-dialog-panel--wide {
-  max-width: 520px;
-  max-height: min(80vh, 640px);
+  max-width: min(520px, var(--ui-max-width, 100%));
+  max-height: min(80vh, calc(640px * var(--ui-scale, 1)));
   display: flex;
   flex-direction: column;
 }
 
 .opening-dialog-input {
   width: 100%;
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  margin-bottom: var(--space-lg, 16px);
+  padding: calc(12px * var(--ui-scale, 1)) calc(14px * var(--ui-scale, 1));
+  border-radius: var(--radius-lg, 12px);
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale, 1));
 
   &:focus {
     outline: none;
@@ -2480,39 +2494,39 @@ defineExpose({
 }
 
 .opening-dialog-empty {
-  margin: 8px 0 16px;
-  padding: 20px;
+  margin: var(--space-sm, 8px) 0 var(--space-lg, 16px);
+  padding: calc(20px * var(--ui-scale, 1));
   text-align: center;
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale, 1));
   color: var(--text-faint);
-  border-radius: 14px;
+  border-radius: calc(14px * var(--ui-scale, 1));
   border: 1px dashed var(--line);
 }
 
 .opening-dialog-list {
   list-style: none;
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-lg, 16px);
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: calc(10px * var(--ui-scale, 1));
 }
 
 .opening-dialog-list--scroll {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  max-height: 360px;
-  padding-right: 4px;
+  max-height: calc(360px * var(--ui-scale, 1));
+  padding-right: calc(4px * var(--ui-scale, 1));
 }
 
 .opening-dialog-list-item {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  gap: calc(12px * var(--ui-scale, 1));
+  padding: calc(12px * var(--ui-scale, 1)) calc(14px * var(--ui-scale, 1));
+  border-radius: calc(14px * var(--ui-scale, 1));
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.04);
 }
@@ -2530,18 +2544,18 @@ defineExpose({
 }
 
 .opening-dialog-list-name {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
 
 .opening-dialog-list-meta {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale, 1));
   color: var(--text-faint);
 }
 
 .opening-dialog-list-preview {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale, 1));
   line-height: 1.45;
   color: var(--text-soft);
   display: -webkit-box;
@@ -3518,32 +3532,32 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: calc(24px * var(--ui-scale, 1));
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(6px);
 }
 
 .chronicle-dialog-panel {
   width: 100%;
-  max-width: 400px;
-  padding: 22px 22px 18px;
-  border-radius: 18px;
+  max-width: min(400px, var(--ui-max-width, 100%));
+  padding: calc(22px * var(--ui-scale, 1)) calc(22px * var(--ui-scale, 1)) calc(18px * var(--ui-scale, 1));
+  border-radius: calc(18px * var(--ui-scale, 1));
   border: 1px solid var(--line);
   background: var(--glass-strong);
   color: var(--text);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 calc(24px * var(--ui-scale, 1)) calc(64px * var(--ui-scale, 1)) rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(16px);
 }
 
 .chronicle-dialog-title {
-  margin: 0 0 12px;
-  font-size: 18px;
+  margin: 0 0 var(--space-md, 12px);
+  font-size: calc(18px * var(--ui-scale, 1));
   font-weight: 600;
 }
 
 .chronicle-dialog-desc {
-  margin: 0 0 20px;
-  font-size: 14px;
+  margin: 0 0 calc(20px * var(--ui-scale, 1));
+  font-size: calc(14px * var(--ui-scale, 1));
   line-height: 1.55;
   color: var(--text-soft);
 }
@@ -3551,14 +3565,14 @@ defineExpose({
 .chronicle-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: calc(10px * var(--ui-scale, 1));
 }
 
 .chronicle-dialog-btn {
-  min-width: 88px;
-  padding: 10px 16px;
-  border-radius: 12px;
-  font-size: 14px;
+  min-width: calc(88px * var(--ui-scale, 1));
+  padding: calc(10px * var(--ui-scale, 1)) calc(16px * var(--ui-scale, 1));
+  border-radius: var(--radius-lg, 12px);
+  font-size: calc(14px * var(--ui-scale, 1));
   font-weight: 500;
   cursor: pointer;
   border: 1px solid var(--line);
@@ -4521,11 +4535,11 @@ defineExpose({
   }
 
   .opening-dialog-panel--wide {
-    max-width: calc(100vw - 20px);
+    max-width: min(calc(100vw - 20px), var(--ui-max-width, 100%));
   }
 
   .opening-dialog-list--scroll {
-    max-height: min(48vh, 320px);
+    max-height: min(48vh, calc(320px * var(--ui-scale, 1)));
   }
 
   .opening-dialog-list-item {

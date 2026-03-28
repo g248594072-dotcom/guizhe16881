@@ -18,6 +18,7 @@
     v-if="gamePhase === GamePhase.OPENING"
     ref="openingFormRef"
     :key="openingFormKey"
+    :style="rootStyle"
     @submit="handleOpeningSubmit"
     @open-settings="openingSettingsOpen = true"
   />
@@ -1366,6 +1367,10 @@ function onLayoutChange(layout: UiLayoutSettings) {
   const next = { ...uiLayout.value, ...layout };
   if (layout.maxWidth !== undefined) next.maxWidth = clampMainUiWidthPx(layout.maxWidth);
   if (layout.maxHeight !== undefined) next.maxHeight = clampMainUiHeightPx(layout.maxHeight);
+  if (layout.scale !== undefined) {
+    const s = Number(layout.scale);
+    next.scale = Number.isFinite(s) ? Math.min(1.3, Math.max(0.8, s)) : next.scale;
+  }
   uiLayout.value = next;
 }
 

@@ -23,6 +23,17 @@
         <i class="fa-solid fa-list-check"></i>
         选项与输入
       </button>
+      <button
+        type="button"
+        class="settings-tab-btn"
+        :class="{ active: settingsTab === 'layout' }"
+        role="tab"
+        :aria-selected="settingsTab === 'layout'"
+        @click="settingsTab = 'layout'"
+      >
+        <i class="fa-solid fa-maximize"></i>
+        界面与布局
+      </button>
     </div>
 
     <!-- 输出模式 / 双 API -->
@@ -288,16 +299,83 @@
       </div>
     </div>
 
-    <!-- 保存成功提示 -->
-    <div v-if="showSaveSuccess" class="save-success-toast">
-      <i class="fa-solid fa-check-circle"></i>
-      <span>设置已保存</span>
+    <!-- 界面缩放与主区域长宽（与开局页、游戏主界面共用 localStorage uiLayout） -->
+    <div v-show="settingsTab === 'layout'" class="settings-tab-panel settings-tab-panel--layout">
+      <p class="layout-intro-hint">
+        调整<strong>整体字号与控件比例</strong>（缩放）、主界面<strong>最大宽度</strong>与<strong>最大高度</strong>。开局表单与进入游戏后的主 UI 会读取同一套设置。
+      </p>
+
+      <div class="layout-field-block">
+        <div class="layout-field-head">
+          <label class="field-label layout-field-label" for="ui-scale-range">界面缩放</label>
+          <span class="layout-value-pill">{{ layoutScaleDisplay }}</span>
+        </div>
+        <input
+          id="ui-scale-range"
+          class="layout-range-input"
+          type="range"
+          min="0.8"
+          max="1.3"
+          step="0.05"
+          :value="layoutScale"
+          @input="onLayoutScaleInput"
+        />
+        <p class="layout-field-note">范围 0.8～1.3，默认 0.8。影响 <code>--ui-scale</code>。</p>
+      </div>
+
+      <div class="layout-field-block">
+        <div class="layout-field-head">
+          <label class="field-label layout-field-label" for="ui-max-width-range">主界面最大宽度（px）</label>
+          <span class="layout-value-pill">{{ layoutMaxWidth }} px</span>
+        </div>
+        <input
+          id="ui-max-width-range"
+          class="layout-range-input"
+          type="range"
+          :min="UI_MAIN_WIDTH_MIN_PX"
+          :max="UI_MAIN_WIDTH_MAX_PX"
+          step="10"
+          :value="layoutMaxWidth"
+          @input="onLayoutMaxWidthInput"
+        />
+        <p class="layout-field-note">{{ UI_MAIN_WIDTH_MIN_PX }}～{{ UI_MAIN_WIDTH_MAX_PX }}，默认 900。</p>
+      </div>
+
+      <div class="layout-field-block">
+        <div class="layout-field-head">
+          <label class="field-label layout-field-label" for="ui-max-height-range">主界面最大高度（px）</label>
+          <span class="layout-value-pill">{{ layoutMaxHeight }} px</span>
+        </div>
+        <input
+          id="ui-max-height-range"
+          class="layout-range-input"
+          type="range"
+          :min="UI_MAIN_HEIGHT_MIN_PX"
+          :max="UI_MAIN_HEIGHT_MAX_PX"
+          step="10"
+          :value="layoutMaxHeight"
+          @input="onLayoutMaxHeightInput"
+        />
+        <p class="layout-field-note">{{ UI_MAIN_HEIGHT_MIN_PX }}～{{ UI_MAIN_HEIGHT_MAX_PX }}，与 iframe 最小高度对齐。</p>
+      </div>
+
+      <p class="layout-field-note layout-field-note--footer">
+        「高度模式」仅随存档保留字段，主界面尚未按该选项分支；当前实际高度以「最大高度」数值为准。调整缩放或宽高后会有轻提示。
+      </p>
     </div>
+
+    <!-- 保存成功提示：挂到 body，避免被侧栏 transform / overflow 裁切 -->
+    <Teleport to="body">
+      <div v-if="showSaveSuccess" class="save-success-toast save-success-toast--teleported">
+        <i class="fa-solid fa-check-circle"></i>
+        <span>设置已保存</span>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import type { OutputMode, SecondaryApiConfig, InputActionMode } from '../types';
 import {
   DEFAULT_SECONDARY_API_CONFIG,
@@ -306,6 +384,14 @@ import {
   clampSecondaryApiRetries,
 } from '../utils/apiSettings';
 import type { UiLayoutSettings } from '../utils/uiLayoutLimits';
+import {
+  UI_MAIN_HEIGHT_MIN_PX,
+  UI_MAIN_HEIGHT_MAX_PX,
+  UI_MAIN_WIDTH_MIN_PX,
+  UI_MAIN_WIDTH_MAX_PX,
+  clampMainUiHeightPx,
+  clampMainUiWidthPx,
+} from '../utils/uiLayoutLimits';
 import {
   loadOutputMode,
   saveOutputMode,
@@ -333,7 +419,7 @@ const emit = defineEmits<{
   (e: 'layoutChange', layout: UiLayoutSettings): void;
 }>();
 
-const settingsTab = ref<'output' | 'options'>('output');
+const settingsTab = ref<'output' | 'options' | 'layout'>('output');
 
 const outputMode = ref<OutputMode>('dual');
 
@@ -356,6 +442,73 @@ const secondaryTestOk = ref(false);
 
 const lastErrorToastTime = ref(0);
 const ERROR_TOAST_THROTTLE = 5000;
+
+/** 布局滑块连续拖动时限制 toastr 频率 */
+const lastLayoutToastTime = ref(0);
+const LAYOUT_TOAST_THROTTLE_MS = 400;
+
+function normalizedLayout(): UiLayoutSettings {
+  return {
+    scale: Math.min(1.3, Math.max(0.8, Number(props.uiLayout.scale) || 0.8)),
+    maxWidth: clampMainUiWidthPx(props.uiLayout.maxWidth ?? 900),
+    maxHeight: clampMainUiHeightPx(props.uiLayout.maxHeight ?? 600),
+    heightMode: props.uiLayout.heightMode === 'custom' ? 'custom' : 'fit',
+  };
+}
+
+function commitLayout(patch: Partial<UiLayoutSettings>) {
+  const base = normalizedLayout();
+  const next: UiLayoutSettings = { ...base, ...patch };
+  if (patch.scale !== undefined) {
+    next.scale = Math.min(1.3, Math.max(0.8, Number(patch.scale)));
+  }
+  if (patch.maxWidth !== undefined) {
+    next.maxWidth = clampMainUiWidthPx(patch.maxWidth);
+  }
+  if (patch.maxHeight !== undefined) {
+    next.maxHeight = clampMainUiHeightPx(patch.maxHeight);
+  }
+  if (patch.heightMode !== undefined) {
+    next.heightMode = patch.heightMode === 'custom' ? 'custom' : 'fit';
+  }
+  emit('layoutChange', next);
+  saveUiLayout(next);
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+
+  const now = Date.now();
+  if (now - lastLayoutToastTime.value >= LAYOUT_TOAST_THROTTLE_MS) {
+    lastLayoutToastTime.value = now;
+    toastr.success('界面布局已应用');
+  }
+}
+
+const layoutScale = computed(() => normalizedLayout().scale);
+
+const layoutScaleDisplay = computed(() => `${layoutScale.value.toFixed(2)}×`);
+
+const layoutMaxWidth = computed(() => normalizedLayout().maxWidth);
+
+const layoutMaxHeight = computed(() => normalizedLayout().maxHeight);
+
+function onLayoutScaleInput(e: Event) {
+  const raw = Number((e.target as HTMLInputElement).value);
+  commitLayout({ scale: raw });
+}
+
+function onLayoutMaxWidthInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (!Number.isFinite(v)) return;
+  commitLayout({ maxWidth: v });
+}
+
+function onLayoutMaxHeightInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (!Number.isFinite(v)) return;
+  commitLayout({ maxHeight: v });
+}
 
 function throttledErrorToast(message: string) {
   const now = Date.now();
@@ -533,6 +686,7 @@ async function selectMode(mode: OutputMode) {
 
 .settings-tab-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: -4px 0 16px;
   flex-shrink: 0;
@@ -880,10 +1034,16 @@ async function selectMode(mode: OutputMode) {
   font-size: 14px;
   font-weight: 500;
   animation: slideUp 0.3s ease;
+  z-index: 20000;
 
   i {
     font-size: 16px;
   }
+}
+
+/* Teleport 到 body 后仍需压住侧栏 z-index:110 */
+.save-success-toast--teleported {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .dark .save-success-toast {
@@ -1078,5 +1238,105 @@ async function selectMode(mode: OutputMode) {
 
 .light .api-status.err {
   color: #b91c1c;
+}
+
+/* —— 界面与布局 标签页 —— */
+.layout-intro-hint {
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0 0 18px;
+  opacity: 0.92;
+}
+
+.dark .layout-intro-hint {
+  color: #d4d4d8;
+}
+
+.light .layout-intro-hint {
+  color: #52525b;
+}
+
+.layout-field-block {
+  margin-bottom: 4px;
+}
+
+.layout-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.layout-field-label {
+  margin: 0 !important;
+}
+
+.layout-value-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.dark .layout-value-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e4e4e7;
+}
+
+.light .layout-value-pill {
+  background: rgba(0, 0, 0, 0.06);
+  color: #3f3f46;
+}
+
+.layout-range-input {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  accent-color: #3b82f6;
+}
+
+.layout-field-note {
+  font-size: 12px;
+  margin: 0 0 14px;
+  opacity: 0.78;
+  line-height: 1.45;
+}
+
+.dark .layout-field-note {
+  color: #a1a1aa;
+}
+
+.light .layout-field-note {
+  color: #71717a;
+}
+
+.layout-field-note code {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.dark .layout-field-note code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.light .layout-field-note code {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.layout-field-note--footer {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.light .layout-field-note--footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.settings-tab-panel--layout .field-label:first-of-type {
+  margin-top: 0;
 }
 </style>
