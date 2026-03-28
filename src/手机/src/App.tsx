@@ -62,16 +62,16 @@ export default function App() {
   const ActiveAppComponent = activeConfig?.component;
   const showPlaceholder = Boolean(activeApp && ActiveAppComponent && isPlaceholderApp(activeApp));
 
-  /** 设计稿 375×812，在窄屏/矮屏下等比缩小，避免出现整页滚动条 */
+  /** 设计稿 375×812；无边框：尽量贴满 iframe，仅圆角 + 极轻阴影 */
   const phoneShellStyle: React.CSSProperties = {
     aspectRatio: '375 / 812',
-    width: 'min(375px, calc(100vw - 16px), calc((100dvh - 56px) * 375 / 812))',
-    maxHeight: 'min(812px, calc(100dvh - 56px))',
+    width: 'min(375px, 100vw, calc(100dvh * 375 / 812))',
+    maxHeight: 'min(812px, 100dvh)',
     height: 'auto',
   };
 
   return (
-    <div className="relative box-border flex h-dvh w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden bg-neutral-900 px-2 py-2 font-sans">
+    <div className="relative box-border flex h-dvh w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden bg-black p-0 font-sans">
       <button
         type="button"
         className="absolute right-2 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-md transition hover:bg-black/55"
@@ -81,9 +81,9 @@ export default function App() {
       >
         <X size={18} strokeWidth={2.5} />
       </button>
-      {/* Phone Frame：宽高随视口自适应，保持比例 */}
+      {/* Phone Frame：无边框观感 — 无描边/无 ring，仅圆角裁剪 + 轻外阴影 */}
       <div
-        className="relative shrink-0 overflow-hidden rounded-[55px] bg-black shadow-2xl"
+        className="relative shrink-0 overflow-hidden rounded-[40px] shadow-[0_2px_20px_rgba(0,0,0,0.35)]"
         style={phoneShellStyle}
       >
         {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；勿用 mix-blend-difference 以免黑底上文字/图标看不见 */}
@@ -155,12 +155,12 @@ export default function App() {
                 animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                 exit={{ opacity: 0, scale: 0.9, filter: 'blur(5px)' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300, mass: 0.8 }}
-                className={`absolute inset-0 z-40 overflow-hidden flex flex-col rounded-[45px] ${showPlaceholder ? 'bg-neutral-100' : 'bg-white'}`}
+                className={`absolute inset-0 z-40 overflow-hidden flex flex-col rounded-[38px] ${showPlaceholder ? 'bg-neutral-100' : 'bg-white'}`}
               >
                 {showPlaceholder ? (
                   <>
                     {/* 底层：原应用界面虚化 */}
-                    <div className="absolute inset-0 overflow-hidden rounded-[45px]">
+                    <div className="absolute inset-0 overflow-hidden rounded-[38px]">
                       <div className="h-full w-full origin-center scale-[1.06] blur-[10px] opacity-[0.88] pointer-events-none select-none">
                         <ActiveAppComponent
                           onClose={() => setActiveApp(null)}

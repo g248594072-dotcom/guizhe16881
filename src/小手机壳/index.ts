@@ -112,6 +112,18 @@ $(() => {
       transform: `scale(${scale})`,
       transformOrigin: 'center center',
     });
+    $iframe?.css({
+      width: `${PHONE_W}px`,
+      height: `${PHONE_H}px`,
+    });
+    const iw = getIframeEl()?.contentWindow;
+    if (iw) {
+      try {
+        iw.dispatchEvent(new Event('resize'));
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   function postToPhone(data: { type: string }) {
@@ -181,11 +193,12 @@ $(() => {
     const $inner = createShellDiv(parentDoc)
       .attr('data-tavern-phone', 'inner')
       .css({
+        position: 'relative',
         flexShrink: 0,
-        borderRadius: '55px',
+        borderRadius: '40px',
         overflow: 'hidden',
-        boxShadow: '0 24px 40px rgba(0,0,0,0.5)',
-        background: '#000',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.32)',
+        background: 'transparent',
         pointerEvents: 'auto',
       });
 
@@ -202,6 +215,7 @@ $(() => {
     }) as JQuery<HTMLIFrameElement>;
 
     $inner.append($iframe);
+
     $phoneRoot.append($inner);
 
     $overlay.on('click', () => {

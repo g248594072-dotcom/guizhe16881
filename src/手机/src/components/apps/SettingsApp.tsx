@@ -1,5 +1,6 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, Search, User, Wifi, Bluetooth, Battery, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Wifi, Bluetooth, Battery, Image as ImageIcon, Smartphone } from 'lucide-react';
+import { TAVERN_PHONE_UI_LABEL, TAVERN_PHONE_UI_VERSION } from '../../tavernPhoneVersion';
 
 export default function SettingsApp({ onClose, setWallpaper }: { onClose: () => void, setWallpaper?: (url: string) => void }) {
   const wallpapers = [
@@ -114,6 +115,25 @@ export default function SettingsApp({ onClose, setWallpaper }: { onClose: () => 
               <span className="text-base text-black">Battery</span>
             </div>
             <ChevronRight size={20} className="text-gray-400" />
+          </div>
+        </div>
+
+        {/* 小手机版本：与 tavernPhoneVersion.ts 同步，便于确认是否已更新构建 */}
+        <div className="bg-white rounded-[10px] overflow-hidden mb-6 shadow-sm">
+          <div className="px-3 pt-3 pb-1">
+            <p className="text-[13px] text-[#8E8E93] font-medium uppercase tracking-wide">关于小手机</p>
+          </div>
+          <div className="flex items-center justify-between p-3 border-t border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-neutral-800 rounded-lg flex items-center justify-center text-white">
+                <Smartphone size={18} />
+              </div>
+              <div>
+                <span className="text-[17px] text-black block">{TAVERN_PHONE_UI_LABEL}</span>
+                <span className="text-[13px] text-[#8E8E93]">界面版本</span>
+              </div>
+            </div>
+            <span className="text-[17px] font-semibold text-[#007AFF] tabular-nums">v{TAVERN_PHONE_UI_VERSION}</span>
           </div>
         </div>
 
