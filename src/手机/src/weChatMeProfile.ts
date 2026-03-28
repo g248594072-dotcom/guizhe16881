@@ -5,11 +5,14 @@ export type WeChatMeProfile = {
   nickname: string;
   /** 头像，支持 http(s) 或 data URL */
   avatarUrl: string;
+  /** 在「我」页展示壳脚本下发的注入上下文（主剧情节选、档案摘要等），便于排查 */
+  showInjectDebug?: boolean;
 };
 
 const defaultProfile: WeChatMeProfile = {
   nickname: '我',
   avatarUrl: '',
+  showInjectDebug: false,
 };
 
 export function loadWeChatMe(): WeChatMeProfile {
@@ -22,6 +25,7 @@ export function loadWeChatMe(): WeChatMeProfile {
     return {
       nickname: typeof p.nickname === 'string' && p.nickname.trim() ? p.nickname.trim() : defaultProfile.nickname,
       avatarUrl: typeof p.avatarUrl === 'string' ? p.avatarUrl.trim() : '',
+      showInjectDebug: typeof p.showInjectDebug === 'boolean' ? p.showInjectDebug : false,
     };
   } catch {
     return { ...defaultProfile };
@@ -32,14 +36,8 @@ export function saveWeChatMe(profile: WeChatMeProfile): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
 }
 
-export function defaultMeAvatarUrl(seed: string): string {
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed)}`;
-}
-
-/** 展示用：无自定义 URL 时用 dicebear */
+/** 展示用：有自定义 URL 则返回，否则空串（界面层使用微信风格默认头像 SVG） */
 export function resolveMeAvatarDisplay(profile: WeChatMeProfile): string {
-  if (profile.avatarUrl) {
-    return profile.avatarUrl;
-  }
-  return defaultMeAvatarUrl(profile.nickname || 'me');
+  const u = typeof profile.avatarUrl === 'string' ? profile.avatarUrl.trim() : '';
+  return u;
 }

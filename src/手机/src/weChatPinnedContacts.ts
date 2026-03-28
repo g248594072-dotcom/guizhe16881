@@ -1,6 +1,13 @@
 import type { TavernPhoneWeChatContact } from './tavernPhoneBridge';
+import { resolveChatScopeId } from './weChatScope';
 
-const KEY = 'tavern-phone:wechat-pinned-contacts';
+/** 升级前：全局钉选（无聊天隔离）；首次按作用域读取时迁入当前 scope 并删除旧键 */
+const LEGACY_PINNED_KEY = 'tavern-phone:wechat-pinned-contacts';
+
+function storageKey(chatScopeId: string): string {
+  const scope = resolveChatScopeId(chatScopeId);
+  return `tavern-phone:wechat-pinned:${encodeURIComponent(scope)}`;
+}
 
 function parseStored(raw: string | null): TavernPhoneWeChatContact[] {
   if (!raw) {
@@ -23,26 +30,40 @@ function parseStored(raw: string | null): TavernPhoneWeChatContact[] {
   }
 }
 
-export function loadPinnedContacts(): TavernPhoneWeChatContact[] {
+export function loadPinnedContacts(chatScopeId: string): TavernPhoneWeChatContact[] {
   try {
-    return parseStored(localStorage.getItem(KEY));
+    const scoped = parseStored(localStorage.getItem(storageKey(chatScopeId)));
+    if (scoped.length > 0) {
+      return scoped;
+    }
+    const legacy = parseStored(localStorage.getItem(LEGACY_PINNED_KEY));
+    if (legacy.length === 0) {
+      return [];
+    }
+    savePinnedContacts(chatScopeId, legacy);
+    try {
+      localStorage.removeItem(LEGACY_PINNED_KEY);
+    } catch {
+      /* */
+    }
+    return legacy;
   } catch {
     return [];
   }
 }
 
-export function savePinnedContacts(list: TavernPhoneWeChatContact[]): void {
+export function savePinnedContacts(chatScopeId: string, list: TavernPhoneWeChatContact[]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(list));
+    localStorage.setItem(storageKey(chatScopeId), JSON.stringify(list));
   } catch {
     /* */
   }
 }
 
-export function addPinnedContact(contact: TavernPhoneWeChatContact): void {
-  const cur = loadPinnedContacts();
+export function addPinnedContact(chatScopeId: string, contact: TavernPhoneWeChatContact): void {
+  const cur = loadPinnedContacts(chatScopeId);
   const next = [...cur.filter(c => c.id !== contact.id), contact];
-  savePinnedContacts(next);
+  savePinnedContacts(chatScopeId, next);
 }
 
 /** 会话列表：先应用壳返回的，再被手动添加的覆盖同 id */

@@ -1,13 +1,33 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, Loader2, MessageCircle, User, Send, Plus } from 'lucide-react';
+import {
+  ArrowUpFromLine,
+  Bug,
+  ChevronLeft,
+  Loader2,
+  MessageCircle,
+  RefreshCw,
+  User,
+  Send,
+  Plus,
+} from 'lucide-react';
 import {
   requestTavernPhoneContext,
   requestRoleArchiveList,
+  requestInjectToInput,
+  requestWritePhoneMemory,
+  subscribeChatScopeChange,
   type TavernPhoneContextPayload,
   type TavernPhoneWeChatContact,
 } from '../../tavernPhoneBridge';
-import { completeWeChatReply } from '../../chatCompletions';
-import { loadWeChatThreadByContactId, saveWeChatThreadByContactId, type WeChatStoredMessage } from '../../weChatStorage';
+import { buildWeChatMessages, completeWeChatReply, summarizePhoneExchangeForMemory } from '../../chatCompletions';
+import { applyOpenAiDefaultsFromParent, getTavernPhoneApiConfig } from '../../tavernPhoneApiConfig';
+import {
+  initWeChatStorage,
+  loadWeChatThreadForScope,
+  saveWeChatThreadForScope,
+  type WeChatStoredMessage,
+} from '../../weChatStorage';
+import { LOCAL_OFFLINE_SCOPE, resolveChatScopeId } from '../../weChatScope';
 import {
   loadWeChatMe,
   resolveMeAvatarDisplay,
@@ -19,6 +39,41 @@ import {
   loadPinnedContacts,
   mergeContactLists,
 } from '../../weChatPinnedContacts';
+
+/** 无自定义链接时：微信经典灰色默认头像（剪影） */
+function MeWeChatDefaultAvatar({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      className={`shrink-0 rounded-md bg-[#D3D3D3] text-[#A8A8A8] ${className}`}
+      viewBox="0 0 96 96"
+      aria-hidden
+    >
+      <rect width="96" height="96" rx="12" fill="#D3D3D3" />
+      <circle cx="48" cy="38" r="18" fill="#A8A8A8" />
+      <ellipse cx="48" cy="78" rx="28" ry="22" fill="#A8A8A8" />
+    </svg>
+  );
+}
+
+function MeAvatarBubble({ avatarUrl }: { avatarUrl: string }) {
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt="" className="mt-0.5 h-9 w-9 shrink-0 rounded-md bg-gray-200 object-cover" />;
+  }
+  return <MeWeChatDefaultAvatar className="mt-0.5 h-9 w-9" />;
+}
+
+function MeAvatarLarge({ avatarUrl }: { avatarUrl: string }) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        className="h-24 w-24 rounded-2xl bg-gray-200 object-cover"
+      />
+    );
+  }
+  return <MeWeChatDefaultAvatar className="h-24 w-24 rounded-2xl" />;
+}
 
 /** 无自定义头像时取姓名首字（如「白梦梦」→「白」） */
 function contactInitial(displayName: string): string {
@@ -64,11 +119,13 @@ function mergeContactContext(
   base: TavernPhoneContextPayload,
   contact: TavernPhoneWeChatContact,
 ): TavernPhoneContextPayload {
+  const roleStorySummary = base.roleStorySummaries?.[contact.id]?.trim() ?? '';
   return {
     ...base,
     displayName: contact.displayName,
     personality: contact.personality ?? base.personality,
     thought: contact.thought ?? base.thought,
+    roleStorySummary,
   };
 }
 
@@ -77,18 +134,35 @@ function formatMsgTime(t: number): string {
   return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-function lastPreviewForContact(contactId: string): { text: string; time: string } {
-  const thread = loadWeChatThreadByContactId(contactId);
-  const last = thread[thread.length - 1];
-  if (!last) {
-    return { text: '开始聊天…', time: '' };
+/** 优先取最后一条对方回复，否则取最后一条用户消息（用于填入主界面输入框） */
+function lastAssistantOrUserText(msgs: WeChatStoredMessage[]): string {
+  const fromEnd = [...msgs].reverse();
+  const lastA = fromEnd.find(m => m.role === 'assistant');
+  if (lastA) {
+    return lastA.content;
   }
-  return { text: last.content, time: formatMsgTime(last.time) };
+  const lastU = fromEnd.find(m => m.role === 'user');
+  return lastU?.content ?? '';
+}
+
+/** 粗略判断助手回复是否可能被 API 截断（句末无收束标点等） */
+function looksLikeTruncatedReply(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 10) {
+    return false;
+  }
+  const last = t[t.length - 1];
+  if (/[。！？…」'"）】\s\n]$/.test(last)) {
+    return false;
+  }
+  return true;
 }
 
 export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [ctx, setCtx] = useState<TavernPhoneContextPayload | null>(null);
   const [ctxLoading, setCtxLoading] = useState(true);
+  /** 与酒馆当前聊天文件对齐；切换聊天由父窗口推送或首次 CONTEXT 写入 */
+  const [chatScopeId, setChatScopeId] = useState<string>(LOCAL_OFFLINE_SCOPE);
   const [mainTab, setMainTab] = useState<'chats' | 'me'>('chats');
   const [view, setView] = useState<'list' | 'chat'>('list');
   const [selectedContact, setSelectedContact] = useState<TavernPhoneWeChatContact | null>(null);
@@ -102,10 +176,27 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   /** 从聊天返回时递增，以刷新列表中的最后一条预览 */
   const [listTick, setListTick] = useState(0);
   const [pinnedRev, setPinnedRev] = useState(0);
+  const [previewById, setPreviewById] = useState<Record<string, { text: string; time: string }>>({});
+  const [threadReady, setThreadReady] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveCandidates, setArchiveCandidates] = useState<TavernPhoneWeChatContact[]>([]);
+  const [injectBusy, setInjectBusy] = useState(false);
+  const [regeneratingAssistantId, setRegeneratingAssistantId] = useState<string | null>(null);
+  const [debugCtxBusy, setDebugCtxBusy] = useState(false);
+  /** 仅最后一次 context 请求生效，避免与初次加载 / chat_scope 推送竞态导致看起来「刷新无效」 */
+  const contextFetchGenRef = useRef(0);
+  const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const phoneMemoryTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (phoneMemoryTimerRef.current != null) {
+        window.clearTimeout(phoneMemoryTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (mainTab === 'me') {
@@ -133,15 +224,36 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   }, [addModalOpen]);
 
   useEffect(() => {
+    void initWeChatStorage();
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       setCtxLoading(true);
-      const c = await requestTavernPhoneContext();
-      if (cancelled) {
-        return;
+      const gen = ++contextFetchGenRef.current;
+      try {
+        const c = await requestTavernPhoneContext();
+        if (cancelled) {
+          return;
+        }
+        if (gen !== contextFetchGenRef.current) {
+          return;
+        }
+        setCtx({
+          ...c,
+          recentStorySnippet: c.recentStorySnippet ?? '',
+          roleStorySummaries: c.roleStorySummaries ?? {},
+          openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
+        });
+        setContextPulledAt(Date.now());
+        applyOpenAiDefaultsFromParent(c.openAiDefaults);
+        setChatScopeId(resolveChatScopeId(c.chatScopeId));
+      } finally {
+        if (!cancelled) {
+          setCtxLoading(false);
+        }
       }
-      setCtx(c);
-      setCtxLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -149,18 +261,61 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    if (selectedContact) {
-      setMessages(loadWeChatThreadByContactId(selectedContact.id));
-    } else {
-      setMessages([]);
-    }
-  }, [selectedContact]);
+    return subscribeChatScopeChange(scope => {
+      setChatScopeId(resolveChatScopeId(scope));
+      setView('list');
+      setSelectedContact(null);
+      setSendError('');
+      setListTick(t => t + 1);
+      void (async () => {
+        const gen = ++contextFetchGenRef.current;
+        try {
+          const c = await requestTavernPhoneContext();
+          if (gen !== contextFetchGenRef.current) {
+            return;
+          }
+          setCtx({
+            ...c,
+            recentStorySnippet: c.recentStorySnippet ?? '',
+            roleStorySummaries: c.roleStorySummaries ?? {},
+            openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
+          });
+          setContextPulledAt(Date.now());
+          applyOpenAiDefaultsFromParent(c.openAiDefaults);
+        } catch {
+          /* 忽略：仍保留上一帧 ctx */
+        }
+      })();
+    });
+  }, []);
 
   useEffect(() => {
-    if (selectedContact) {
-      saveWeChatThreadByContactId(selectedContact.id, messages);
+    if (!selectedContact) {
+      setMessages([]);
+      setThreadReady(false);
+      return;
     }
-  }, [selectedContact, messages]);
+    let cancelled = false;
+    setThreadReady(false);
+    (async () => {
+      await initWeChatStorage();
+      const msgs = await loadWeChatThreadForScope(chatScopeId, selectedContact.id);
+      if (!cancelled) {
+        setMessages(msgs);
+        setThreadReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedContact, chatScopeId]);
+
+  useEffect(() => {
+    if (!selectedContact || !threadReady) {
+      return;
+    }
+    void saveWeChatThreadForScope(chatScopeId, selectedContact.id, messages);
+  }, [selectedContact, chatScopeId, messages, threadReady]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -172,6 +327,70 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     }
     return mergeContactContext(ctx, selectedContact);
   }, [ctx, selectedContact]);
+
+  const schedulePhoneMemoryPersist = useCallback(
+    (thread: WeChatStoredMessage[], contactId: string, scope: string) => {
+      const cfg = getTavernPhoneApiConfig();
+      if (!cfg.phoneMemoryWrite || ctx?.offline) {
+        return;
+      }
+      if (phoneMemoryTimerRef.current != null) {
+        window.clearTimeout(phoneMemoryTimerRef.current);
+      }
+      phoneMemoryTimerRef.current = window.setTimeout(() => {
+        phoneMemoryTimerRef.current = null;
+        void (async () => {
+          try {
+            const summary = await summarizePhoneExchangeForMemory(
+              thread.map(m => ({ role: m.role, content: m.content })),
+            );
+            const r = await requestWritePhoneMemory({ contactId, chatScopeId: scope, summary });
+            if (!r.ok && r.error) {
+              console.warn('[phone memory]', r.error);
+            }
+          } catch (e) {
+            console.warn('[phone memory]', e);
+          }
+        })();
+      }, 2000);
+    },
+    [ctx?.offline],
+  );
+
+  const regenerateAssistantMessage = useCallback(
+    async (assistantMsgId: string) => {
+      if (!ctx || !selectedContact || !chatCtx || sending) {
+        return;
+      }
+      const idx = messages.findIndex(m => m.id === assistantMsgId);
+      if (idx < 0 || messages[idx].role !== 'assistant') {
+        return;
+      }
+      const historyForApi = messages.slice(0, idx).map(m => ({ role: m.role, content: m.content }));
+      if (historyForApi.length === 0) {
+        return;
+      }
+      setRegeneratingAssistantId(assistantMsgId);
+      setSendError('');
+      try {
+        const reply = await completeWeChatReply(chatCtx, historyForApi, { regenerate: true });
+        setMessages(prev => {
+          const next = [...prev];
+          const i = next.findIndex(m => m.id === assistantMsgId);
+          if (i >= 0) {
+            next[i] = { ...next[i], content: reply, time: Date.now() };
+            schedulePhoneMemoryPersist(next, selectedContact.id, chatScopeId);
+          }
+          return next;
+        });
+      } catch (e) {
+        setSendError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRegeneratingAssistantId(null);
+      }
+    },
+    [ctx, selectedContact, chatCtx, messages, sending, chatScopeId, schedulePhoneMemoryPersist],
+  );
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
@@ -197,14 +416,16 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         content: reply,
         time: Date.now(),
       };
+      const fullThread = [...messages, userMsg, assistantMsg];
       setMessages(prev => [...prev, assistantMsg]);
+      schedulePhoneMemoryPersist(fullThread, selectedContact.id, chatScopeId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSendError(msg);
     } finally {
       setSending(false);
     }
-  }, [ctx, selectedContact, chatCtx, input, messages, sending]);
+  }, [ctx, selectedContact, chatCtx, input, messages, sending, chatScopeId, schedulePhoneMemoryPersist]);
 
   const openChat = (c: TavernPhoneWeChatContact) => {
     setSelectedContact(c);
@@ -225,6 +446,32 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     window.setTimeout(() => setMeSavedHint(false), 2000);
   };
 
+  const refreshPhoneContext = useCallback(async () => {
+    const gen = ++contextFetchGenRef.current;
+    setDebugCtxBusy(true);
+    try {
+      const c = await requestTavernPhoneContext();
+      if (gen !== contextFetchGenRef.current) {
+        return;
+      }
+      setCtx({
+        ...c,
+        recentStorySnippet: c.recentStorySnippet ?? '',
+        roleStorySummaries: c.roleStorySummaries ?? {},
+        openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
+      });
+      setContextPulledAt(Date.now());
+      applyOpenAiDefaultsFromParent(c.openAiDefaults);
+      setChatScopeId(resolveChatScopeId(c.chatScopeId));
+    } catch {
+      /* 保留上一帧 */
+    } finally {
+      if (gen === contextFetchGenRef.current) {
+        setDebugCtxBusy(false);
+      }
+    }
+  }, []);
+
   const serverContacts = useMemo(() => {
     const raw = ctx?.contacts;
     if (raw && raw.length > 0) {
@@ -236,25 +483,86 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     return [];
   }, [ctx]);
 
-  const pinnedContacts = useMemo(() => loadPinnedContacts(), [pinnedRev]);
+  const pinnedContacts = useMemo(() => loadPinnedContacts(chatScopeId), [chatScopeId, pinnedRev]);
 
   const contacts = useMemo(
     () => mergeContactLists(serverContacts, pinnedContacts),
     [serverContacts, pinnedContacts],
   );
 
+  const debugSystemPromptPreview = useMemo(() => {
+    if (!ctx || !meDraft.showInjectDebug) {
+      return '';
+    }
+    const c = selectedContact ?? contacts[0];
+    if (!c) {
+      return '';
+    }
+    const merged = mergeContactContext(ctx, c);
+    const msgs = buildWeChatMessages(merged, []);
+    const sys = msgs.find(m => m.role === 'system');
+    return sys?.content ?? '';
+  }, [ctx, meDraft.showInjectDebug, selectedContact, contacts]);
+
+  useEffect(() => {
+    if (ctxLoading || !ctx) {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      await initWeChatStorage();
+      const next: Record<string, { text: string; time: string }> = {};
+      for (const c of contacts) {
+        const thread = await loadWeChatThreadForScope(chatScopeId, c.id);
+        const last = thread[thread.length - 1];
+        if (last) {
+          next[c.id] = { text: last.content, time: formatMsgTime(last.time) };
+        } else {
+          next[c.id] = { text: '开始聊天…', time: '' };
+        }
+      }
+      if (!cancelled) {
+        setPreviewById(next);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contacts, chatScopeId, listTick, ctx, ctxLoading]);
+
   const addedIds = useMemo(() => new Set(contacts.map(c => c.id)), [contacts]);
 
   const handleAddContact = (c: TavernPhoneWeChatContact) => {
-    addPinnedContact(c);
+    addPinnedContact(chatScopeId, c);
     setPinnedRev(r => r + 1);
     setListTick(t => t + 1);
     setAddModalOpen(false);
   };
   const showOffline = ctx?.offline;
-  const meAvatar = resolveMeAvatarDisplay(meProfile);
+  const meAvatarUrl = resolveMeAvatarDisplay(meProfile);
 
   const headerTitle = mainTab === 'me' ? '我' : '微信';
+
+  const injectPreviewText = useMemo(() => lastAssistantOrUserText(messages), [messages]);
+  /** 仅最后一条楼层显示「可能未发完」与重发（与最新消息 id 对齐） */
+  const lastWeChatMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+  const handleInjectToMainInput = async () => {
+    const text = injectPreviewText.trim();
+    if (!text || showOffline || injectBusy) {
+      return;
+    }
+    setInjectBusy(true);
+    setSendError('');
+    try {
+      const r = await requestInjectToInput(text);
+      if (!r.ok) {
+        setSendError(r.error ?? '填入输入框失败');
+      }
+    } finally {
+      setInjectBusy(false);
+    }
+  };
 
   return (
     <div className="relative flex flex-col h-full bg-[#EDEDED]">
@@ -267,6 +575,18 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="flex-1 min-w-0">
               <h1 className="text-[17px] font-semibold text-gray-900 truncate">{selectedContact.displayName}</h1>
             </div>
+            {!showOffline ? (
+              <button
+                type="button"
+                title="将最近一条消息追加到酒馆主界面输入框"
+                disabled={injectBusy || !injectPreviewText.trim()}
+                onClick={() => void handleInjectToMainInput()}
+                className="shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] text-[#576b95] disabled:opacity-40 active:bg-black/5"
+              >
+                {injectBusy ? <Loader2 className="animate-spin" size={16} /> : <ArrowUpFromLine size={16} />}
+                填入
+              </button>
+            ) : null}
           </div>
 
           <div className="flex-1 overflow-y-auto bg-[#EDEDED] px-3 py-2 min-h-0">
@@ -277,7 +597,10 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
               </div>
             ) : null}
             <div className="space-y-3">
-              {messages.map(m => (
+              {messages.map(m => {
+                const showAssistantRegenerate =
+                  m.role === 'assistant' && lastWeChatMessage != null && lastWeChatMessage.id === m.id;
+                return (
                 <div
                   key={m.id}
                   className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -285,25 +608,55 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   {m.role === 'assistant' ? (
                     <ContactAvatar contact={selectedContact} size="bubble" className="mt-0.5" />
                   ) : null}
-                  <div
-                    className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed ${
-                      m.role === 'user' ? 'bg-[#95EC69] text-black' : 'bg-white text-gray-900 shadow-sm'
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
-                    <p className={`text-[10px] mt-1 ${m.role === 'user' ? 'text-gray-600' : 'text-gray-400'}`}>
-                      {formatMsgTime(m.time)}
-                    </p>
-                  </div>
-                  {m.role === 'user' ? (
-                    <img
-                      src={meAvatar}
-                      alt=""
-                      className="mt-0.5 h-9 w-9 shrink-0 rounded-md bg-gray-200"
-                    />
-                  ) : null}
+                  {m.role === 'assistant' ? (
+                    <div className="flex items-start gap-1 max-w-[78%] min-w-0">
+                      <div
+                        className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm`}
+                      >
+                        <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
+                        <p className="text-[10px] mt-1 text-gray-400">{formatMsgTime(m.time)}</p>
+                      </div>
+                      {showAssistantRegenerate ? (
+                        <div className="flex flex-col items-center gap-0.5 shrink-0 pt-0.5">
+                          {looksLikeTruncatedReply(m.content) ? (
+                            <span
+                              className="text-[9px] text-amber-800/90 leading-tight text-center max-w-14"
+                              title="模型输出长度有限，或句末未正常结束，可点右侧刷新重试"
+                            >
+                              可能未发完
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            title="重新生成此条回复"
+                            disabled={Boolean(regeneratingAssistantId) || sending}
+                            aria-label="重新生成回复"
+                            onClick={() => void regenerateAssistantMessage(m.id)}
+                            className="p-1.5 rounded-md text-[#576b95] hover:bg-black/5 active:bg-black/10 disabled:opacity-40"
+                          >
+                            {regeneratingAssistantId === m.id ? (
+                              <Loader2 className="animate-spin" size={20} />
+                            ) : (
+                              <RefreshCw size={20} strokeWidth={2.25} />
+                            )}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black`}
+                      >
+                        <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
+                        <p className="text-[10px] mt-1 text-gray-600">{formatMsgTime(m.time)}</p>
+                      </div>
+                      <MeAvatarBubble avatarUrl={meAvatarUrl} />
+                    </>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
           </div>
@@ -381,7 +734,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                 ) : (
                   contacts.map(c => {
                     void listTick;
-                    const { text, time } = lastPreviewForContact(c.id);
+                    const { text, time } = previewById[c.id] ?? { text: '开始聊天…', time: '' };
                     return (
                       <button
                         key={c.id}
@@ -409,12 +762,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="flex-1 overflow-y-auto bg-[#EDEDED] px-4 py-4 min-h-0">
               <div className="rounded-[12px] bg-white p-4 shadow-sm">
                 <div className="flex flex-col items-center gap-3 border-b border-gray-100 pb-4">
-                  <img
-                    src={resolveMeAvatarDisplay(meDraft)}
-                    alt=""
-                    className="h-24 w-24 rounded-2xl bg-gray-200 object-cover"
-                  />
-                  <p className="text-[13px] text-gray-400">头像使用下方链接（留空则用默认卡通头像）</p>
+                  <MeAvatarLarge avatarUrl={resolveMeAvatarDisplay(meDraft)} />
+                  <p className="text-[13px] text-gray-400">头像使用下方链接（留空则用微信默认灰色头像）</p>
                 </div>
                 <label className="mt-4 block">
                   <span className="text-[13px] text-gray-500">昵称</span>
@@ -445,6 +794,129 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                 </button>
                 {meSavedHint ? (
                   <p className="mt-2 text-center text-[13px] text-[#07C160]">已保存</p>
+                ) : null}
+              </div>
+
+              <div className="mt-4 rounded-[12px] bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2 text-[15px] font-semibold text-gray-900">
+                  <Bug size={18} className="text-amber-700 shrink-0" aria-hidden />
+                  注入上下文调试
+                </div>
+                <p className="mt-1 text-[12px] text-gray-500 leading-relaxed">
+                  查看壳脚本下发的「主剧情节选」「档案剧情摘要」及实际拼进 API 的 system 全文（与设置里是否注入一致）。
+                </p>
+                <label className="mt-3 flex items-center justify-between gap-3">
+                  <span className="text-[15px] text-gray-900">显示调试内容</span>
+                  <input
+                    type="checkbox"
+                    className="h-5 w-5 accent-[#07C160]"
+                    checked={meDraft.showInjectDebug ?? false}
+                    onChange={e => {
+                      const next = { ...meDraft, showInjectDebug: e.target.checked };
+                      setMeDraft(next);
+                      saveWeChatMe(next);
+                    }}
+                  />
+                </label>
+                {meDraft.showInjectDebug ? (
+                  <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void refreshPhoneContext()}
+                        disabled={debugCtxBusy || ctxLoading}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#576b95] px-3 py-1.5 text-[13px] font-medium text-white active:opacity-90 disabled:opacity-50"
+                      >
+                        {debugCtxBusy || ctxLoading ? (
+                          <Loader2 className="animate-spin" size={14} />
+                        ) : (
+                          <RefreshCw size={14} />
+                        )}
+                        刷新上下文
+                      </button>
+                      <span className="text-[11px] text-gray-400">从酒馆壳脚本重新拉取</span>
+                    </div>
+                    {contextPulledAt != null ? (
+                      <p className="text-[11px] text-gray-500">
+                        上次拉取：{new Date(contextPulledAt).toLocaleString('zh-CN')}
+                      </p>
+                    ) : null}
+                    {(() => {
+                      const api = getTavernPhoneApiConfig();
+                      return (
+                        <ul className="text-[12px] text-gray-700 space-y-1">
+                          <li>
+                            <span className="text-gray-500">设置 · 注入主剧情与档案摘要：</span>
+                            {api.injectMainStory !== false ? '开' : '关'}
+                          </li>
+                          <li>
+                            <span className="text-gray-500">设置 · 回合摘要写入聊天变量：</span>
+                            {api.phoneMemoryWrite ? '开' : '关'}
+                          </li>
+                        </ul>
+                      );
+                    })()}
+                    {!ctx && !ctxLoading ? (
+                      <p className="text-[12px] text-amber-800">暂无上下文（请确认小手机壳已加载）。</p>
+                    ) : null}
+                    {ctx ? (
+                      <>
+                        <div className="text-[12px] text-gray-700 space-y-1">
+                          <p>
+                            <span className="text-gray-500">chatScopeId：</span>
+                            {ctx.chatScopeId ?? '（无）'}
+                          </p>
+                          <p>
+                            <span className="text-gray-500">连接：</span>
+                            {ctx.offline ? '离线 / 未连上壳' : '已连接'}
+                          </p>
+                          <p>
+                            <span className="text-gray-500">展示名 / 人设节选：</span>
+                            {ctx.displayName || '—'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-600 mb-1">主剧情节选（recentStorySnippet）</p>
+                          <pre
+                            key={`snippet-${contextPulledAt ?? 0}`}
+                            className="max-h-40 overflow-auto rounded-lg bg-[#F7F7F7] p-2 text-[11px] text-gray-800 whitespace-pre-wrap wrap-break-word"
+                          >
+                            {ctx.recentStorySnippet?.trim() ? ctx.recentStorySnippet : '（空）'}
+                          </pre>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-600 mb-1">
+                            档案剧情摘要（roleStorySummaries，按联系人 id）
+                          </p>
+                          <pre
+                            key={`rolesum-${contextPulledAt ?? 0}`}
+                            className="max-h-36 overflow-auto rounded-lg bg-[#F7F7F7] p-2 text-[11px] text-gray-800 whitespace-pre-wrap wrap-break-word"
+                          >
+                            {Object.keys(ctx.roleStorySummaries ?? {}).length > 0
+                              ? JSON.stringify(ctx.roleStorySummaries, null, 2)
+                              : '（空对象）'}
+                          </pre>
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-medium text-gray-600 mb-1">
+                            实际发往 API 的 system（当前会话联系人优先，否则列表第一项）
+                          </p>
+                          <pre
+                            key={`sys-${contextPulledAt ?? 0}`}
+                            className="max-h-48 overflow-auto rounded-lg bg-[#f0f7ff] p-2 text-[11px] text-gray-800 whitespace-pre-wrap wrap-break-word border border-[#d0e3ff]"
+                          >
+                            {debugSystemPromptPreview || '（无联系人，无法预览）'}
+                          </pre>
+                        </div>
+                        <p className="text-[11px] text-gray-500 leading-relaxed">
+                          「回合摘要」是聊完后另一次模型调用生成并写入聊天变量的，成功写入后请在酒馆{' '}
+                          <code className="rounded bg-gray-100 px-0.5">phone_wechat_memory_path</code>（默认{' '}
+                          <code className="rounded bg-gray-100 px-0.5">stat_data.手机微信记忆</code>
+                          ）下查看；此处不展示历史摘要文本。
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>

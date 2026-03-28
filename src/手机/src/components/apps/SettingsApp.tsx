@@ -26,6 +26,12 @@ export default function SettingsApp({
     saveTavernPhoneApiConfig(cfg);
   }, [cfg]);
 
+  useEffect(() => {
+    const sync = () => setCfg(loadTavernPhoneApiConfig());
+    window.addEventListener('tavern-phone-api-config-changed', sync);
+    return () => window.removeEventListener('tavern-phone-api-config-changed', sync);
+  }, []);
+
   const setField = useCallback(<K extends keyof TavernPhoneApiConfig>(key: K, value: TavernPhoneApiConfig[K]) => {
     setCfg(prev => ({ ...prev, [key]: value }));
   }, []);
@@ -142,6 +148,47 @@ export default function SettingsApp({
                 onChange={e => onMaxRetriesChange(e.target.value)}
               />
             </label>
+
+            <label className="flex items-center justify-between gap-3 py-1">
+              <span className="text-[15px] text-black">注入主剧情与档案摘要</span>
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-[#007AFF]"
+                checked={cfg.injectMainStory}
+                onChange={e => setField('injectMainStory', e.target.checked)}
+              />
+            </label>
+            <p className="text-[12px] text-[#8E8E93] -mt-2 leading-relaxed">
+              <strong className="text-[#636366] font-medium">开：</strong>
+              发微信时会把「主界面最近剧情的一小段」和「角色卡里该角色的剧情摘要」塞进系统提示，对方回复更容易接上你在酒馆里正在演的主线。
+              <br />
+              <strong className="text-[#636366] font-medium">关：</strong>
+              只用当前人设、心理活动、变量等小手机自带的上下文，不读主界面楼层和档案摘要（更省 token，主剧情也不会被大量引用）。
+            </p>
+
+            <label className="flex items-center justify-between gap-3 py-1">
+              <span className="text-[15px] text-black">回合摘要写入聊天变量</span>
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-[#007AFF]"
+                checked={cfg.phoneMemoryWrite}
+                onChange={e => setField('phoneMemoryWrite', e.target.checked)}
+              />
+            </label>
+            <p className="text-[12px] text-[#8E8E93] -mt-2 leading-relaxed">
+              <strong className="text-[#636366] font-medium">开：</strong>
+              每在微信里聊完一轮，会生成一小段「刚才聊了什么」的摘要，通过<strong className="text-[#636366]">小手机壳脚本</strong>写进<strong className="text-[#636366]">聊天变量</strong>（路径由壳脚本里的{' '}
+              <code className="text-[11px] bg-gray-100 px-1 rounded">phone_wechat_memory_path</code> 决定，默认{' '}
+              <code className="text-[11px] bg-gray-100 px-1 rounded">stat_data.手机微信记忆</code>
+              ），主界面剧情或别的脚本可以读这份记忆。
+              <br />
+              <strong className="text-[#636366] font-medium">关：</strong>
+              不写聊天变量，主界面不会自动记住微信里单独聊过什么。
+              <br />
+              可选：在壳脚本里配置{' '}
+              <code className="text-[11px] bg-gray-100 px-1 rounded">phone_wechat_worldbook_mirror</code>
+              ，把同一段摘要再追加到指定世界书条目末尾，方便用世界书喂给模型。
+            </p>
 
             <div className="flex flex-col gap-2 pt-1">
               <div className="flex gap-2">
