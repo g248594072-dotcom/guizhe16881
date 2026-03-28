@@ -21,6 +21,10 @@ export const TAVERN_PHONE_MSG = {
   OPENED: 'tavern-phone:opened',
   CLOSED: 'tavern-phone:closed',
   READY: 'tavern-phone:ready',
+  /** 父 → iframe：拉取当前聊天 scope 下全部微信线程（用于主界面生成前写入世界书） */
+  REQUEST_EXPORT_THREADS_FOR_WB: 'tavern-phone:request-export-threads-for-wb',
+  /** iframe → 父：线程导出结果 */
+  EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
 } as const;
 
 /** 微信会话列表中的联系人（可与人物属性编辑器等数据源对齐） */
@@ -32,6 +36,11 @@ export interface TavernPhoneWeChatContact {
   personality?: string;
   /** 若单条联系人提供，则优先于全局心理 */
   thought?: string;
+  /**
+   * 与酒馆「角色管理」中书卡名的对应（头像同步用）：可在变量档案里写 `酒馆角色名` / `stCharacterName`。
+   * 壳脚本还会用 `phone_wechat_st_character_map` 或角色卡 json 里的 `手机微信角色ID` 按 id 匹配。
+   */
+  stCharacterName?: string;
 }
 
 /** 壳脚本可选下发的 OpenAI 兼容默认值（仅填补手机本地未填的项） */

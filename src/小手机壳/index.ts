@@ -18,6 +18,19 @@
  * - phone_wechat_worldbook_mirror（可选）: 回合摘要写入变量成功后，追加到指定世界书条目。值为对象：
  *   `{ "worldbookName": "世界书名", "entryName": "条目显示名" }`（条目须已存在；内容末尾追加带时间戳的摘要块）。
  * - phone_openai_api_base / phone_openai_model（可选）: 手机界面 OpenAI 兼容接口默认值（仅当用户未在界面设置中填写 URL/模型时由父窗口下发；不在此存 API Key）。
+ * - phone_wechat_st_character_map（可选）: 对象，键为微信联系人 id（与角色档案键一致，如 CHR-001），值为酒馆「角色管理」中的角色卡名称，用于按 id 拉取该书卡头像。
+ *
+ * 头像同步：变量里未配置 avatarUrl 时，按联系人 id 解析酒馆书卡——优先本映射表；否则扫描各角色卡 json_data 中是否含 `手机微信角色ID` / `wechat_contact_id` 等字段且值等于该 id；
+ * 档案对象上也可写 `酒馆角色名` / `stCharacterName` 直接指定书卡名。仍缺省且 id 为 default 时用当前角色卡。
+ *
+ * 与主界面「正文」的关系（小手机不会自动插入楼层）：
+ * 1) 微信内点「填入」：把最近一条内容写入酒馆主界面输入框，由你手动发送后才会进主对话。
+ * 2) 回合摘要：手机可配置写入聊天变量 phone_wechat_memory_path（默认 stat_data.手机微信记忆）；主界面预设/正则若引用该变量，模型才能「读到」微信侧摘要。
+ * 3) phone_wechat_worldbook_mirror：可把摘要追加到指定世界书条目，由世界书进入主提示。
+ * 4) phone_wechat_wb_sync（可选）：主线「下一次生成」前（GENERATE_BEFORE_COMBINE_PROMPTS），把自上次同步以来各联系人的微信增量对话写入世界书，
+ *    条目名为「联系人显示名 + 小手机聊天记录摘要」。未写 worldbookName 时使用当前角色卡绑定的主世界书（getCharWorldbookNames('current').primary）。
+ *    默认绿灯（selective），主要关键字每轮按当前角色卡名、展示名、书卡 json 内昵称类字段、各联系人显示名等自动刷新；绿灯条目默认禁止递归与禁止下一步递归。
+ *    同步指针存于聊天变量 statePath（默认 stat_data.手机微信世界书同步）。需 phone_ui_url；壳会预建隐藏 iframe 读 IndexedDB。
  */
 const VERSION = '1.0.0';
 const PHONE_W = 375;
@@ -41,6 +54,8 @@ const MSG = {
   OPENED: 'tavern-phone:opened',
   CLOSED: 'tavern-phone:closed',
   READY: 'tavern-phone:ready',
+  REQUEST_EXPORT_THREADS_FOR_WB: 'tavern-phone:request-export-threads-for-wb',
+  EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
 } as const;
 
 function getByPath(obj: unknown, path: string): unknown {
@@ -85,6 +100,8 @@ type WeChatContactOut = {
   avatarUrl?: string;
   personality?: string;
   thought?: string;
+  /** 直接指定酒馆角色卡名，用于头像同步（与 id 二选一补充） */
+  stCharacterName?: string;
 };
 
 /** 将「性格」等字段格式化为字符串（支持 string 或 string[]） */
@@ -135,12 +152,16 @@ function normalizeRoleArchiveEntry(roleId: string, raw: unknown): WeChatContactO
     personality = trait ?? (desc || undefined);
   }
   const thought = pickInnerThought(o);
+  const stRaw = o.酒馆角色名 ?? o.stCharacterName ?? o.sillyTavernCharacterName;
+  const stCharacterName =
+    typeof stRaw === 'string' && stRaw.trim() ? stRaw.trim() : undefined;
   return {
     id,
     displayName: nameRaw.trim(),
     avatarUrl,
     personality,
     thought,
+    stCharacterName,
   };
 }
 
@@ -186,7 +207,10 @@ function normalizeWeChatContact(raw: unknown, index: number): WeChatContactOut |
       personality = o.personality.trim();
     }
     const thought = pickInnerThought(o);
-    return { id, displayName: dn.trim(), avatarUrl, personality, thought };
+    const stRaw = o.酒馆角色名 ?? o.stCharacterName ?? o.sillyTavernCharacterName;
+    const stCharacterName =
+      typeof stRaw === 'string' && stRaw.trim() ? stRaw.trim() : undefined;
+    return { id, displayName: dn.trim(), avatarUrl, personality, thought, stCharacterName };
   }
   return null;
 }
@@ -275,6 +299,162 @@ function buildWeChatContacts(baseDisplayName: string): WeChatContactOut[] {
     }
   }
   return [{ id: 'default', displayName: baseDisplayName }];
+}
+
+/** 从角色卡 json_data 递归查找与微信联系人 id 绑定的字段 */
+function findWeChatRoleIdInJson(json: unknown, depth = 0): string | null {
+  if (depth > 14) {
+    return null;
+  }
+  if (json == null) {
+    return null;
+  }
+  if (typeof json === 'object' && !Array.isArray(json)) {
+    const o = json as Record<string, unknown>;
+    const keys = ['手机微信角色ID', 'wechat_contact_id', '手机微信角色id', 'mvuCharacterId'];
+    for (const k of keys) {
+      const v = o[k];
+      if (typeof v === 'string' && v.trim()) {
+        return v.trim();
+      }
+    }
+    for (const v of Object.values(o)) {
+      const found = findWeChatRoleIdInJson(v, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * 联系人 id → 酒馆角色卡名（getCharacter 用名）。来源：脚本变量 phone_wechat_st_character_map、
+ * 各书卡 json_data 内手机微信角色ID 等字段。
+ */
+function buildContactIdToStCharacterNameMap(): Map<string, string> {
+  const m = new Map<string, string>();
+  try {
+    const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
+    const explicit = scriptVars.phone_wechat_st_character_map;
+    if (explicit && typeof explicit === 'object' && !Array.isArray(explicit)) {
+      for (const [k, v] of Object.entries(explicit as Record<string, unknown>)) {
+        if (k?.trim() && typeof v === 'string' && v.trim()) {
+          m.set(k.trim(), v.trim());
+        }
+      }
+    }
+  } catch {
+    /* */
+  }
+  let names: string[] = [];
+  try {
+    names = getCharacterNames();
+  } catch {
+    return m;
+  }
+  for (const name of names) {
+    try {
+      const data = getCharData(name);
+      if (!data?.json_data) {
+        continue;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data.json_data);
+      } catch {
+        continue;
+      }
+      const rid = findWeChatRoleIdInJson(parsed);
+      if (rid && !m.has(rid)) {
+        m.set(rid, name);
+      }
+    } catch {
+      /* */
+    }
+  }
+  return m;
+}
+
+async function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('FileReader'));
+    r.readAsDataURL(blob);
+  });
+}
+
+/**
+ * 从酒馆「角色管理」解析头像为 data URL，供跨域 iframe 使用（与角色卡上传图一致）。
+ */
+async function resolveCharacterAvatarDataUrl(characterName: LiteralUnion<'current', string>): Promise<string | null> {
+  try {
+    const ch = await getCharacter(characterName);
+    const av = ch.avatar;
+    if (av instanceof Blob) {
+      return await blobToDataUrl(av);
+    }
+    if (typeof av === 'string' && av.trim()) {
+      const path = getCharAvatarPath(characterName);
+      if (!path?.trim()) {
+        return null;
+      }
+      const p = path.trim();
+      let url: string;
+      if (/^https?:\/\//i.test(p)) {
+        url = p;
+      } else if (p.startsWith('/')) {
+        url = `${window.location.origin}${p}`;
+      } else {
+        url = new URL(p, window.location.origin).href;
+      }
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        return null;
+      }
+      const blob = await res.blob();
+      return await blobToDataUrl(blob);
+    }
+  } catch {
+    /* */
+  }
+  return null;
+}
+
+/**
+ * 变量未给 avatarUrl 时，按联系人 id 映射酒馆角色卡（phone_wechat_st_character_map / 书卡 json 字段 / 档案 酒馆角色名），
+ * default 会话用当前卡。
+ */
+async function enrichContactsWithStAvatars(contacts: WeChatContactOut[]): Promise<WeChatContactOut[]> {
+  const idToStName = buildContactIdToStCharacterNameMap();
+  const out = await Promise.all(
+    contacts.map(async c => {
+      if (c.avatarUrl?.trim()) {
+        return c;
+      }
+      let url: string | null = null;
+      const stFromField = c.stCharacterName?.trim();
+      const stFromMap = idToStName.get(c.id.trim());
+      const stName = stFromField || stFromMap;
+      if (stName) {
+        try {
+          url = await resolveCharacterAvatarDataUrl(stName);
+        } catch {
+          /* */
+        }
+      }
+      if (!url && c.id === 'default') {
+        try {
+          url = await resolveCharacterAvatarDataUrl('current');
+        } catch {
+          /* */
+        }
+      }
+      return url ? { ...c, avatarUrl: url } : c;
+    }),
+  );
+  return out;
 }
 
 /** 合并多路径、多变量源，供「+ 手动添加」拉取全部可选角色（不返回单条 fallback） */
@@ -681,7 +861,263 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
   );
 }
 
-function buildWeChatContext(): {
+type WbExportedMsg = { id: string; role: 'user' | 'assistant'; content: string; time: number };
+type WbExportedThread = { roleId: string; conversationId: string; messages: WbExportedMsg[] };
+
+type WbSyncScriptCfg = {
+  enabled: boolean;
+  /** 非空则优先使用；否则用当前角色卡绑定的主世界书 */
+  worldbookName: string;
+  /** 默认 selective（绿灯）；constant 为蓝灯 */
+  strategy: 'constant' | 'selective';
+  /** 额外追加的主要关键字（字符串或正则），与自动采集的名称类关键词合并 */
+  selectiveKeys: (string | RegExp)[];
+  statePath: string;
+};
+
+function getWbSyncScriptCfg(): WbSyncScriptCfg | null {
+  try {
+    const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
+    const raw = scriptVars.phone_wechat_wb_sync;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null;
+    }
+    const o = raw as Record<string, unknown>;
+    if (o.enabled === false) {
+      return null;
+    }
+    const worldbookName = typeof o.worldbookName === 'string' ? o.worldbookName.trim() : '';
+    const strategy = o.strategy === 'constant' ? 'constant' : 'selective';
+    const sk = o.selectiveKeys;
+    const selectiveKeys: (string | RegExp)[] = Array.isArray(sk)
+      ? sk.filter((x): x is string | RegExp => typeof x === 'string' || x instanceof RegExp)
+      : [];
+    const statePath =
+      typeof o.statePath === 'string' && o.statePath.trim() ? o.statePath.trim() : 'stat_data.手机微信世界书同步';
+    return { enabled: true, worldbookName, strategy, selectiveKeys, statePath };
+  } catch {
+    return null;
+  }
+}
+
+/** 未配置 worldbookName 时使用当前角色卡绑定的主世界书（否则 additional[0]） */
+function resolveWorldbookNameForWbSync(cfg: WbSyncScriptCfg): string | null {
+  if (cfg.worldbookName) {
+    return cfg.worldbookName;
+  }
+  try {
+    const w = getCharWorldbookNames('current');
+    const p = w?.primary?.trim();
+    if (p) {
+      return p;
+    }
+    const add0 = Array.isArray(w?.additional) ? w.additional[0]?.trim() : '';
+    if (add0) {
+      return add0;
+    }
+  } catch {
+    /* */
+  }
+  console.warn('[tavern-phone] phone_wechat_wb_sync 未指定 worldbookName，且当前角色卡未绑定世界书');
+  return null;
+}
+
+/** 从当前角色卡 json 等采集可用于绿灯扫描的名称、昵称类词 */
+function collectNameTokensFromCurrentCharacterCard(): string[] {
+  const out: string[] = [];
+  try {
+    const cur = getCharData('current');
+    if (!cur) {
+      return out;
+    }
+    const push = (s: unknown) => {
+      if (typeof s === 'string' && s.trim()) {
+        out.push(s.trim());
+      }
+    };
+    push(cur.name);
+    if (typeof cur.json_data === 'string' && cur.json_data.trim()) {
+      try {
+        const j = JSON.parse(cur.json_data) as Record<string, unknown>;
+        push(j.name);
+        push(j.nickname);
+        push(j.昵称);
+        push(j.char_name);
+        const data = j.data;
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          const d = data as Record<string, unknown>;
+          push(d.name);
+          push(d.nickname);
+          push(d.昵称);
+        }
+      } catch {
+        /* */
+      }
+    }
+  } catch {
+    /* */
+  }
+  return out;
+}
+
+function buildDynamicSelectiveKeysForWbSync(
+  ctx: Awaited<ReturnType<typeof buildWeChatContext>>,
+  cfg: WbSyncScriptCfg,
+): (string | RegExp)[] {
+  const strSet = new Set<string>();
+  const addStr = (s: string) => {
+    const t = s.trim();
+    if (t.length > 0 && t.length <= 120) {
+      strSet.add(t);
+    }
+  };
+  if (ctx.characterName) {
+    addStr(ctx.characterName);
+  }
+  if (ctx.displayName) {
+    addStr(ctx.displayName);
+  }
+  for (const c of ctx.contacts) {
+    addStr(c.displayName);
+  }
+  for (const s of collectNameTokensFromCurrentCharacterCard()) {
+    addStr(s);
+  }
+  const out: (string | RegExp)[] = [...strSet];
+  for (const x of cfg.selectiveKeys) {
+    if (typeof x === 'string' && x.trim()) {
+      out.push(x.trim());
+    } else if (x instanceof RegExp) {
+      out.push(x);
+    }
+  }
+  return out.length > 0 ? out : ['微信'];
+}
+
+function wbSyncRecursionClosed(): WorldbookEntry['recursion'] {
+  return { prevent_incoming: true, prevent_outgoing: true, delay_until: null };
+}
+
+function wbStrategyConstantFromTemplate(template?: WorldbookEntry['strategy']): WorldbookEntry['strategy'] {
+  return {
+    type: 'constant',
+    keys: [],
+    keys_secondary: template?.keys_secondary ?? { logic: 'and_any', keys: [] },
+    scan_depth: template?.scan_depth ?? 'same_as_global',
+  };
+}
+
+function wbStrategySelectiveFromDynamicKeys(
+  keys: (string | RegExp)[],
+  template?: WorldbookEntry['strategy'],
+): WorldbookEntry['strategy'] {
+  return {
+    type: 'selective',
+    keys: keys.length > 0 ? keys : ['微信'],
+    keys_secondary: template?.keys_secondary ?? { logic: 'and_any', keys: [] },
+    scan_depth: template?.scan_depth ?? 'same_as_global',
+  };
+}
+
+function mergeWbSyncPointerIntoChatVars(
+  vars: Record<string, unknown>,
+  dotPath: string,
+  scopeKey: string,
+  contactId: string,
+  lastMsgId: string | null,
+): Record<string, unknown> {
+  const next = JSON.parse(JSON.stringify(vars)) as Record<string, unknown>;
+  const parts = dotPath.split('.').filter(Boolean);
+  if (parts.length === 0) {
+    return next;
+  }
+  let cur: Record<string, unknown> = next;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    const ex = cur[key];
+    if (ex == null || typeof ex !== 'object' || Array.isArray(ex)) {
+      cur[key] = {};
+    }
+    cur = cur[key] as Record<string, unknown>;
+  }
+  const leaf = parts[parts.length - 1];
+  const root =
+    cur[leaf] != null && typeof cur[leaf] === 'object' && !Array.isArray(cur[leaf])
+      ? (cur[leaf] as Record<string, unknown>)
+      : {};
+  cur[leaf] = root;
+  const byScope =
+    root[scopeKey] != null && typeof root[scopeKey] === 'object' && !Array.isArray(root[scopeKey])
+      ? (root[scopeKey] as Record<string, unknown>)
+      : {};
+  root[scopeKey] = byScope;
+  const prev =
+    byScope[contactId] != null && typeof byScope[contactId] === 'object' && !Array.isArray(byScope[contactId])
+      ? (byScope[contactId] as Record<string, unknown>)
+      : {};
+  byScope[contactId] = { ...prev, lastMsgId };
+  return next;
+}
+
+function getWbSyncLastMsgIdFromChatVars(
+  vars: Record<string, unknown>,
+  dotPath: string,
+  scopeKey: string,
+  contactId: string,
+): string | null {
+  try {
+    const node = getByPath(vars, dotPath) as Record<string, unknown> | undefined;
+    if (!node || typeof node !== 'object') {
+      return null;
+    }
+    const sc = node[scopeKey] as Record<string, unknown> | undefined;
+    if (!sc || typeof sc !== 'object') {
+      return null;
+    }
+    const c = sc[contactId] as Record<string, unknown> | undefined;
+    if (!c || typeof c !== 'object') {
+      return null;
+    }
+    const raw = c.lastMsgId;
+    if (raw == null) {
+      return null;
+    }
+    if (typeof raw === 'string') {
+      return raw.trim() === '' ? null : raw;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function sliceNewWeChatMessages(messages: WbExportedMsg[], lastMsgId: string | null): WbExportedMsg[] {
+  if (!lastMsgId) {
+    return messages;
+  }
+  const idx = messages.findIndex(m => m.id === lastMsgId);
+  if (idx < 0) {
+    return messages;
+  }
+  return messages.slice(idx + 1);
+}
+
+function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]): string {
+  const lines = msgs.map(m => {
+    const who = m.role === 'user' ? '用户' : '对方';
+    const time = new Date(m.time).toLocaleString('zh-CN');
+    return `[${time}] ${who}：${m.content}`;
+  });
+  const head = `\n\n--- [小手机微信 · ${displayName} · ${new Date().toLocaleString('zh-CN')}] ---\n`;
+  return head + lines.join('\n');
+}
+
+function sanitizeWorldbookEntryName(s: string): string {
+  const t = s.replace(/[\r\n]+/g, ' ').trim();
+  return t.length > 180 ? `${t.slice(0, 177)}…` : t;
+}
+
+async function buildWeChatContext(): Promise<{
   chatScopeId: string | null;
   characterName: string | null;
   displayName: string;
@@ -691,7 +1127,7 @@ function buildWeChatContext(): {
   recentStorySnippet: string;
   roleStorySummaries: Record<string, string>;
   openAiDefaults: { apiBaseUrl: string | null; model: string | null };
-} {
+}> {
   const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
   const defaultMap: Record<string, string> = {
     personality: '性格',
@@ -718,7 +1154,8 @@ function buildWeChatContext(): {
   const nameField = pickWeChatField(map, 'name', charVars, msgVars);
   const cardName = getCurrentCharacterName();
   const displayName = (nameField && nameField.trim()) || cardName || '未命名角色';
-  const contacts = buildWeChatContacts(displayName);
+  const contactsRaw = buildWeChatContacts(displayName);
+  const contacts = await enrichContactsWithStAvatars(contactsRaw);
   const rawBase = scriptVars.phone_openai_api_base;
   const rawModel = scriptVars.phone_openai_model;
   const apiBaseFromScript = typeof rawBase === 'string' && rawBase.trim() ? rawBase.trim() : null;
@@ -774,6 +1211,7 @@ $(() => {
   let resizeTargetWindow: Window | null = null;
   let visualViewportRef: VisualViewport | null = null;
   let chatScopeListener: EventOnReturn | null = null;
+  let wbSyncListener: EventOnReturn | null = null;
   /** 拖动手机相对屏幕中心的偏移（px） */
   let phoneDragOffsetX = 0;
   let phoneDragOffsetY = 0;
@@ -1169,15 +1607,17 @@ $(() => {
       if (typeof requestId !== 'string') {
         return;
       }
-      try {
-        const payload = buildWeChatContext();
-        getIframeEl()?.contentWindow?.postMessage({ type: MSG.CONTEXT, requestId, payload }, '*');
-      } catch (err) {
-        getIframeEl()?.contentWindow?.postMessage(
-          { type: MSG.CONTEXT, requestId, error: err instanceof Error ? err.message : String(err) },
-          '*',
-        );
-      }
+      void (async () => {
+        try {
+          const payload = await buildWeChatContext();
+          getIframeEl()?.contentWindow?.postMessage({ type: MSG.CONTEXT, requestId, payload }, '*');
+        } catch (err) {
+          getIframeEl()?.contentWindow?.postMessage(
+            { type: MSG.CONTEXT, requestId, error: err instanceof Error ? err.message : String(err) },
+            '*',
+          );
+        }
+      })();
       return;
     }
     if (t === MSG.REQUEST_ROLE_ARCHIVE) {
@@ -1185,20 +1625,23 @@ $(() => {
       if (typeof requestId !== 'string') {
         return;
       }
-      try {
-        const contacts = buildRoleArchiveCandidates();
-        getIframeEl()?.contentWindow?.postMessage({ type: MSG.ROLE_ARCHIVE, requestId, contacts }, '*');
-      } catch (err) {
-        getIframeEl()?.contentWindow?.postMessage(
-          {
-            type: MSG.ROLE_ARCHIVE,
-            requestId,
-            contacts: [] as WeChatContactOut[],
-            error: err instanceof Error ? err.message : String(err),
-          },
-          '*',
-        );
-      }
+      void (async () => {
+        try {
+          const raw = buildRoleArchiveCandidates();
+          const contacts = await enrichContactsWithStAvatars(raw);
+          getIframeEl()?.contentWindow?.postMessage({ type: MSG.ROLE_ARCHIVE, requestId, contacts }, '*');
+        } catch (err) {
+          getIframeEl()?.contentWindow?.postMessage(
+            {
+              type: MSG.ROLE_ARCHIVE,
+              requestId,
+              contacts: [] as WeChatContactOut[],
+              error: err instanceof Error ? err.message : String(err),
+            },
+            '*',
+          );
+        }
+      })();
       return;
     }
     if (t === MSG.REQUEST_INJECT_TO_INPUT) {
@@ -1301,6 +1744,160 @@ $(() => {
     }
   }
 
+  function ensurePhoneIframeBuiltForSync(): void {
+    const url = getPhoneUiUrl();
+    if (!url) {
+      return;
+    }
+    if (!$phoneRoot?.length) {
+      buildDom();
+    }
+    setIframeSrc();
+  }
+
+  function requestExportThreadsFromIframe(iframeWin: Window, chatScopeId: string): Promise<WbExportedThread[]> {
+    return new Promise((resolve, reject) => {
+      const requestId = crypto.randomUUID();
+      const timer = window.setTimeout(() => {
+        window.removeEventListener('message', onMsg);
+        console.warn('[tavern-phone] 导出微信线程超时，跳过世界书同步');
+        resolve([]);
+      }, 8000);
+      function onMsg(e: MessageEvent) {
+        if (e.source !== iframeWin) {
+          return;
+        }
+        if (e.data?.type !== MSG.EXPORT_THREADS_FOR_WB_RESULT) {
+          return;
+        }
+        if (e.data?.requestId !== requestId) {
+          return;
+        }
+        window.clearTimeout(timer);
+        window.removeEventListener('message', onMsg);
+        if (e.data.error) {
+          reject(new Error(String(e.data.error)));
+          return;
+        }
+        resolve(Array.isArray(e.data.threads) ? (e.data.threads as WbExportedThread[]) : []);
+      }
+      window.addEventListener('message', onMsg);
+      iframeWin.postMessage({ type: MSG.REQUEST_EXPORT_THREADS_FOR_WB, requestId, chatScopeId }, '*');
+    });
+  }
+
+  async function runWeChatWorldbookSyncOnGenerate(): Promise<void> {
+    const cfg = getWbSyncScriptCfg();
+    if (!cfg) {
+      return;
+    }
+    if (!getPhoneUiUrl()) {
+      return;
+    }
+    const worldbookName = resolveWorldbookNameForWbSync(cfg);
+    if (!worldbookName) {
+      return;
+    }
+    ensurePhoneIframeBuiltForSync();
+    const iframeWin = getIframeEl()?.contentWindow;
+    if (!iframeWin) {
+      return;
+    }
+    const chatScopeId = getChatScopeId() ?? 'local-offline';
+    const scopeKey = chatScopeId.trim() || 'local-offline';
+    let threads: WbExportedThread[];
+    try {
+      threads = await requestExportThreadsFromIframe(iframeWin, chatScopeId);
+    } catch (e) {
+      console.warn('[tavern-phone] 导出微信线程失败', e);
+      return;
+    }
+    if (threads.length === 0) {
+      return;
+    }
+    const ctx = await buildWeChatContext();
+    const dynamicKeys = buildDynamicSelectiveKeysForWbSync(ctx, cfg);
+    const idToName = new Map(ctx.contacts.map(c => [c.id, c.displayName] as const));
+    let chatVars = getVariables({ type: 'chat' }) as Record<string, unknown>;
+    const pending: Array<{
+      contactId: string;
+      displayName: string;
+      block: string;
+      tailId: string | null;
+    }> = [];
+    for (const th of threads) {
+      const displayName = idToName.get(th.roleId) ?? th.roleId;
+      const lastId = getWbSyncLastMsgIdFromChatVars(chatVars, cfg.statePath, scopeKey, th.roleId);
+      const newMsgs = sliceNewWeChatMessages(th.messages, lastId);
+      if (newMsgs.length === 0) {
+        continue;
+      }
+      const block = formatWeChatWorldbookBlock(displayName, newMsgs);
+      const tailId = th.messages.length > 0 ? th.messages[th.messages.length - 1].id : null;
+      pending.push({ contactId: th.roleId, displayName, block, tailId });
+    }
+    if (pending.length === 0) {
+      return;
+    }
+    let wb: WorldbookEntry[];
+    try {
+      wb = await getWorldbook(worldbookName);
+    } catch (e) {
+      console.warn('[tavern-phone] 读取世界书失败（请确认名称存在）', worldbookName, e);
+      return;
+    }
+    if (wb.length === 0) {
+      console.warn('[tavern-phone] 世界书无条目或不存在，请先创建该世界书', worldbookName);
+      return;
+    }
+    const template = wb[0];
+    const rec = wbSyncRecursionClosed();
+    await updateWorldbookWith(
+      worldbookName,
+      entries => {
+        let next = [...entries];
+        for (const u of pending) {
+          const entryName = sanitizeWorldbookEntryName(`${u.displayName}小手机聊天记录摘要`);
+          const idx = next.findIndex(e => e.name === entryName);
+          const strat =
+            cfg.strategy === 'constant'
+              ? wbStrategyConstantFromTemplate(template.strategy)
+              : wbStrategySelectiveFromDynamicKeys(dynamicKeys, template.strategy);
+          if (idx < 0) {
+            const neu: PartialDeep<WorldbookEntry> = {
+              name: entryName,
+              content: u.block,
+              enabled: true,
+              strategy: strat,
+              position: template.position,
+              probability: template.probability ?? 100,
+              recursion: rec,
+              effect: template.effect,
+            };
+            next.push(neu as WorldbookEntry);
+          } else {
+            const e = next[idx];
+            const cur = typeof e.content === 'string' ? e.content : '';
+            next[idx] = {
+              ...e,
+              content: cur + u.block,
+              strategy: strat,
+              recursion: rec,
+            };
+          }
+        }
+        return next;
+      },
+      { render: 'immediate' },
+    );
+    let merged = chatVars;
+    for (const u of pending) {
+      merged = mergeWbSyncPointerIntoChatVars(merged, cfg.statePath, scopeKey, u.contactId, u.tailId);
+    }
+    updateVariablesWith(() => merged, { type: 'chat' });
+    console.info('[tavern-phone] 已同步微信增量到世界书', worldbookName, pending.map(p => p.displayName).join(', '));
+  }
+
   const api: TavernPhoneApi = {
     version: VERSION,
     get isOpen() {
@@ -1314,12 +1911,22 @@ $(() => {
 
   mountTavernPhoneApi(api);
 
+  wbSyncListener = eventOn(tavern_events.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+    void runWeChatWorldbookSyncOnGenerate().catch(e => {
+      console.warn('[tavern-phone] 世界书同步失败', e);
+    });
+  });
+
   replaceScriptButtons([{ name: '小手机', visible: true }]);
   eventOn(getButtonEvent('小手机'), () => {
     toggle();
   });
 
   $(window).on('pagehide', () => {
+    if (wbSyncListener) {
+      wbSyncListener.stop();
+      wbSyncListener = null;
+    }
     if (chatScopeListener) {
       chatScopeListener.stop();
       chatScopeListener = null;

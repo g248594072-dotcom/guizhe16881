@@ -39,6 +39,9 @@ import {
   loadPinnedContacts,
   mergeContactLists,
 } from '../../weChatPinnedContacts';
+import { fileToAvatarDataUrl } from '../../weChatAvatarFile';
+
+type AvatarPickTarget = { kind: 'me' } | { kind: 'contact'; contact: TavernPhoneWeChatContact };
 
 /** 无自定义链接时：微信经典灰色默认头像（剪影） */
 function MeWeChatDefaultAvatar({ className = '' }: { className?: string }) {
@@ -55,24 +58,52 @@ function MeWeChatDefaultAvatar({ className = '' }: { className?: string }) {
   );
 }
 
-function MeAvatarBubble({ avatarUrl }: { avatarUrl: string }) {
-  if (avatarUrl) {
-    return <img src={avatarUrl} alt="" className="mt-0.5 h-9 w-9 shrink-0 rounded-md bg-gray-200 object-cover" />;
+function MeAvatarBubble({ avatarUrl, onPickClick }: { avatarUrl: string; onPickClick?: () => void }) {
+  const inner =
+    avatarUrl ? (
+      <img src={avatarUrl} alt="" className="mt-0.5 h-9 w-9 shrink-0 rounded-md bg-gray-200 object-cover" />
+    ) : (
+      <MeWeChatDefaultAvatar className="mt-0.5 h-9 w-9" />
+    );
+  if (!onPickClick) {
+    return inner;
   }
-  return <MeWeChatDefaultAvatar className="mt-0.5 h-9 w-9" />;
+  return (
+    <button
+      type="button"
+      title="点击上传头像"
+      onClick={onPickClick}
+      className="shrink-0 rounded-md p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60"
+    >
+      {inner}
+    </button>
+  );
 }
 
-function MeAvatarLarge({ avatarUrl }: { avatarUrl: string }) {
-  if (avatarUrl) {
-    return (
+function MeAvatarLarge({ avatarUrl, onPickClick }: { avatarUrl: string; onPickClick?: () => void }) {
+  const inner =
+    avatarUrl ? (
       <img
         src={avatarUrl}
         alt=""
         className="h-24 w-24 rounded-2xl bg-gray-200 object-cover"
       />
+    ) : (
+      <MeWeChatDefaultAvatar className="h-24 w-24 rounded-2xl" />
     );
+  if (!onPickClick) {
+    return inner;
   }
-  return <MeWeChatDefaultAvatar className="h-24 w-24 rounded-2xl" />;
+  return (
+    <button
+      type="button"
+      title="点击上传头像"
+      onClick={onPickClick}
+      className="rounded-2xl p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60"
+    >
+      {inner}
+    </button>
+  );
 }
 
 /** 无自定义头像时取姓名首字（如「白梦梦」→「白」） */
@@ -89,29 +120,52 @@ function ContactAvatar({
   contact,
   className = '',
   size,
+  onPickClick,
 }: {
   contact: TavernPhoneWeChatContact;
   className?: string;
   /** 列表大头像 / 气泡小头像 / 添加弹层 */
   size: 'list' | 'bubble' | 'picker';
+  /** 点击上传本地头像（会话列表 / 聊天内对方头像） */
+  onPickClick?: () => void;
 }) {
+  let inner: React.ReactNode;
   if (contact.avatarUrl) {
-    return <img src={contact.avatarUrl} alt="" className={className} />;
+    inner = <img src={contact.avatarUrl} alt="" className={className} />;
+  } else {
+    const initial = contactInitial(contact.displayName);
+    const sizeCls =
+      size === 'bubble'
+        ? 'h-9 w-9 text-[13px] rounded-md'
+        : size === 'picker'
+          ? 'h-11 w-11 text-[15px] rounded-lg'
+          : 'h-12 w-12 text-[17px] rounded-lg';
+    inner = (
+      <div
+        className={`flex shrink-0 items-center justify-center bg-[#E5E5EA] font-semibold text-[#1c1c1e] ${sizeCls} ${className}`}
+        aria-hidden
+      >
+        {initial}
+      </div>
+    );
   }
-  const initial = contactInitial(contact.displayName);
-  const sizeCls =
-    size === 'bubble'
-      ? 'h-9 w-9 text-[13px] rounded-md'
-      : size === 'picker'
-        ? 'h-11 w-11 text-[15px] rounded-lg'
-        : 'h-12 w-12 text-[17px] rounded-lg';
+  if (!onPickClick) {
+    return inner;
+  }
+  const rounded =
+    size === 'bubble' ? 'rounded-md' : size === 'picker' ? 'rounded-lg' : 'rounded-lg';
   return (
-    <div
-      className={`flex shrink-0 items-center justify-center bg-[#E5E5EA] font-semibold text-[#1c1c1e] ${sizeCls} ${className}`}
-      aria-hidden
+    <button
+      type="button"
+      title="点击上传头像"
+      onClick={e => {
+        e.stopPropagation();
+        onPickClick();
+      }}
+      className={`shrink-0 p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60 ${rounded}`}
     >
-      {initial}
-    </div>
+      {inner}
+    </button>
   );
 }
 
@@ -189,6 +243,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const phoneMemoryTimerRef = useRef<number | null>(null);
+  const avatarPickTargetRef = useRef<AvatarPickTarget | null>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -547,6 +603,43 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   /** 仅最后一条楼层显示「可能未发完」与重发（与最新消息 id 对齐） */
   const lastWeChatMessage = messages.length > 0 ? messages[messages.length - 1] : null;
 
+  const startAvatarPick = useCallback((target: AvatarPickTarget) => {
+    avatarPickTargetRef.current = target;
+    avatarFileInputRef.current?.click();
+  }, []);
+
+  const onAvatarFileInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file?.type.startsWith('image/')) {
+      return;
+    }
+    const target = avatarPickTargetRef.current;
+    avatarPickTargetRef.current = null;
+    if (!target) {
+      return;
+    }
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      if (target.kind === 'me') {
+        setMeDraft(prev => {
+          const next = { ...prev, avatarUrl: dataUrl };
+          saveWeChatMe(next);
+          setMeProfile(next);
+          return next;
+        });
+        return;
+      }
+      addPinnedContact(chatScopeId, { ...target.contact, avatarUrl: dataUrl });
+      setPinnedRev(r => r + 1);
+      setSelectedContact(prev =>
+        prev?.id === target.contact.id ? { ...prev, avatarUrl: dataUrl } : prev,
+      );
+    } catch (err) {
+      console.warn('[wechat avatar]', err);
+    }
+  }, [chatScopeId]);
+
   const handleInjectToMainInput = async () => {
     const text = injectPreviewText.trim();
     if (!text || showOffline || injectBusy) {
@@ -566,6 +659,14 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="relative flex flex-col h-full bg-[#EDEDED]">
+      <input
+        ref={avatarFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        aria-hidden
+        onChange={onAvatarFileInputChange}
+      />
       {view === 'chat' && selectedContact && chatCtx ? (
         <>
           <div className="bg-[#EDEDED] pt-12 pb-3 px-2 flex items-center gap-1 shrink-0 border-b border-gray-200/80">
@@ -606,7 +707,12 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {m.role === 'assistant' ? (
-                    <ContactAvatar contact={selectedContact} size="bubble" className="mt-0.5" />
+                    <ContactAvatar
+                      contact={selectedContact}
+                      size="bubble"
+                      className="mt-0.5"
+                      onPickClick={() => startAvatarPick({ kind: 'contact', contact: selectedContact })}
+                    />
                   ) : null}
                   {m.role === 'assistant' ? (
                     <div className="flex items-start gap-1 max-w-[78%] min-w-0">
@@ -651,7 +757,10 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-600">{formatMsgTime(m.time)}</p>
                       </div>
-                      <MeAvatarBubble avatarUrl={meAvatarUrl} />
+                      <MeAvatarBubble
+                        avatarUrl={meAvatarUrl}
+                        onPickClick={() => startAvatarPick({ kind: 'me' })}
+                      />
                     </>
                   )}
                 </div>
@@ -736,14 +845,25 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                     void listTick;
                     const { text, time } = previewById[c.id] ?? { text: '开始聊天…', time: '' };
                     return (
-                      <button
+                      <div
                         key={c.id}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => openChat(c)}
-                        className="w-full flex items-center px-4 py-3 active:bg-gray-100 transition-colors text-left"
+                        onKeyDown={ev => {
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            openChat(c);
+                          }
+                        }}
+                        className="w-full flex items-center px-4 py-3 active:bg-gray-100 transition-colors text-left cursor-pointer"
                       >
                         <div className="relative shrink-0">
-                          <ContactAvatar contact={c} size="list" />
+                          <ContactAvatar
+                            contact={c}
+                            size="list"
+                            onPickClick={() => startAvatarPick({ kind: 'contact', contact: c })}
+                          />
                         </div>
                         <div className="ml-3 flex-1 border-b border-gray-100 pb-3 pt-1">
                           <div className="flex justify-between items-center mb-1">
@@ -752,7 +872,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                           </div>
                           <p className="text-[14px] text-gray-500 truncate pr-4">{text}</p>
                         </div>
-                      </button>
+                      </div>
                     );
                   })
                 )}
@@ -762,8 +882,13 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="flex-1 overflow-y-auto bg-[#EDEDED] px-4 py-4 min-h-0">
               <div className="rounded-[12px] bg-white p-4 shadow-sm">
                 <div className="flex flex-col items-center gap-3 border-b border-gray-100 pb-4">
-                  <MeAvatarLarge avatarUrl={resolveMeAvatarDisplay(meDraft)} />
-                  <p className="text-[13px] text-gray-400">头像使用下方链接（留空则用微信默认灰色头像）</p>
+                  <MeAvatarLarge
+                    avatarUrl={resolveMeAvatarDisplay(meDraft)}
+                    onPickClick={() => startAvatarPick({ kind: 'me' })}
+                  />
+                  <p className="text-[13px] text-gray-400 text-center">
+                    点击头像可本地上传；也可在下方粘贴链接（留空则用微信默认灰色头像）
+                  </p>
                 </div>
                 <label className="mt-4 block">
                   <span className="text-[13px] text-gray-500">昵称</span>
@@ -979,7 +1104,11 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                         const already = addedIds.has(c.id);
                         return (
                           <li key={c.id} className="flex items-center gap-3 px-2 py-3">
-                            <ContactAvatar contact={c} size="picker" />
+                            <ContactAvatar
+                              contact={c}
+                              size="picker"
+                              onPickClick={() => startAvatarPick({ kind: 'contact', contact: c })}
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="text-[15px] font-medium text-gray-900 truncate">{c.displayName}</p>
                               <p className="text-[11px] text-gray-400 truncate">{c.id}</p>

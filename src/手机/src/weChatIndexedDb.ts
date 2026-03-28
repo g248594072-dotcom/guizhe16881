@@ -1,4 +1,4 @@
-import { LEGACY_SCOPE, makeConversationId } from './weChatScope';
+import { LEGACY_SCOPE, LOCAL_OFFLINE_SCOPE, makeConversationId, parseConversationId } from './weChatScope';
 
 const DB_NAME = 'tavern-phone-wechat';
 const DB_VERSION = 1;
@@ -16,10 +16,16 @@ export type WeChatStoredMessage = {
   time: number;
 };
 
-type ThreadRecord = {
+export type ThreadRecord = {
   conversationId: string;
   messages: WeChatStoredMessage[];
   updatedAt: number;
+};
+
+export type WeChatThreadExport = {
+  roleId: string;
+  conversationId: string;
+  messages: WeChatStoredMessage[];
 };
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -75,6 +81,42 @@ export async function idbGetThread(conversationId: string): Promise<WeChatStored
   } catch {
     return [];
   }
+}
+
+/** 列出当前聊天 scope 下（conversationId 前缀匹配）的全部微信线程 */
+export async function idbExportThreadsForScope(chatScopeId: string): Promise<WeChatThreadExport[]> {
+  const scope = (chatScopeId.trim() || LOCAL_OFFLINE_SCOPE).replace(/::/g, '_');
+  const prefix = `${scope}::`;
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const out: WeChatThreadExport[] = [];
+    const tx = db.transaction(STORE_THREADS, 'readonly');
+    const store = tx.objectStore(STORE_THREADS);
+    const req = store.openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) {
+        resolve(out);
+        return;
+      }
+      const row = cursor.value as ThreadRecord;
+      const cid = row?.conversationId;
+      if (typeof cid === 'string' && cid.startsWith(prefix)) {
+        const parsed = parseConversationId(cid);
+        if (parsed) {
+          const raw = row.messages;
+          const messages = Array.isArray(raw) ? raw.filter(isValidMessage) : [];
+          out.push({
+            roleId: parsed.roleId,
+            conversationId: cid,
+            messages,
+          });
+        }
+      }
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
 }
 
 export async function idbPutThread(conversationId: string, messages: WeChatStoredMessage[]): Promise<void> {
