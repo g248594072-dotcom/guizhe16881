@@ -663,7 +663,7 @@
         <h3 id="preset-picker-title" class="chronicle-dialog-title">选择开场预设</h3>
         <p class="chronicle-dialog-desc">点击「应用」将覆盖当前表单中的场景、规则与角色。</p>
         <div v-if="presets.length === 0" class="opening-dialog-empty">暂无保存的预设</div>
-        <ul v-else class="opening-dialog-list">
+        <ul v-else class="opening-dialog-list opening-dialog-list--scroll">
           <li v-for="p in presets" :key="p.id" class="opening-dialog-list-item">
             <div class="opening-dialog-list-main">
               <span class="opening-dialog-list-name">{{ p.name }}</span>
