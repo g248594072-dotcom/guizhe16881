@@ -105,7 +105,7 @@
               <!-- 在区域卡片内新增细分规则入口 -->
               <button
                 class="add-subrule"
-                @click="$emit('openModal', 'add_regional_rule', regionPayload(region))"
+                @click="$emit('openModal', 'add_region_rule', regionPayload(region))"
               >
                 <i class="fa-solid fa-plus"></i>
                 <span>在该区域新增细分规则</span>
