@@ -83,7 +83,7 @@ export default function App() {
       </button>
       {/* Phone Frame：宽高随视口自适应，保持比例 */}
       <div
-        className="relative shrink-0 overflow-hidden rounded-[55px] border-8 border-neutral-800 bg-black shadow-2xl ring-1 ring-white/10"
+        className="relative shrink-0 overflow-hidden rounded-[55px] bg-black shadow-2xl"
         style={phoneShellStyle}
       >
         {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；勿用 mix-blend-difference 以免黑底上文字/图标看不见 */}
