@@ -3,6 +3,14 @@
  * 与角色卡变量结构保持一致
  */
 
+import { normalizeTagMap, normalize三围 } from './utils/tagMap';
+
+/** 性格/性癖/敏感部位：与《变量更新规则》一致为 Record<名, 描述>，兼容旧 string[] */
+const 标签映射 = z.preprocess(
+  (raw: unknown) => normalizeTagMap(raw),
+  z.record(z.string(), z.string()),
+).prefault({});
+
 // 规则条目定义（世界规则、区域规则、个人规则共用）
 const 规则条目基础 = z.object({
   名称: z.string().prefault(''),
@@ -18,8 +26,8 @@ const 规则条目基础 = z.object({
   适用对象: z.string().prefault(''),
   标记: z.string().prefault(''),
 });
-// 使用 intersection 保留额外字段（如 name、desc、active 等英文字段）
-const 规则条目 = z.intersection(规则条目基础, z.record(z.string(), z.unknown())).prefault({});
+// MVU registerMvuSchema 无法合并 intersection + record 下同名字段；用 passthrough 保留英文等扩展键
+const 规则条目 = 规则条目基础.passthrough().prefault({});
 
 // 核心数据结构
 const 核心结构 = z.object({
@@ -31,23 +39,23 @@ const 核心结构 = z.object({
 
   角色档案: z.record(
     z.string(),
-    z.intersection(
-      z.object({
+    z
+      .object({
         姓名: z.string().prefault('未知'),
         状态: z.enum(['出场中', '暂时退场']).or(z.string()).prefault('出场中'),
         描写: z.string().prefault(''),
 
         当前内心想法: z.string().prefault(''),
-        性格: z.array(z.string()).transform(arr => _.uniq(arr)).prefault([]),
-        性癖: z.array(z.string()).transform(arr => _.uniq(arr)).prefault([]),
-        敏感部位: z.array(z.string()).transform(arr => _.uniq(arr)).prefault([]),
+        性格: 标签映射,
+        性癖: 标签映射,
+        敏感部位: 标签映射,
         隐藏性癖: z.string().prefault(''),
 
         身体信息: z.object({
           年龄: z.coerce.number().prefault(17),
           身高: z.coerce.number().prefault(160),
           体重: z.coerce.number().prefault(48),
-          三围: z.string().prefault('未知'),
+          三围: z.preprocess((raw: unknown) => normalize三围(raw), z.string()).prefault('未知'),
           体质特征: z.string().prefault('普通'),
         }).prefault({}),
 
@@ -58,9 +66,9 @@ const 核心结构 = z.object({
         }).prefault({}),
 
         当前综合生理描述: z.string().prefault(''),
-      }),
-      z.record(z.string(), z.unknown()) // 保留额外字段（name、Affection、Estrus 等英文字段）
-    ).prefault({})
+      })
+      .passthrough()
+      .prefault({}),
   ).prefault({}),
 
   元信息: z.object({
@@ -72,12 +80,11 @@ const 核心结构 = z.object({
   }).prefault({}),
 
   游戏状态: z.record(z.string(), z.unknown()).prefault({}),
-}).prefault({});
+})
+  .passthrough()
+  .prefault({});
 
-// 利用 intersection 兜底所有未知的宿主字段，确保 App 注入的 meta/player 等数据不被吞噬
-export const Schema = z.intersection(
-  核心结构,
-  z.record(z.string(), z.unknown())
-);
+/** 根对象允许 meta、player、openingConfig 等扩展字段（勿与 z.record 做 intersection，避免 MVU 合并失败） */
+export const Schema = 核心结构;
 
 export type Schema = z.output<typeof Schema>;

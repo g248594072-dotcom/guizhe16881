@@ -546,30 +546,30 @@
                 placeholder="输入该角色当前的内心想法..."
               />
 
-              <label class="form-label">性格（每行一个标签）</label>
+              <label class="form-label">性格（每行一条「名称：描述」，或单独一行描述）</label>
               <textarea
                 v-model="modalForm.characterPsychTraits"
                 class="form-textarea"
                 rows="3"
-                placeholder="例如：傲娇\n高自尊\n容易害羞"
+                placeholder="例如：&#10;傲娇：口是心非&#10;高自尊：在意他人眼光"
               />
             </div>
             <!-- 编辑性癖与敏感带 -->
             <div v-else-if="modalType === 'edit_character_fetish'" class="rule-form">
-              <label class="form-label">敏感部位（每行一个标签）</label>
+              <label class="form-label">敏感部位（每行一条「部位：反应或敏感描述」）</label>
               <textarea
                 v-model="modalForm.characterPsychSensitiveParts"
                 class="form-textarea"
                 rows="3"
-                placeholder="例如：耳垂(Lv.3)\n后颈(Lv.2)"
+                placeholder="例如：&#10;耳垂：轻咬会发抖&#10;后颈：怕痒"
               />
 
-              <label class="form-label">性癖（每行一个标签）</label>
+              <label class="form-label">性癖（每行一条「名称：开发程度或表现」）</label>
               <textarea
                 v-model="modalForm.characterPsychFetishes"
                 class="form-textarea"
                 rows="3"
-                placeholder="例如：命令\n羞辱\n足控"
+                placeholder="例如：&#10;命令：初级&#10;足控：未觉醒"
               />
 
               <label class="form-label">隐藏性癖</label>
@@ -992,6 +992,7 @@ import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits'
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
+import { tagMapToEditableText } from './utils/tagMap';
 
 /** 构建时注入，见 webpack DefinePlugin `__APP_VERSION__` */
 const appBuildVersion = __APP_VERSION__;
@@ -1593,9 +1594,9 @@ async function openModal(type: string, payload?: Record<string, any>) {
       const c: any = (characters.value || []).find((x: any) => x?.id === payload.characterId);
       if (c) {
         modalForm.value.characterPsychThought = String(c.currentThought ?? '');
-        modalForm.value.characterPsychTraits = Array.isArray(c.traits) ? c.traits.join('\n') : '';
-        modalForm.value.characterPsychFetishes = Array.isArray(c.fetishes) ? c.fetishes.join('\n') : '';
-        modalForm.value.characterPsychSensitiveParts = Array.isArray(c.sensitiveParts) ? c.sensitiveParts.join('\n') : '';
+        modalForm.value.characterPsychTraits = tagMapToEditableText(c.traits);
+        modalForm.value.characterPsychFetishes = tagMapToEditableText(c.fetishes);
+        modalForm.value.characterPsychSensitiveParts = tagMapToEditableText(c.sensitiveParts);
         modalForm.value.characterPsychHiddenFetish = String(c.hiddenFetish ?? '');
       }
     } catch (e) {

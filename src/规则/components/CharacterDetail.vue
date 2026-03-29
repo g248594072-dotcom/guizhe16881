@@ -269,6 +269,7 @@ import StatBar from './StatBar.vue';
 import Badge from './Badge.vue';
 import { useCharacters, usePersonalRules } from '../store';
 import { submitArchivePersonalRule } from '../utils/dialogAndVariable';
+import { tagFieldToBadgeLines } from '../utils/tagMap';
 
 const props = defineProps<{
   characterId: string;
@@ -332,11 +333,9 @@ const displayThought = computed(() => {
   if (typeof v === 'string' && v.trim().length > 0) return v;
   return '暂无';
 });
-const displayTraits = computed(() => (Array.isArray(currentExtra.value.traits) ? currentExtra.value.traits : []));
-const displayFetishes = computed(() => (Array.isArray(currentExtra.value.fetishes) ? currentExtra.value.fetishes : []));
-const displaySensitiveParts = computed(() =>
-  (Array.isArray(currentExtra.value.sensitiveParts) ? currentExtra.value.sensitiveParts : []),
-);
+const displayTraits = computed(() => tagFieldToBadgeLines(currentExtra.value.traits));
+const displayFetishes = computed(() => tagFieldToBadgeLines(currentExtra.value.fetishes));
+const displaySensitiveParts = computed(() => tagFieldToBadgeLines(currentExtra.value.sensitiveParts));
 const displayHiddenFetish = computed(() => {
   const v = currentExtra.value.hiddenFetish;
   if (typeof v === 'string' && v.trim().length > 0) return v;

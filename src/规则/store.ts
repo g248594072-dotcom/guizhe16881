@@ -6,6 +6,7 @@
 import { defineMvuDataStore } from '@util/mvu';
 import { Schema } from './schema';
 import type { CharacterData, RuleData, RegionData } from './types';
+import { normalizeTagMap } from './utils/tagMap';
 
 /**
  * 主数据存储
@@ -28,20 +29,16 @@ export function useCharacters() {
   return computed((): CharacterData[] => {
     const chars = store.data.角色档案 || {};
     return Object.entries(chars).map(([id, char]) => {
-      // 支持中文字段和英文字段回退
-      // 如果姓名为空或"未知"，回退到英文字段 name 或 ID
-      console.log('[useCharacters] 处理角色:', id, { 姓名: char.姓名, name: char.name });
       const name = (char.姓名 && char.姓名 !== '未知' && char.姓名.trim() !== '')
         ? char.姓名
         : (char.name || id);
-      console.log('[useCharacters] 计算后的名字:', name);
       const description = char.描写 || char.description || char.desc || '';
       const status = char.状态 === '出场中' ? 'active' : 'inactive';
 
       const currentThought = char.当前内心想法 || char.currentThought || '';
-      const traits = char.性格 || char.traits || [];
-      const fetishes = char.性癖 || char.fetishes || [];
-      const sensitiveParts = char.敏感部位 || char.sensitiveParts || [];
+      const traits = normalizeTagMap(char.性格 ?? char.traits);
+      const fetishes = normalizeTagMap(char.性癖 ?? char.fetishes);
+      const sensitiveParts = normalizeTagMap(char.敏感部位 ?? char.sensitiveParts);
       const hiddenFetish = char.隐藏性癖 || char.hiddenFetish || '';
 
       const body = char.身体信息 || {};

@@ -4,6 +4,7 @@
  */
 
 import type { GameData, MvuData, CharacterData, RuleData, RegionData } from '../types';
+import { normalizeTagMap, normalize三围 } from './tagMap';
 
 // MVU 初始化状态
 let mvuInitialized = false;
@@ -345,12 +346,9 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
     const 状态 = value?.['状态'] ?? '出场中';
 
     const 当前内心想法 = value?.['当前内心想法'] ?? value?.['currentThought'] ?? '';
-    const 性格 = Array.isArray(value?.['性格']) ? value?.['性格'] :
-                Array.isArray(value?.['traits']) ? value?.['traits'] : [];
-    const 性癖 = Array.isArray(value?.['性癖']) ? value?.['性癖'] :
-                Array.isArray(value?.['fetishes']) ? value?.['fetishes'] : [];
-    const 敏感部位 = Array.isArray(value?.['敏感部位']) ? value?.['敏感部位'] :
-                    Array.isArray(value?.['sensitiveParts']) ? value?.['sensitiveParts'] : [];
+    const 性格 = normalizeTagMap(value?.['性格'] ?? value?.['traits']);
+    const 性癖 = normalizeTagMap(value?.['性癖'] ?? value?.['fetishes']);
+    const 敏感部位 = normalizeTagMap(value?.['敏感部位'] ?? value?.['sensitiveParts']);
     const 隐藏性癖 = value?.['隐藏性癖'] ?? value?.['hiddenFetish'] ?? '';
 
     const 身体 = value?.['身体信息'] ?? {};
@@ -363,7 +361,7 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
               value?.['height'] != null ? String(value['height']) : undefined,
       weight: 身体['体重'] != null ? String(身体['体重']) :
               value?.['weight'] != null ? String(value['weight']) : undefined,
-      threeSize: 身体['三围'] ?? value?.['threeSize'],
+      threeSize: normalize三围(身体['三围'] ?? value?.['threeSize']),
       physique: 身体['体质特征'] ?? value?.['physique'],
     };
 
