@@ -3,7 +3,7 @@
  * 从最新楼层消息中解析 maintext 和 option 标签
  */
 
-/** ok：计数完全一致；warning：多一个开标签但存在可解析的最后一对；error：严重不匹配 */
+/** ok：仅 1 开 1 闭（或可选标签未出现）；warning：多组闭合或开比闭多 1（仍可按最后一对解析）；error：未闭合或严重失衡 */
 export type TagCheckSeverity = 'ok' | 'warning' | 'error';
 
 /**
@@ -11,7 +11,7 @@ export type TagCheckSeverity = 'ok' | 'warning' | 'error';
  */
 export interface TagCheckResult {
   tag: string;
-  /** 是否可按最后一对标签正常解析（ok / warning 为 true，error 为 false） */
+  /** 是否可按最后一对标签正常解析（ok / warning 为 true；error 为 false） */
   isValid: boolean;
   severity: TagCheckSeverity;
   isOpen: boolean;
@@ -24,14 +24,111 @@ export function isSuspiciousDuplicateOpenMismatch(open: number, close: number): 
   return open === close + 1 && close >= 1;
 }
 
-const emptyTagResult = (tag: string): TagCheckResult => ({
-  tag,
-  isValid: false,
-  severity: 'error',
-  isOpen: false,
-  isClosed: false,
-  message: '消息内容为空',
-});
+type TagKind = 'optionalAbsent' | 'required';
+
+/**
+ * 标签检核着色：仅 1 开 1 闭为绿；多组闭合或开比闭恰好多 1 为黄（仍可按最后一对解析）；闭比开多、有开无闭、开比闭多 2+ 为红。
+ */
+function classifyTagBalance(
+  tag: TagCheckResult['tag'],
+  open: number,
+  close: number,
+  kind: TagKind,
+): TagCheckResult {
+  const angle = tag === 'UpdateVariable' ? '<UpdateVariable>' : `<${tag}>`;
+
+  if (kind === 'optionalAbsent' && open === 0 && close === 0) {
+    const absentMsg =
+      tag === 'thinking'
+        ? '无 <thinking> 标签'
+        : tag === 'sum'
+          ? '无 <sum> 标签（可选）'
+          : '无 <UpdateVariable> 标签（可选）';
+    return {
+      tag,
+      isValid: true,
+      severity: 'ok',
+      isOpen: false,
+      isClosed: false,
+      message: absentMsg,
+    };
+  }
+
+  if (kind === 'required' && open === 0) {
+    return {
+      tag,
+      isValid: false,
+      severity: 'error',
+      isOpen: false,
+      isClosed: false,
+      message: tag === 'maintext' ? '缺少 <maintext> 标签' : '缺少 <option> 标签',
+    };
+  }
+
+  if (open < close) {
+    return {
+      tag,
+      isValid: false,
+      severity: 'error',
+      isOpen: true,
+      isClosed: true,
+      message: `${angle} 多余的闭标签（${open} 开 / ${close} 闭）`,
+    };
+  }
+
+  if (close === 0 && open > 0) {
+    return {
+      tag,
+      isValid: false,
+      severity: 'error',
+      isOpen: true,
+      isClosed: false,
+      message: `${angle} 未闭合（${open} 开 / 0 闭）`,
+    };
+  }
+
+  if (open === close) {
+    if (open === 1) {
+      return {
+        tag,
+        isValid: true,
+        severity: 'ok',
+        isOpen: true,
+        isClosed: true,
+        message: `${angle} 仅 1 组开闭，正确`,
+      };
+    }
+    return {
+      tag,
+      isValid: true,
+      severity: 'warning',
+      isOpen: true,
+      isClosed: true,
+      message: `${angle} 共 ${open} 组闭合；仅 1 组为绿，多组为黄（已按最后一对解析）`,
+    };
+  }
+
+  const extra = open - close;
+  if (extra === 1) {
+    return {
+      tag,
+      isValid: true,
+      severity: 'warning',
+      isOpen: true,
+      isClosed: true,
+      message: `${angle} 多 1 个开标签（${open} 开 / ${close} 闭），为黄（已按最后一对解析）`,
+    };
+  }
+
+  return {
+    tag,
+    isValid: false,
+    severity: 'error',
+    isOpen: true,
+    isClosed: false,
+    message: `${angle} 未正确闭合（${open} 开 / ${close} 闭），缺 ${extra} 个闭标签`,
+  };
+}
 
 /**
  * 验证消息中的标签闭合情况
@@ -40,305 +137,37 @@ const emptyTagResult = (tag: string): TagCheckResult => ({
 export function validateTags(messageContent: string): TagCheckResult[] {
   if (!messageContent) {
     return [
-      emptyTagResult('thinking'),
-      emptyTagResult('maintext'),
-      emptyTagResult('option'),
-      emptyTagResult('sum'),
-      emptyTagResult('UpdateVariable'),
+      classifyTagBalance('thinking', 0, 0, 'optionalAbsent'),
+      classifyTagBalance('maintext', 0, 0, 'required'),
+      classifyTagBalance('option', 0, 0, 'required'),
+      classifyTagBalance('sum', 0, 0, 'optionalAbsent'),
+      classifyTagBalance('UpdateVariable', 0, 0, 'optionalAbsent'),
     ];
   }
 
-  const dupHint =
-    '多出一个开标签（常与预设或前文格式说明有关）；已按最后一对标签解析，一般不影响使用。';
-
-  // 检查 <thinking>
   const thinkingOpen = (messageContent.match(/<thinking>/gi) || []).length;
   const thinkingClose = (messageContent.match(/<\/thinking>/gi) || []).length;
-  let thinking: TagCheckResult;
-  if (thinkingOpen === 0 && thinkingClose === 0) {
-    thinking = {
-      tag: 'thinking',
-      isValid: true,
-      severity: 'ok',
-      isOpen: false,
-      isClosed: false,
-      message: '无 <thinking> 标签',
-    };
-  } else if (thinkingOpen === thinkingClose) {
-    thinking = {
-      tag: 'thinking',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<thinking> 标签完整 (${thinkingOpen} 对)`,
-    };
-  } else if (isSuspiciousDuplicateOpenMismatch(thinkingOpen, thinkingClose)) {
-    thinking = {
-      tag: 'thinking',
-      isValid: true,
-      severity: 'warning',
-      isOpen: true,
-      isClosed: true,
-      message: `<thinking> 存疑（${thinkingOpen} 开 / ${thinkingClose} 闭）。${dupHint}`,
-    };
-  } else {
-    thinking = {
-      tag: 'thinking',
-      isValid: false,
-      severity: 'error',
-      isOpen: thinkingOpen > 0,
-      isClosed: thinkingClose > 0 && thinkingOpen === thinkingClose,
-      message: `<thinking> 标签未正确闭合 (${thinkingOpen} 个开标签, ${thinkingClose} 个闭标签)`,
-    };
-  }
+  const thinking = classifyTagBalance('thinking', thinkingOpen, thinkingClose, 'optionalAbsent');
 
-  // 检查 <maintext>
   const maintextOpen = (messageContent.match(/<maintext>/gi) || []).length;
   const maintextClose = (messageContent.match(/<\/maintext>/gi) || []).length;
-  let maintext: TagCheckResult;
-  if (maintextOpen === 0) {
-    maintext = {
-      tag: 'maintext',
-      isValid: false,
-      severity: 'error',
-      isOpen: false,
-      isClosed: false,
-      message: '缺少 <maintext> 标签',
-    };
-  } else if (maintextOpen === maintextClose) {
-    maintext = {
-      tag: 'maintext',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<maintext> 标签完整 (${maintextOpen} 对)`,
-    };
-  } else if (maintextOpen === 2 && maintextClose === 1) {
-    // 正文开合2闭合1是正常的（预设中可能有一个示例）
-    maintext = {
-      tag: 'maintext',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<maintext> 正常（${maintextOpen} 开 / ${maintextClose} 闭）。已按最后一对标签解析。`,
-    };
-  } else if (isSuspiciousDuplicateOpenMismatch(maintextOpen, maintextClose)) {
-    maintext = {
-      tag: 'maintext',
-      isValid: true,
-      severity: 'warning',
-      isOpen: true,
-      isClosed: true,
-      message: `<maintext> 存疑（${maintextOpen} 开 / ${maintextClose} 闭）。${dupHint}`,
-    };
-  } else if (maintextOpen < maintextClose) {
-    maintext = {
-      tag: 'maintext',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: true,
-      message: `多余的 </maintext> 标签 (${maintextOpen} 个开标签, ${maintextClose} 个闭标签)`,
-    };
-  } else {
-    maintext = {
-      tag: 'maintext',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: false,
-      message: `<maintext> 未闭合 (${maintextOpen} 个开标签, ${maintextClose} 个闭标签)`,
-    };
-  }
+  const maintext = classifyTagBalance('maintext', maintextOpen, maintextClose, 'required');
 
-  // 检查 <option>
   const optionOpen = (messageContent.match(/<option/gi) || []).length;
   const optionClose = (messageContent.match(/<\/option>/gi) || []).length;
-  let option: TagCheckResult;
-  if (optionOpen === 0) {
-    option = {
-      tag: 'option',
-      isValid: false,
-      severity: 'error',
-      isOpen: false,
-      isClosed: false,
-      message: '缺少 <option> 标签',
-    };
-  } else if (optionOpen === optionClose) {
-    option = {
-      tag: 'option',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<option> 标签完整 (${optionOpen} 对)`,
-    };
-  } else if (optionOpen === optionClose + 1) {
-    // 选项开合必闭合多一个是正常的（预设中可能有格式示例）
-    option = {
-      tag: 'option',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<option> 正常（${optionOpen} 开 / ${optionClose} 闭）。已按最后一对标签解析。`,
-    };
-  } else if (isSuspiciousDuplicateOpenMismatch(optionOpen, optionClose)) {
-    option = {
-      tag: 'option',
-      isValid: true,
-      severity: 'warning',
-      isOpen: true,
-      isClosed: true,
-      message: `<option> 存疑（${optionOpen} 开 / ${optionClose} 闭）。${dupHint}`,
-    };
-  } else if (optionOpen < optionClose) {
-    option = {
-      tag: 'option',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: true,
-      message: `多余的 </option> 标签 (${optionOpen} 个开标签, ${optionClose} 个闭标签)`,
-    };
-  } else {
-    option = {
-      tag: 'option',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: false,
-      message: `<option> 未闭合 (${optionOpen} 个开标签, ${optionClose} 个闭标签)`,
-    };
-  }
+  const option = classifyTagBalance('option', optionOpen, optionClose, 'required');
 
-  // 检查 <sum>（可选；有则须闭合）
   const sumOpen = (messageContent.match(/<sum>/gi) || []).length;
   const sumClose = (messageContent.match(/<\/sum>/gi) || []).length;
-  let sum: TagCheckResult;
-  if (sumOpen === 0 && sumClose === 0) {
-    sum = {
-      tag: 'sum',
-      isValid: true,
-      severity: 'ok',
-      isOpen: false,
-      isClosed: false,
-      message: '无 <sum> 标签（可选）',
-    };
-  } else if (sumOpen === sumClose) {
-    sum = {
-      tag: 'sum',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<sum> 标签完整 (${sumOpen} 对)`,
-    };
-  } else if (sumOpen === 2 && sumClose === 1) {
-    // 摘要开合2闭合1是正常的（预设中可能有一个示例）
-    sum = {
-      tag: 'sum',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<sum> 正常（${sumOpen} 开 / ${sumClose} 闭）。已按最后一对标签解析。`,
-    };
-  } else if (isSuspiciousDuplicateOpenMismatch(sumOpen, sumClose)) {
-    sum = {
-      tag: 'sum',
-      isValid: true,
-      severity: 'warning',
-      isOpen: true,
-      isClosed: true,
-      message: `<sum> 存疑（${sumOpen} 开 / ${sumClose} 闭）。${dupHint}`,
-    };
-  } else if (sumOpen < sumClose) {
-    sum = {
-      tag: 'sum',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: true,
-      message: `多余的 </sum> 标签 (${sumOpen} 个开标签, ${sumClose} 个闭标签)`,
-    };
-  } else {
-    sum = {
-      tag: 'sum',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: false,
-      message: `<sum> 未闭合 (${sumOpen} 个开标签, ${sumClose} 个闭标签)`,
-    };
-  }
+  const sum = classifyTagBalance('sum', sumOpen, sumClose, 'optionalAbsent');
 
-  // 检查 <UpdateVariable>（可选；双 API 时常由第二段合并；有则须闭合）
   const uvOpen = (messageContent.match(/<UpdateVariable>/gi) || []).length;
   const uvClose = (messageContent.match(/<\/UpdateVariable>/gi) || []).length;
-  let updateVariable: TagCheckResult;
-  if (uvOpen === 0 && uvClose === 0) {
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: true,
-      severity: 'ok',
-      isOpen: false,
-      isClosed: false,
-      message: '无 <UpdateVariable> 标签（可选）',
-    };
-  } else if (uvOpen === uvClose) {
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<UpdateVariable> 标签完整 (${uvOpen} 对)`,
-    };
-  } else if (uvOpen === 2 && uvClose === 1) {
-    // 变量开合2闭合1是正常的（预设中可能有一个示例）
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: true,
-      severity: 'ok',
-      isOpen: true,
-      isClosed: true,
-      message: `<UpdateVariable> 正常（${uvOpen} 开 / ${uvClose} 闭）。已按最后一对标签解析。`,
-    };
-  } else if (isSuspiciousDuplicateOpenMismatch(uvOpen, uvClose)) {
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: true,
-      severity: 'warning',
-      isOpen: true,
-      isClosed: true,
-      message: `<UpdateVariable> 存疑（${uvOpen} 开 / ${uvClose} 闭）。${dupHint}`,
-    };
-  } else if (uvOpen < uvClose) {
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: true,
-      message: `多余的 </UpdateVariable> 标签 (${uvOpen} 个开标签, ${uvClose} 个闭标签)`,
-    };
-  } else {
-    updateVariable = {
-      tag: 'UpdateVariable',
-      isValid: false,
-      severity: 'error',
-      isOpen: true,
-      isClosed: false,
-      message: `<UpdateVariable> 未闭合 (${uvOpen} 个开标签, ${uvClose} 个闭标签)`,
-    };
-  }
+  const updateVariable = classifyTagBalance('UpdateVariable', uvOpen, uvClose, 'optionalAbsent');
 
   return [thinking, maintext, option, sum, updateVariable];
 }
+
 
 /**
  * 检查消息是否有未闭合的 thinking 或 redacted_reasoning 标签
@@ -462,17 +291,33 @@ export function parseMaintext(messageContent: string): string {
   return extractMaintextByLastClosePair(cleaned);
 }
 
+/** 匹配 `<sum>` / `<sum …>` 或 `</sum>`，用于栈配对（只认完整闭合对） */
+const SUM_PAIR_TOKEN_RE = /<sum(\s[^>]*)?>|<\/sum>/gi;
+
 /**
- * 提取最后一对 <sum> 标签内容（避免前文「格式要求：<sum>…」等多算一对开标签时取错）
+ * 提取「最后一个已闭合」的 `<sum>…</sum>` 内部文本：以文档中最后一个 `</sum>` 为准，与其栈配对的 `<sum>` 之间的内容。
+ * 用栈配对，避免非贪婪正则把第一个 `</sum>` 错配给第一个 `<sum>`（例如示例 + 正文多段 sum 时）。
  */
 export function extractLastSumContent(messageContent: string): string {
   if (!messageContent) return '';
   let cleaned = messageContent.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
   cleaned = cleaned.replace(/<redacted_reasoning>[\s\S]*?<\/redacted_reasoning>/gi, '');
-  const matches = [...cleaned.matchAll(/<sum>([\s\S]*?)<\/sum>/gi)];
-  if (matches.length === 0) return '';
-  const last = matches[matches.length - 1];
-  return (last[1] ?? '').trim();
+  const stack: number[] = [];
+  let lastClosedInner = '';
+  SUM_PAIR_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SUM_PAIR_TOKEN_RE.exec(cleaned)) !== null) {
+    const token = m[0];
+    if (/^<\/sum>/i.test(token)) {
+      const contentStart = stack.pop();
+      if (contentStart !== undefined) {
+        lastClosedInner = cleaned.slice(contentStart, m.index).trim();
+      }
+    } else {
+      stack.push(m.index + token.length);
+    }
+  }
+  return lastClosedInner;
 }
 
 /**

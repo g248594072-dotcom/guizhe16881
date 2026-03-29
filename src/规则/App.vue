@@ -767,9 +767,8 @@
     </Teleport>
   </div>
 
-  <!-- 全局覆盖层（不受 gamePhase 影响） -->
+  <!-- 开场白生成中：始终在 body（开局无 #app-root） -->
   <Teleport to="body">
-    <!-- 开场白生成中弹窗 -->
     <div
       v-if="isGeneratingOpening"
       class="opening-generating-overlay"
@@ -787,7 +786,11 @@
         </button>
       </div>
     </div>
+  </Teleport>
 
+  <!-- 标签检验 / 末尾玩家楼 / MVU：游戏内全屏时须挂在 #app-root 内；Teleport 需单根，用 contents 避免影响布局 -->
+  <Teleport :to="gameSurfaceTeleportTarget">
+    <div class="game-surface-teleport-slot">
     <!-- 标签验证弹窗（开局/游戏阶段都可显示） -->
     <Transition name="modal">
       <div v-if="isTagDialogOpen" class="modal-overlay tag-validation-overlay">
@@ -808,7 +811,7 @@
 
               <div class="validation-duplicate-hint" v-if="tagCheckHasDuplicateOpenWarning(tagCheckResults)">
                 <i class="fa-solid fa-triangle-exclamation"></i>
-                <span>开合标签多出一个开标签时，多为预设或前文格式说明里重复写了与输出同形的标签；已按<strong>最后一对</strong>闭合标签解析，一般不影响正常使用。</span>
+                <span>黄色表示<strong>多组闭合</strong>或<strong>开比闭多 1 个</strong>（仍按最后一对解析）；绿色仅当<strong>恰好 1 开 1 闭</strong>；红色为未正确闭合或闭标签过多。</span>
               </div>
 
               <div class="tag-status-list">
@@ -909,10 +912,7 @@
         </div>
       </div>
     </Transition>
-  </Teleport>
 
-  <!-- MVU 缺失提示弹窗 -->
-  <Teleport to="body">
     <Transition name="fade">
       <div
         v-if="showMvuMissingModal"
@@ -938,13 +938,14 @@
           </div>
 
           <div class="modal-footer">
-            <button class="btn-primary" @click="confirmMvuMissing">
+            <button type="button" class="btn-primary" @click="confirmMvuMissing">
               确认了解
             </button>
           </div>
         </div>
       </div>
     </Transition>
+    </div>
   </Teleport>
 </template>
 
@@ -997,6 +998,11 @@ const appBuildVersion = __APP_VERSION__;
 
 // 游戏阶段管理
 const gamePhase = ref<GamePhase>(GamePhase.OPENING);
+
+/** 全屏只作用于 #app-root；Teleport 到 body 的节点在全屏层外不可见，游戏阶段改挂 #app-root */
+const gameSurfaceTeleportTarget = computed(() =>
+  gamePhase.value === GamePhase.GAME ? '#app-root' : 'body',
+);
 const isInitializing = ref(false);
 const isStoreReady = ref(false); // store 数据是否就绪
 const showMvuMissingTip = ref(false); // 是否显示 MVU 缺失提示
@@ -1348,9 +1354,9 @@ function tagCheckHasDuplicateOpenWarning(results: TagCheckResult[]): boolean {
 }
 
 function tagCheckBadgeLabel(result: TagCheckResult): string {
-  if (result.severity === 'ok') return '✓ 正常';
-  if (result.severity === 'warning') return '⚠ 存疑';
-  return '✗ 异常';
+  if (result.severity === 'ok') return '✓ 绿';
+  if (result.severity === 'warning') return '⚠ 黄';
+  return '✗ 红';
 }
 
 function formatGenerationDurationMs(ms: number): string {
@@ -2936,6 +2942,49 @@ function saveGameSnapshot(userInput: string) {
   console.log('📸 [App] 游戏状态快照已保存');
 }
 
+/**
+ * 回退完成后：若当前聊天中可见的 user 至多 1 条（仅有开局时自动写入的那条提示词楼层，无玩家后续发送），则回到开始界面。
+ */
+function maybeReturnToOpeningAfterRollback(): boolean {
+  if (gamePhase.value !== GamePhase.GAME) return false;
+  try {
+    if (typeof getLastMessageId !== 'function' || typeof getChatMessages !== 'function') return false;
+    const last = getLastMessageId();
+    if (last < 0) return false;
+
+    const all = getChatMessages(`0-${last}`, { hide_state: 'unhidden' });
+    const userCount = all.filter(m => m.role === 'user').length;
+    if (userCount > 1) return false;
+
+    console.log('🏠 [App] 回退后检测到无玩家后续楼层（仅开局或更少），返回开始界面');
+    gamePhase.value = GamePhase.OPENING;
+    isOpeningPhase.value = false;
+    viewMode.value = 'normal';
+    mainText.value = '';
+    options.value = [];
+    streamTextBuffer.value = '';
+    currentMessageId.value = undefined;
+    currentMessageInfo.value = {};
+    userInput.value = '';
+    showAiOutput.value = false;
+    lastGenerationRaw.value = '';
+    lastGenerationDurationLabel.value = '';
+    pendingUserMessageId.value = null;
+    lastUserInputSnapshot.value = '';
+    lastMaintextSnapshot.value = '';
+    lastOptionsSnapshot.value = [];
+    lastMessageIdSnapshot.value = undefined;
+    if (openingFormRef.value) {
+      openingFormRef.value.resetSubmitState();
+    }
+    toastr.info('已回到开始界面（当前聊天仅含开局相关楼层）');
+    return true;
+  } catch (e) {
+    console.warn('⚠️ [App] 检测是否仅剩开局楼层失败:', e);
+    return false;
+  }
+}
+
 // 回退到上次快照状态
 async function rollbackToSnapshot() {
   console.log('⏮️ [App] 开始回退到上次快照状态...');
@@ -2987,8 +3036,12 @@ async function rollbackToSnapshot() {
     isTagDialogOpen.value = false;
     showAiOutput.value = false; // 重置展开状态
 
-    console.log('✅ [App] 回退完成，输入框已还原');
-    toastr.info('已回退到发送前的状态');
+    if (maybeReturnToOpeningAfterRollback()) {
+      console.log('✅ [App] 回退完成，已切换至开始界面');
+    } else {
+      console.log('✅ [App] 回退完成，输入框已还原');
+      toastr.info('已回退到发送前的状态');
+    }
   } catch (error) {
     console.error('❌ [App] 回退失败:', error);
     toastr.error('回退失败');
@@ -6439,6 +6492,11 @@ body.has-dragging-fab {
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+
+// 游戏阶段 Teleport 单根包裹：display:contents 使子节点等效挂在 #app-root 下，全屏时仍在上层
+.game-surface-teleport-slot {
+  display: contents;
 }
 
 // Modal（需高于 .middle-panel 手机抽屉 z-index: 60，否则点「编辑」弹窗在抽屉下方看不见）
