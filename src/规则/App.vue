@@ -428,12 +428,19 @@
           <div class="modal-body">
             <!-- 新增角色 -->
             <div v-if="modalType === 'add_character'" class="rule-form">
-              <label class="form-label">角色描写</label>
+              <label class="form-label">角色名字</label>
+              <input
+                v-model="modalForm.addCharacterName"
+                type="text"
+                class="form-input"
+                placeholder="输入角色名字"
+              />
+              <label class="form-label">简单描述角色</label>
               <textarea
                 v-model="modalForm.addCharacterDescription"
                 class="form-textarea"
                 rows="6"
-                placeholder="输入一段角色描写（如外貌、身份、性格等）..."
+                placeholder="简要描述外貌、身份、性格等..."
               />
             </div>
             <!-- 新增世界规则 -->
@@ -1093,6 +1100,7 @@ const rootStyle = computed(() => {
 
 // 弹窗表单数据（按类型复用）
 const modalForm = ref({
+  addCharacterName: '',
   addCharacterDescription: '',
   worldRuleName: '',
   worldRuleDetail: '',
@@ -1560,6 +1568,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
   modalType.value = type;
   modalPayload.value = payload ?? null;
   modalForm.value = {
+    addCharacterName: '',
     addCharacterDescription: '',
     worldRuleName: payload?.title ?? '',
     worldRuleDetail: payload?.desc ?? '',
@@ -1690,7 +1699,7 @@ async function onModalComplete() {
   try {
     if (type === 'add_character') {
       const { submitAddCharacter } = await import('./utils/dialogAndVariable');
-      messageText = await submitAddCharacter(form.addCharacterDescription);
+      messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
     } else if (type === 'add_world_rule') {
       const { submitAddWorldRule } = await import('./utils/dialogAndVariable');
       messageText = await submitAddWorldRule(form.worldRuleName, form.worldRuleDetail);
@@ -2571,7 +2580,7 @@ ${maintext}
 2. 不要输出正文、解释或任何其他内容
 3. 使用标准的 JSON Patch 格式（op: replace/add/remove）
 4. 确保 JSON 格式正确无误
-5. 基于“当前变量数据”进行增量更新，只更新被正文明确影响的变量
+5. 基于"当前变量数据"进行增量更新，只更新被正文明确影响的变量；但当正文中出现新角色（[新增角色]）时，必须生成该角色的完整档案，包括姓名、描写、性格、性癖、敏感部位、隐藏性癖、身体信息（年龄/身高/体重/三围/体质特征）、数值（好感度/发情值/性癖开发值）、当前综合生理描述，不得遗漏任何字段
 
 请输出：
 <UpdateVariable>...</UpdateVariable>`;
@@ -3142,26 +3151,36 @@ async function onTagDialogIgnore() {
   }
 }
 
-// 停止开局生成
-function stopOpeningGeneration() {
+// 停止开局生成（与生成失败一致：删掉本回合 user 楼层并回到开局界面）
+async function stopOpeningGeneration() {
   console.log('🛑 [App] 用户点击停止开局生成');
   if (openingGenerationId.value) {
     stopGenerationById(openingGenerationId.value);
   } else {
     stopAllGeneration();
   }
-  // 重置状态
+  if (pendingUserMessageId.value != null && typeof deleteChatMessages === 'function') {
+    try {
+      await deleteChatMessages([pendingUserMessageId.value], { refresh: 'none' });
+      console.log('✅ [App] 已删除停止生成时的开局 user 楼层:', pendingUserMessageId.value);
+    } catch (e) {
+      console.warn('⚠️ [App] 删除开局 user 楼层失败:', e);
+    }
+  }
+  pendingUserMessageId.value = null;
   isGeneratingOpening.value = false;
   isGenerating.value = false;
   isInitializing.value = false;
   isOpeningPhase.value = false;
   openingGenerationId.value = '';
   streamTextBuffer.value = '';
-  // 重置开局表单状态
+  mainText.value = '';
+  options.value = [];
+  gamePhase.value = GamePhase.OPENING;
   if (openingFormRef.value) {
     openingFormRef.value.resetSubmitState();
   }
-  toastr.info('已停止生成');
+  toastr.info('已停止生成，已回到开局界面');
 }
 
 // 处理标签验证弹窗 - 回退
@@ -3435,12 +3454,51 @@ async function normalizeLatestChineseStatData(): Promise<void> {
 async function handleOpeningSubmit(formData: OpeningFormData) {
   if (isInitializing.value) return;
 
+  let unsubscribeStream: (() => void) | null = null;
+  const releaseOpeningStream = () => {
+    if (unsubscribeStream) {
+      try {
+        unsubscribeStream();
+      } catch {
+        /* 流式监听已释放或宿主不支持 */
+      }
+      unsubscribeStream = null;
+    }
+  };
+
+  /** 开场白流程失败：删本回合 user 楼层、回到开局界面，避免只剩玩家楼层却被判为「已在游戏中」 */
+  const abortOpeningInit = async (toastMessage: string, logError?: unknown) => {
+    releaseOpeningStream();
+    if (pendingUserMessageId.value != null && typeof deleteChatMessages === 'function') {
+      try {
+        await deleteChatMessages([pendingUserMessageId.value], { refresh: 'none' });
+        console.log('✅ [App] 已删除失败的开局 user 楼层:', pendingUserMessageId.value);
+      } catch (e) {
+        console.warn('⚠️ [App] 删除开局 user 楼层失败:', e);
+      }
+    }
+    pendingUserMessageId.value = null;
+    isOpeningPhase.value = false;
+    isGenerating.value = false;
+    isGeneratingOpening.value = false;
+    isInitializing.value = false;
+    openingGenerationId.value = '';
+    streamTextBuffer.value = '';
+    mainText.value = '';
+    options.value = [];
+    gamePhase.value = GamePhase.OPENING;
+    if (openingFormRef.value) {
+      openingFormRef.value.resetSubmitState();
+    }
+    if (logError !== undefined) {
+      console.error('❌ [App] 游戏初始化失败:', logError);
+    }
+    toastr.error(toastMessage);
+  };
+
   isInitializing.value = true;
   isOpeningPhase.value = true; // 标记为开局流程
   console.log('🎮 [App] 开始初始化游戏...', formData);
-
-  let unsubscribeStream: any = null;
-  let streamSubscriptionSuccess = false;
 
   // 检测当前输出模式
   let isDualMode = false;
@@ -3466,145 +3524,133 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
       console.log('✅ [App] 游戏变量初始化成功');
     }
 
-    // 2. 获取开局提示词内容
+    // 2. 获取开局提示词内容（由 App 单独写入 user 楼层，不在 gameInitializer 重复创建）
     console.log('🎮 [App] 步骤2: 准备开局提示词...');
     const storyResult = await createOpeningStoryMessage(formData);
-    if (!storyResult.success) {
-      console.error('❌ [App] 创建开局楼层失败，但继续进入游戏');
-    } else {
-      console.log('✅ [App] 开局提示词准备完成');
+    if (!storyResult.success || !String(storyResult.promptContent ?? '').trim()) {
+      console.error('❌ [App] 开局提示词准备失败');
+      await abortOpeningInit('开局提示词准备失败，请检查后重试');
+      return;
+    }
+    console.log('✅ [App] 开局提示词准备完成');
+
+    if (typeof generate !== 'function') {
+      await abortOpeningInit('当前环境无法调用 AI 生成，请检查酒馆助手');
+      return;
     }
 
     // 3. 触发 AI 生成开场白（和正常发消息一样的流程）
-    if (storyResult.success && typeof generate === 'function') {
-      console.log('🎮 [App] 步骤3: 触发 AI 生成开场白...');
-      isGenerating.value = true;
-      isGeneratingOpening.value = true;
-      openingSecondaryApiPhase.value = false;
-      openingGenerationId.value = `opening-${Date.now()}`;
+    console.log('🎮 [App] 步骤3: 触发 AI 生成开场白...');
+    isGenerating.value = true;
+    isGeneratingOpening.value = true;
+    openingSecondaryApiPhase.value = false;
+    openingGenerationId.value = `opening-${Date.now()}`;
 
-      const userPrompt = storyResult.promptContent || '';
-      console.log('📝 [App] 发送给 AI 的提示词:', userPrompt.substring(0, 300) + '...');
+    const userPrompt = storyResult.promptContent || '';
+    console.log('📝 [App] 发送给 AI 的提示词:', userPrompt.substring(0, 300) + '...');
 
-      // 注册流式监听（和 sendMessage 一样）
-      if (typeof eventOn === 'function' && typeof iframe_events !== 'undefined') {
-        const streamHandler = (text: string) => {
-          streamTextBuffer.value = text;
-          let isThinkingComplete = false;
-          const isFilteringComplete = (t: string) => {
-            const thinkingOpen = (t.match(/<thinking>/gi) || []).length;
-            const thinkingClose = (t.match(/<\/thinking>/gi) || []).length;
-            return thinkingOpen > 0 && thinkingOpen === thinkingClose;
-          };
-          if (!isThinkingComplete) {
-            isThinkingComplete = isFilteringComplete(text);
-            if (!isThinkingComplete) {
-              mainText.value = 'AI 正在思考...';
-              return;
-            }
-          }
-          const filteredText = extractFilteredContent(text);
-          const parsed = parseMaintext(filteredText);
-          if (parsed) {
-            mainText.value = parsed;
-          }
+    // 注册流式监听（和 sendMessage 一样）
+    if (typeof eventOn === 'function' && typeof iframe_events !== 'undefined') {
+      const streamHandler = (text: string) => {
+        streamTextBuffer.value = text;
+        let isThinkingComplete = false;
+        const isFilteringComplete = (t: string) => {
+          const thinkingOpen = (t.match(/<thinking>/gi) || []).length;
+          const thinkingClose = (t.match(/<\/thinking>/gi) || []).length;
+          return thinkingOpen > 0 && thinkingOpen === thinkingClose;
         };
-        try {
-          const result = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandler);
-          if (typeof result === 'function') {
-            unsubscribeStream = result;
-            streamSubscriptionSuccess = true;
+        if (!isThinkingComplete) {
+          isThinkingComplete = isFilteringComplete(text);
+          if (!isThinkingComplete) {
+            mainText.value = 'AI 正在思考...';
+            return;
           }
-        } catch (err) {
-          console.error('❌ [App] 注册流式事件监听失败:', err);
         }
-      }
-
-      // 先将用户输入写入聊天楼层（便于重 roll）
-      // 发送完整 MVU 格式，统一数据格式
-      if (typeof createChatMessages === 'function') {
-        let mvuData = { stat_data: {}, display_data: {}, delta_data: {} };
-        try {
-          const baseData = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
-          if (baseData) {
-            mvuData = baseData;
-          }
-        } catch (e) { /* 忽略 */ }
-        const openingUserBaseMvu = mvuData as Mvu.MvuData;
-        await createChatMessages(
-          [{ role: 'user', message: userPrompt, data: mvuData }],
-          { refresh: 'none' },
-        );
-        await new Promise(r => setTimeout(r, 50));
-        pendingUserMessageId.value = getLastMessageId();
-        console.log('✅ [App] 已写入开局 user 消息，message_id:', pendingUserMessageId.value);
-        const ouid = pendingUserMessageId.value;
-        if (ouid != null) {
-          await applyMvuParseToMessageFloor(userPrompt, openingUserBaseMvu, ouid);
+        const filteredText = extractFilteredContent(text);
+        const parsed = parseMaintext(filteredText);
+        if (parsed) {
+          mainText.value = parsed;
         }
-      }
-
-      // 调用 generate
-      aiGenerationStartMs.value = Date.now();
-      let result = await generate({
-        user_input: userPrompt,
-        should_stream: true,
-        generation_id: openingGenerationId.value,
-      });
-      console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
-
-      // 双API模式：调用第二API处理变量
-      if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
-        try {
-          const { processWithSecondaryApi } = await import('./utils/apiSettings');
-          const maintext = parseMaintext(extractFilteredContent(result));
-
-          if (maintext) {
-            const variableUpdate = await processWithSecondaryApi(maintext, secondaryApiConfig);
-            if (variableUpdate && !result.includes('<UpdateVariable>')) {
-              result = result.trim() + '\n\n<UpdateVariable>' + variableUpdate + '</UpdateVariable>';
-              console.log('✅ [App] 开局流程：第二API变量更新已合并');
-            }
-          }
-        } catch (error) {
-          console.error('❌ [App] 开局流程：第二API处理失败:', error);
+      };
+      try {
+        const result = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandler);
+        if (typeof result === 'function') {
+          unsubscribeStream = result;
         }
+      } catch (err) {
+        console.error('❌ [App] 注册流式事件监听失败:', err);
       }
-
-      // 清理流式监听
-      if (streamSubscriptionSuccess && unsubscribeStream) {
-        try {
-          unsubscribeStream?.();
-        } catch {
-          /* 流式监听已释放或宿主不支持 */
-        }
-      }
-
-      // 验证结果
-      if (!result || result.trim().length === 0) {
-        throw new Error('生成结果为空');
-      }
-
-      // 关闭 loading 弹窗，避免遮挡标签验证弹窗
-      isGeneratingOpening.value = false;
-      isGenerating.value = false;
-
-      // 打开标签验证弹窗（和正常发消息一样）
-      const filteredResult = extractFilteredContent(result);
-      openTagValidationDialog(filteredResult);
-      return; // 等待用户点击确认或回退，不立即进入游戏
     }
-  } catch (error) {
-    console.error('❌ [App] 游戏初始化失败:', error);
-    toastr.error('游戏初始化失败: ' + String(error));
-    // 重置所有状态，确保按钮不再转圈
-    isOpeningPhase.value = false;
-    isGenerating.value = false;
+
+    // 先将用户输入写入聊天楼层（便于重 roll）
+    // 发送完整 MVU 格式，统一数据格式
+    if (typeof createChatMessages === 'function') {
+      let mvuData = { stat_data: {}, display_data: {}, delta_data: {} };
+      try {
+        const baseData = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+        if (baseData) {
+          mvuData = baseData;
+        }
+      } catch (e) { /* 忽略 */ }
+      const openingUserBaseMvu = mvuData as Mvu.MvuData;
+      await createChatMessages(
+        [{ role: 'user', message: userPrompt, data: mvuData }],
+        { refresh: 'none' },
+      );
+      await new Promise(r => setTimeout(r, 50));
+      pendingUserMessageId.value = getLastMessageId();
+      console.log('✅ [App] 已写入开局 user 消息，message_id:', pendingUserMessageId.value);
+      const ouid = pendingUserMessageId.value;
+      if (ouid != null) {
+        await applyMvuParseToMessageFloor(userPrompt, openingUserBaseMvu, ouid);
+      }
+    }
+
+    // 调用 generate
+    aiGenerationStartMs.value = Date.now();
+    let result = await generate({
+      user_input: userPrompt,
+      should_stream: true,
+      generation_id: openingGenerationId.value,
+    });
+    console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
+
+    // 双API模式：调用第二API处理变量
+    if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
+      try {
+        const { processWithSecondaryApi } = await import('./utils/apiSettings');
+        const maintext = parseMaintext(extractFilteredContent(result));
+
+        if (maintext) {
+          const variableUpdate = await processWithSecondaryApi(maintext, secondaryApiConfig);
+          if (variableUpdate && !result.includes('<UpdateVariable>')) {
+            result = result.trim() + '\n\n<UpdateVariable>' + variableUpdate + '</UpdateVariable>';
+            console.log('✅ [App] 开局流程：第二API变量更新已合并');
+          }
+        }
+      } catch (error) {
+        console.error('❌ [App] 开局流程：第二API处理失败:', error);
+      }
+    }
+
+    // 清理流式监听（generate 已结束，避免 abort 时重复 unsubscribe）
+    releaseOpeningStream();
+
+    // 验证结果
+    if (!result || result.trim().length === 0) {
+      throw new Error('生成结果为空');
+    }
+
+    // 关闭 loading 弹窗，避免遮挡标签验证弹窗
     isGeneratingOpening.value = false;
-    isInitializing.value = false;
-    streamTextBuffer.value = '';
-    // 重置开局表单提交状态，保留表单内容（避免“开始游戏”一直转圈）
-    if (openingFormRef.value) { openingFormRef.value.resetSubmitState(); }
+    isGenerating.value = false;
+
+    // 打开标签验证弹窗（和正常发消息一样）
+    const filteredResult = extractFilteredContent(result);
+    openTagValidationDialog(filteredResult);
+    return; // 等待用户点击确认或回退，不立即进入游戏
+  } catch (error) {
+    await abortOpeningInit('游戏初始化失败: ' + String(error), error);
   } finally {
     // 正常流程（弹出标签验证窗）时，由弹窗按钮处理状态重置
     if (!isTagDialogOpen.value) {

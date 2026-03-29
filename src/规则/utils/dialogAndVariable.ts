@@ -47,20 +47,24 @@ function parseTagLines(text: string): string[] {
 
 // ---------- 角色 ----------
 
-export function formatAddCharacterMessage(description: string): string {
-  return `[新增角色]\n${description.trim()}`;
+export function formatAddCharacterMessage(name: string, description: string): string {
+  const n = name.trim();
+  const d = description.trim();
+  const lines = ['[新增角色]', `姓名：${n}`];
+  if (d) lines.push(`简单描述：${d}`);
+  return lines.join('\n');
 }
 
-export function addCharacterToVariables(description: string): void {
+export function addCharacterToVariables(name: string, description: string): void {
   const store = useDataStore();
   const id = `CHR-${Date.now()}`;
-  const text = description.trim();
-  const firstLine = text.split('\n')[0]?.trim() || '未命名';
-  
+  const n = name.trim() || '未命名';
+  const desc = description.trim();
+
   store.data.角色档案[id] = {
-    姓名: firstLine,
+    姓名: n,
     状态: '出场中',
-    描写: text,
+    描写: desc,
     当前内心想法: '',
     性格: {},
     性癖: {},
@@ -84,14 +88,14 @@ export function addCharacterToVariables(description: string): void {
   bumpUpdateTime();
 }
 
-export async function submitAddCharacter(description: string): Promise<string> {
-  const text = description.trim();
-  if (!text) {
-    toastr.warning('请输入角色描写');
+export async function submitAddCharacter(name: string, description: string): Promise<string> {
+  const n = name.trim();
+  if (!n) {
+    toastr.warning('请输入角色名字');
     return '';
   }
-  const message = formatAddCharacterMessage(text);
-  addCharacterToVariables(text);
+  const message = formatAddCharacterMessage(n, description);
+  addCharacterToVariables(n, description);
   return message;
 }
 

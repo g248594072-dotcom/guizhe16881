@@ -3,10 +3,7 @@
  * 负责初始化游戏变量、创建开局楼层、管理世界书条目
  */
 
-import type { OpeningFormData, GameData, MvuData } from '../types';
-
-// 防止重复创建的标志
-let isCreatingOpening = false;
+import type { OpeningFormData } from '../types';
 
 /** 开局 <maintext> 正文写作要求（与清单、变量约束配合使用） */
 const OPENING_MAINTEXT_REQUEST = `<request>
@@ -280,30 +277,18 @@ ${jsonPatchInner}
 }
 
 /**
- * 2. 创建开局介绍楼层（1层）
- * 关键要点：
- * - 防止重复创建（检查1层消息是否已存在）
- * - 获取0层的data并携带到1层
- * - 根据配置生成不同风格的开局文本
- * - 创建完成后更新编年史
- * - 即使跳过创建，也返回 promptContent，供 App 调用 generate 时使用
+ * 2. 准备开局提示词（不写入聊天楼层）
+ * 实际 user 楼层由 App.vue 在调用 generate 前统一创建并做 MVU 解析，避免与 gameInitializer 重复写入导致多条玩家楼层。
+ * 若检测到已有第 1 层消息，仍返回 promptContent，并异步尝试更新编年史。
  */
 export async function createOpeningStoryMessage(formData: OpeningFormData): Promise<{success: boolean; promptContent?: string}> {
-  // 防止重复创建
-  if (isCreatingOpening) {
-    console.log('⚠️ [gameInitializer] 正在创建开局楼层，跳过重复调用');
-    return { success: false };
-  }
-
   try {
-    // 无论是否创建消息，都先构建提示词，保证调用 generate 时一定有内容
     const promptContent = buildOpeningPromptContent(formData);
 
-    // 检查是否已经存在1层消息，避免重复创建
     try {
       const existingMessages = getChatMessages(1);
       if (existingMessages && existingMessages.length > 0) {
-        console.log('⚠️ [gameInitializer] 1层消息已存在，跳过创建（仍返回 promptContent 供 generate 使用）');
+        console.log('⚠️ [gameInitializer] 1层消息已存在，仅返回 promptContent 供 generate 使用');
         setTimeout(async () => {
           try {
             const { checkAndUpdateChronicle } = await import('./chronicleUpdater');
@@ -315,64 +300,15 @@ export async function createOpeningStoryMessage(formData: OpeningFormData): Prom
         }, 500);
         return { success: true, promptContent };
       }
-    } catch (err) {
-      // 1层不存在，继续创建
+    } catch {
+      /* 第 1 层不存在等，忽略 */
     }
 
-    // 设置创建标志
-    isCreatingOpening = true;
-
-    // 获取0层的data（携带变量）
-    let layer0Data: MvuData = { stat_data: {}, display_data: {}, delta_data: {} };
-    try {
-      const mvuData = Mvu.getMvuData({ type: 'message', message_id: 0 });
-      if (mvuData && mvuData.stat_data) {
-        layer0Data = mvuData;
-      } else {
-        console.warn('⚠️ [gameInitializer] 0层MVU数据的 stat_data 不存在，使用空对象');
-      }
-    } catch (err) {
-      console.warn('⚠️ [gameInitializer] 获取0层MVU数据失败，尝试从getVariables读取', err);
-      try {
-        const vars = getVariables({ type: 'message', message_id: 0 });
-        if (vars && vars.stat_data) {
-          layer0Data = {
-            stat_data: vars.stat_data || {},
-            display_data: vars.display_data || {},
-            delta_data: vars.delta_data || {},
-          };
-        } else {
-          console.warn('⚠️ [gameInitializer] 0层变量的 stat_data 不存在，使用空对象');
-        }
-      } catch (err2) {
-        console.warn('⚠️ [gameInitializer] 获取0层变量失败，使用空对象', err2);
-      }
-    }
-
-    // 创建user消息请求AI生成初始内容
-    // 发送完整 MVU 格式，统一数据格式
-    await createChatMessages(
-      [
-        {
-          role: 'user',
-          message: promptContent,
-          data: layer0Data,  // 发送完整 MVU 格式 { stat_data, display_data, delta_data }
-        },
-      ],
-      {
-        refresh: 'none',
-      },
-    );
-
-    console.log('✅ [gameInitializer] 已创建开局请求消息，等待AI生成初始数据...');
+    console.log('✅ [gameInitializer] 开局提示词已准备');
     console.log('📝 [gameInitializer] 提示词内容预览:', promptContent.substring(0, 200) + '...');
-
-    // 重置创建标志
-    isCreatingOpening = false;
     return { success: true, promptContent };
   } catch (error) {
-    console.error('❌ [gameInitializer] 创建开局介绍楼层失败:', error);
-    isCreatingOpening = false;
+    console.error('❌ [gameInitializer] 准备开局提示词失败:', error);
     return { success: false };
   }
 }
