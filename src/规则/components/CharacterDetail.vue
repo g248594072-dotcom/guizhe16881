@@ -175,12 +175,39 @@
                   :key="`${p}-${idx}`"
                   :text="String(p)"
                   :highlight="idx === 0"
+                  class="clickable-badge"
+                  @click="toggleSensitivePartDetail(String(p))"
                 />
               </template>
               <template v-else>
                 <span class="empty-hint">暂无</span>
               </template>
             </div>
+            <!-- 敏感部位详情展开区域 -->
+            <template v-if="expandedSensitivePart">
+              <div class="detail-expand-panel">
+                <div class="detail-header">
+                  <span class="detail-title">{{ expandedSensitivePart }}</span>
+                  <button type="button" class="close-btn" @click="expandedSensitivePart = null">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+                <div class="detail-body">
+                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.level">
+                    <span class="detail-label">敏感等级</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.level }}</span>
+                  </div>
+                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.reaction">
+                    <span class="detail-label">生理反应</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.reaction }}</span>
+                  </div>
+                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.devDetails">
+                    <span class="detail-label">开发细节</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.devDetails }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="traits-section">
             <span class="section-label">性癖</span>
@@ -191,17 +218,74 @@
                   :key="`${f}-${idx}`"
                   :text="String(f)"
                   :highlight="idx === 0"
+                  class="clickable-badge"
+                  @click="toggleFetishDetail(String(f))"
                 />
               </template>
               <template v-else>
                 <span class="empty-hint">暂无</span>
               </template>
             </div>
+            <!-- 性癖详情展开区域 -->
+            <template v-if="expandedFetish">
+              <div class="detail-expand-panel">
+                <div class="detail-header">
+                  <span class="detail-title">{{ expandedFetish }}</span>
+                  <button type="button" class="close-btn" @click="expandedFetish = null">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+                <div class="detail-body">
+                  <div class="detail-row" v-if="getFetishDetail(expandedFetish)?.level">
+                    <span class="detail-label">等级</span>
+                    <span class="detail-value">{{ getFetishDetail(expandedFetish)?.level }}</span>
+                  </div>
+                  <div class="detail-row" v-if="getFetishDetail(expandedFetish)?.description">
+                    <span class="detail-label">细节描述</span>
+                    <span class="detail-value">{{ getFetishDetail(expandedFetish)?.description }}</span>
+                  </div>
+                  <div class="detail-row" v-if="getFetishDetail(expandedFetish)?.justification">
+                    <span class="detail-label">自我合理化</span>
+                    <span class="detail-value">{{ getFetishDetail(expandedFetish)?.justification }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="hidden-fetish">
             <span class="section-label">隐藏性癖</span>
             <p>{{ displayHiddenFetish }}</p>
           </div>
+        </div>
+      </article>
+
+      <!-- Identity Tags -->
+      <article class="detail-card">
+        <div class="card-title">
+          <i class="fa-solid fa-tags"></i>
+          <h3>身份标签</h3>
+          <button
+            type="button"
+            class="edit-mini-btn"
+            @click="$emit('openModal', 'edit_identity_tags', { characterId })"
+          >
+            编辑
+          </button>
+        </div>
+        <div class="identity-content">
+          <template v-if="displayIdentityTags.length > 0">
+            <div
+              v-for="(tag, idx) in displayIdentityTags"
+              :key="`${tag.category}-${idx}`"
+              class="identity-tag-row"
+            >
+              <span class="identity-category">{{ tag.category }}</span>
+              <span class="identity-value">{{ tag.value }}</span>
+            </div>
+          </template>
+          <template v-else>
+            <span class="empty-hint">暂无身份标签</span>
+          </template>
         </div>
       </article>
     </div>
@@ -284,7 +368,48 @@ const currentExtra = ref<{
   sensitiveParts?: string[];
   hiddenFetish?: string;
   physiologicalDesc?: string;
+  fetishDetails?: Record<string, { level: number; description: string; justification: string }>;
+  sensitivePartDetails?: Record<string, { level: number; reaction: string; devDetails: string }>;
+  identityTags?: Record<string, string>;
 }>({});
+
+// 展开的性癖详情
+const expandedFetish = ref<string | null>(null);
+const expandedSensitivePart = ref<string | null>(null);
+
+function toggleFetishDetail(fetishName: string) {
+  if (expandedFetish.value === fetishName) {
+    expandedFetish.value = null;
+  } else {
+    expandedFetish.value = fetishName;
+    expandedSensitivePart.value = null; // 关闭其他展开
+  }
+}
+
+function toggleSensitivePartDetail(partName: string) {
+  if (expandedSensitivePart.value === partName) {
+    expandedSensitivePart.value = null;
+  } else {
+    expandedSensitivePart.value = partName;
+    expandedFetish.value = null; // 关闭其他展开
+  }
+}
+
+function getFetishDetail(name: string) {
+  return currentExtra.value.fetishDetails?.[name];
+}
+
+function getSensitivePartDetail(name: string) {
+  return currentExtra.value.sensitivePartDetails?.[name];
+}
+
+const displayIdentityTags = computed(() => {
+  const tags = currentExtra.value.identityTags;
+  if (!tags || typeof tags !== 'object') return [];
+  return Object.entries(tags)
+    .filter(([_, value]) => typeof value === 'string' && value.trim())
+    .map(([category, value]) => ({ category, value: String(value) }));
+});
 
 const affectedPersonalRules = ref<RuleData[]>([]);
 
@@ -401,6 +526,9 @@ onMounted(() => {
         sensitiveParts: (current as any).sensitiveParts,
         hiddenFetish: (current as any).hiddenFetish,
         physiologicalDesc: (current as any).currentPhysiologicalDesc,
+        fetishDetails: (current as any).fetishDetails || {},
+        sensitivePartDetails: (current as any).sensitivePartDetails || {},
+        identityTags: (current as any).identityTags || {},
       };
       characterStatusText.value = (current as any).status === 'active' ? '出场中' : '暂时退场';
 
@@ -1071,6 +1199,176 @@ const emit = defineEmits<{
 
   .rule-desc {
     color: #71717a;
+  }
+}
+
+// 可点击的徽章样式
+.clickable-badge {
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
+  }
+}
+
+// 详情展开面板
+.detail-expand-panel {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: slideDown 0.2s ease-out;
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+    .detail-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f472b6;
+    }
+
+    .close-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      color: #a1a1aa;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.3);
+        color: #ef4444;
+      }
+    }
+  }
+
+  .detail-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    .detail-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .detail-label {
+        font-size: 11px;
+        color: #71717a;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .detail-value {
+        font-size: 14px;
+        color: #d4d4d8;
+        line-height: 1.5;
+      }
+    }
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// 身份标签样式
+.identity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.identity-tag-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+
+  .identity-category {
+    flex-shrink: 0;
+    min-width: 80px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #a78bfa;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .identity-value {
+    font-size: 14px;
+    color: #d4d4d8;
+    line-height: 1.5;
+  }
+}
+
+:global(.light) {
+  .detail-expand-panel {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+
+    .detail-header {
+      border-color: rgba(0, 0, 0, 0.1);
+
+      .detail-title {
+        color: #db2777;
+      }
+
+      .close-btn:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #dc2626;
+      }
+    }
+
+    .detail-body .detail-row {
+      .detail-label {
+        color: #71717a;
+      }
+      .detail-value {
+        color: #3f3f46;
+      }
+    }
+  }
+
+  .identity-tag-row {
+    background: rgba(0, 0, 0, 0.02);
+    border-color: rgba(0, 0, 0, 0.08);
+
+    .identity-category {
+      color: #7c3aed;
+    }
+
+    .identity-value {
+      color: #3f3f46;
+    }
+  }
+
+  .clickable-badge:hover {
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.15);
   }
 }
 </style>

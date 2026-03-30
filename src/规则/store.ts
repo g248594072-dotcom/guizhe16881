@@ -44,6 +44,51 @@ export function useCharacters() {
       const body = char.身体信息 || {};
       const stats = char.数值 || {};
 
+      // 性癖详情（含等级、细节描述、自我合理化）
+      const fetishDetails: Record<string, { level: number; description: string; justification: string }> = {};
+      const rawFetishes = char.性癖 || char.fetishes || {};
+      if (rawFetishes && typeof rawFetishes === 'object') {
+        for (const [key, val] of Object.entries(rawFetishes)) {
+          if (val && typeof val === 'object') {
+            fetishDetails[key] = {
+              level: (val as any).等级 ?? (val as any).level ?? 1,
+              description: (val as any).细节描述 ?? (val as any).description ?? '',
+              justification: (val as any).自我合理化 ?? (val as any).justification ?? '',
+            };
+          } else if (typeof val === 'string') {
+            fetishDetails[key] = {
+              level: 1,
+              description: val,
+              justification: '',
+            };
+          }
+        }
+      }
+
+      // 敏感部位详情（含敏感等级、生理反应、开发细节）
+      const sensitivePartDetails: Record<string, { level: number; reaction: string; devDetails: string }> = {};
+      const rawSensitiveParts = char.敏感部位 || char.sensitiveParts || {};
+      if (rawSensitiveParts && typeof rawSensitiveParts === 'object') {
+        for (const [key, val] of Object.entries(rawSensitiveParts)) {
+          if (val && typeof val === 'object') {
+            sensitivePartDetails[key] = {
+              level: (val as any).敏感等级 ?? (val as any).level ?? 1,
+              reaction: (val as any).生理反应 ?? (val as any).reaction ?? '',
+              devDetails: (val as any).开发细节 ?? (val as any).devDetails ?? '',
+            };
+          } else if (typeof val === 'string') {
+            sensitivePartDetails[key] = {
+              level: 1,
+              reaction: val,
+              devDetails: '',
+            };
+          }
+        }
+      }
+
+      // 身份标签
+      const identityTags = char.身份标签 || char.identityTags || {};
+
       return {
         id,
         name,
@@ -67,6 +112,9 @@ export function useCharacters() {
         sensitiveParts,
         hiddenFetish,
         currentPhysiologicalDesc: char.当前综合生理描述 || char.currentPhysiologicalDesc || '',
+        fetishDetails,
+        sensitivePartDetails,
+        identityTags,
       };
     });
   });

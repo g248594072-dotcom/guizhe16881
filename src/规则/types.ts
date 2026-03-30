@@ -78,7 +78,41 @@ export interface CharacterData {
   description?: string;
   /** 对应变量「当前综合生理描述」 */
   currentPhysiologicalDesc?: string;
+  /** 性癖详情（含等级、细节描述、自我合理化） */
+  fetishDetails?: FetishDetails;
+  /** 敏感部位详情（含敏感等级、生理反应、开发细节） */
+  sensitivePartDetails?: SensitivePartDetails;
+  /** 身份标签 */
+  identityTags?: Record<string, string>;
   [key: string]: any;
+}
+
+/** 性癖详情 */
+export interface FetishDetails {
+  [fetishName: string]: FetishDetail;
+}
+
+export interface FetishDetail {
+  /** 等级 */
+  level: number;
+  /** 细节描述 */
+  description: string;
+  /** 自我合理化（傲娇借口） */
+  justification: string;
+}
+
+/** 敏感部位详情 */
+export interface SensitivePartDetails {
+  [partName: string]: SensitivePartDetail;
+}
+
+export interface SensitivePartDetail {
+  /** 敏感等级 */
+  level: number;
+  /** 生理反应 */
+  reaction: string;
+  /** 开发细节 */
+  devDetails: string;
 }
 
 export interface RegionData {

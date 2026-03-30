@@ -283,6 +283,140 @@ export async function submitEditCharacterPsych(
   return message;
 }
 
+// ---------- 编辑角色性癖详情 ----------
+
+export interface FetishDetailUpdate {
+  /** 性癖名称 */
+  name: string;
+  /** 等级（1-10） */
+  level?: number;
+  /** 细节描述 */
+  description?: string;
+  /** 自我合理化 */
+  justification?: string;
+}
+
+export interface SensitivePartDetailUpdate {
+  /** 部位名称 */
+  name: string;
+  /** 敏感等级（1-10） */
+  level?: number;
+  /** 生理反应 */
+  reaction?: string;
+  /** 开发细节 */
+  devDetails?: string;
+}
+
+/**
+ * 更新角色的性癖详情
+ */
+export function updateCharacterFetishDetails(
+  characterId: string,
+  updates: FetishDetailUpdate[],
+): void {
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+
+  // 确保性癖对象存在
+  if (!char.性癖) char.性癖 = {};
+  if (!char.性癖) char.性癖 = {};
+
+  for (const update of updates) {
+    const existing = char.性癖[update.name];
+    char.性癖[update.name] = {
+      等级: update.level ?? (existing?.等级 ?? existing?.level ?? 1),
+      细节描述: update.description ?? (existing?.细节描述 ?? existing?.description ?? ''),
+      自我合理化: update.justification ?? (existing?.自我合理化 ?? existing?.justification ?? ''),
+    };
+  }
+
+  bumpUpdateTime();
+}
+
+/**
+ * 更新角色的敏感部位详情
+ */
+export function updateCharacterSensitivePartDetails(
+  characterId: string,
+  updates: SensitivePartDetailUpdate[],
+): void {
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+
+  // 确保敏感部位对象存在
+  if (!char.敏感部位) char.敏感部位 = {};
+
+  for (const update of updates) {
+    const existing = char.敏感部位[update.name];
+    char.敏感部位[update.name] = {
+      敏感等级: update.level ?? (existing?.敏感等级 ?? existing?.level ?? 1),
+      生理反应: update.reaction ?? (existing?.生理反应 ?? existing?.reaction ?? ''),
+      开发细节: update.devDetails ?? (existing?.开发细节 ?? existing?.devDetails ?? ''),
+    };
+  }
+
+  bumpUpdateTime();
+}
+
+/**
+ * 更新角色的身份标签
+ */
+export function updateCharacterIdentityTags(
+  characterId: string,
+  tags: Record<string, string>,
+): void {
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+
+  char.身份标签 = { ...tags };
+
+  bumpUpdateTime();
+}
+
+/**
+ * 格式化性癖详情更新消息
+ */
+export function formatFetishDetailMessage(characterId: string, updates: FetishDetailUpdate[]): string {
+  const lines = ['[编辑性癖详情]', `角色ID：${characterId}`];
+  for (const u of updates) {
+    const parts = [u.name];
+    if (u.level != null) parts.push(`等级${u.level}`);
+    if (u.description) parts.push(`「${u.description}」`);
+    if (u.justification) parts.push(`（自我合理化：${u.justification}）`);
+    lines.push(`- ${parts.join('：')}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * 格式化敏感部位详情更新消息
+ */
+export function formatSensitivePartDetailMessage(characterId: string, updates: SensitivePartDetailUpdate[]): string {
+  const lines = ['[编辑敏感部位详情]', `角色ID：${characterId}`];
+  for (const u of updates) {
+    const parts = [u.name];
+    if (u.level != null) parts.push(`敏感等级${u.level}`);
+    if (u.reaction) parts.push(`反应：${u.reaction}`);
+    if (u.devDetails) parts.push(`开发：${u.devDetails}`);
+    lines.push(`- ${parts.join('：')}`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * 格式化身份标签更新消息
+ */
+export function formatIdentityTagsMessage(characterId: string, tags: Record<string, string>): string {
+  const lines = ['[编辑身份标签]', `角色ID：${characterId}`];
+  for (const [category, value] of Object.entries(tags)) {
+    lines.push(`${category}：${value}`);
+  }
+  return lines.join('\n');
+}
+
 // ---------- 世界规则 ----------
 
 export function formatWorldRuleMessage(type: 'add' | 'edit' | 'archive' | 'restore', name: string, detail?: string): string {
@@ -408,29 +542,47 @@ export async function submitRestoreWorldRule(name: string): Promise<void> {
 
 // ---------- 区域规则 ----------
 
-export function formatRegionRuleMessage(type: 'add' | 'edit' | 'archive' | 'restore', regionName: string, detail?: string): string {
+export function formatRegionRuleMessage(
+  type: 'add' | 'edit' | 'archive' | 'restore',
+  regionName: string,
+  detail?: string,
+  /** 新增区域时可选：首条细分规则的名称（写入对话框摘要用） */
+  ruleName?: string,
+): string {
   if (type === 'archive') return `[归档区域规则]\n区域：${regionName}${detail ? `\n规则：${detail}` : ''}`;
   if (type === 'restore') return `[复原区域规则]\n区域：${regionName}${detail ? `\n规则：${detail}` : ''}`;
   const prefix = type === 'add' ? '[新增区域]' : '[编辑区域]';
+  const rn = ruleName?.trim();
+  if (rn) {
+    return `${prefix}\n区域名称：${regionName}\n规则名字：${rn}\n规则细节：${detail ?? ''}`;
+  }
   return `${prefix}\n区域名称：${regionName}\n规则细节：${detail ?? ''}`;
 }
 
-export function addRegionToVariables(name: string, detail: string): void {
+export function addRegionToVariables(name: string, detail: string, firstRuleTitle?: string): void {
   const store = useDataStore();
-  store.data.区域规则[name] = {
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
+  const trimmedTitle = firstRuleTitle?.trim() ?? '';
+  const 细分规则 = trimmedTitle
+    ? { [trimmedTitle]: { 描述: detail, 状态: '生效中' as const } }
+    : {};
+  regions[name] = {
     名称: name,
     效果描述: detail,
     状态: '生效中',
-    细分规则: {},
+    细分规则,
     适用对象: '',
     标记: '',
   };
+  store.data.区域规则 = regions;
   bumpUpdateTime();
 }
 
 export function updateRegionInVariables(idOrName: string, updates: Partial<RegionData>): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
@@ -452,16 +604,21 @@ export function updateRegionInVariables(idOrName: string, updates: Partial<Regio
       状态: enRuleStatusToZh(updates.status, cur.状态),
     };
   } else {
-    cur.效果描述 = updates.description ?? cur.效果描述;
-    cur.状态 = enRuleStatusToZh(updates.status, cur.状态);
+    regions[key] = {
+      ...cur,
+      效果描述: updates.description ?? cur.效果描述,
+      状态: enRuleStatusToZh(updates.status, cur.状态),
+    };
   }
-
+  
+  store.data.区域规则 = regions;
   bumpUpdateTime();
 }
 
 export function archiveRegionInVariables(idOrName: string): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
@@ -470,14 +627,16 @@ export function archiveRegionInVariables(idOrName: string): void {
   }
   
   if (regions[key]) {
-    regions[key].状态 = '已归档';
+    regions[key] = { ...regions[key], 状态: '已归档' };
+    store.data.区域规则 = regions;
     bumpUpdateTime();
   }
 }
 
 export function restoreRegionInVariables(idOrName: string): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
@@ -486,14 +645,16 @@ export function restoreRegionInVariables(idOrName: string): void {
   }
   
   if (regions[key]) {
-    regions[key].状态 = '生效中';
+    regions[key] = { ...regions[key], 状态: '生效中' };
+    store.data.区域规则 = regions;
     bumpUpdateTime();
   }
 }
 
 export function addRegionalRuleToVariables(regionIdOrName: string, title: string, desc: string): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let key = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
@@ -503,16 +664,27 @@ export function addRegionalRuleToVariables(regionIdOrName: string, title: string
   
   if (!regions[key]) return;
 
-  regions[key].细分规则[title] = {
-    描述: desc,
-    状态: '生效中',
+  // 更新区域及其细分规则
+  const curRegion = regions[key];
+  regions[key] = {
+    ...curRegion,
+    细分规则: {
+      ...curRegion.细分规则,
+      [title]: {
+        描述: desc,
+        状态: '生效中',
+      },
+    },
   };
+  
+  store.data.区域规则 = regions;
   bumpUpdateTime();
 }
 
 export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string, updates: Partial<RuleData>): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
@@ -522,8 +694,8 @@ export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTi
   
   if (!regions[regionKey]) return;
   
-  const region = regions[regionKey];
-  const subRules = region.细分规则;
+  const region = { ...regions[regionKey] };
+  const subRules = { ...region.细分规则 };
   
   // 查找子规则键
   let subKey = ruleIdOrTitle;
@@ -547,16 +719,26 @@ export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTi
       状态: enRuleStatusToZh(updates.status, cur.状态),
     };
   } else {
-    cur.描述 = updates.desc ?? cur.描述;
-    cur.状态 = enRuleStatusToZh(updates.status, cur.状态);
+    subRules[subKey] = {
+      ...cur,
+      描述: updates.desc ?? cur.描述,
+      状态: enRuleStatusToZh(updates.status, cur.状态),
+    };
   }
-
+  
+  // 替换区域及其细分规则
+  regions[regionKey] = {
+    ...region,
+    细分规则: subRules,
+  };
+  store.data.区域规则 = regions;
   bumpUpdateTime();
 }
 
 export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
@@ -566,8 +748,8 @@ export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   
   if (!regions[regionKey]) return;
   
-  const region = regions[regionKey];
-  const subRules = region.细分规则;
+  const region = { ...regions[regionKey] };
+  const subRules = { ...region.细分规则 };
   
   let subKey = ruleIdOrTitle;
   const prefix = `regional-${regionKey}-`;
@@ -579,14 +761,20 @@ export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   }
   
   if (subRules[subKey]) {
-    subRules[subKey].状态 = '已归档';
+    subRules[subKey] = { ...subRules[subKey], 状态: '已归档' };
+    regions[regionKey] = {
+      ...region,
+      细分规则: subRules,
+    };
+    store.data.区域规则 = regions;
     bumpUpdateTime();
   }
 }
 
 export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string): void {
   const store = useDataStore();
-  const regions = store.data.区域规则;
+  // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
+  const regions = { ...store.data.区域规则 };
   
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
@@ -596,8 +784,8 @@ export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   
   if (!regions[regionKey]) return;
   
-  const region = regions[regionKey];
-  const subRules = region.细分规则;
+  const region = { ...regions[regionKey] };
+  const subRules = { ...region.细分规则 };
   
   let subKey = ruleIdOrTitle;
   const prefix = `regional-${regionKey}-`;
@@ -609,19 +797,25 @@ export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   }
   
   if (subRules[subKey]) {
-    subRules[subKey].状态 = '生效中';
+    subRules[subKey] = { ...subRules[subKey], 状态: '生效中' };
+    regions[regionKey] = {
+      ...region,
+      细分规则: subRules,
+    };
+    store.data.区域规则 = regions;
     bumpUpdateTime();
   }
 }
 
-export async function submitAddRegion(name: string, detail: string): Promise<string> {
+export async function submitAddRegion(name: string, detail: string, firstRuleName?: string): Promise<string> {
   const n = name.trim();
   if (!n) {
     toastr.warning('请输入区域名称');
     return '';
   }
-  const message = formatRegionRuleMessage('add', n, detail.trim());
-  addRegionToVariables(n, detail.trim());
+  const ruleTitle = (firstRuleName ?? '').trim();
+  const message = formatRegionRuleMessage('add', n, detail.trim(), ruleTitle || undefined);
+  addRegionToVariables(n, detail.trim(), ruleTitle || undefined);
   return message;
 }
 

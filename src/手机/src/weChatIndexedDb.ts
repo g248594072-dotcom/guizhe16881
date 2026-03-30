@@ -14,6 +14,8 @@ export type WeChatStoredMessage = {
   role: 'user' | 'assistant';
   content: string;
   time: number;
+  /** 对应酒馆聊天楼层中的 last_id；开场白为 1 */
+  lastId?: number;
 };
 
 export type ThreadRecord = {

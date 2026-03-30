@@ -491,12 +491,87 @@ function buildRoleArchiveCandidates(): WeChatContactOut[] {
   return Array.from(merged.values());
 }
 
+/**
+ * 与 getShellDocument 一致：脚本在嵌套 iframe 时 SillyTavern 在 top，parent 可能只是扩展/中间层。
+ *
+ * SillyTavern release 中 `globalThis.SillyTavern` 仅为 `{ libs, getContext }`，chatId / getCurrentChatId
+ * 在 `getContext()` 返回值上；旧版或类型声明中的「扁平」对象也需兼容。
+ */
+type SillyTavernChatScope = {
+  getCurrentChatId?: () => string;
+  chatId?: string;
+};
+
+function resolveSillyTavernChatScope(st: unknown): SillyTavernChatScope | undefined {
+  if (!st || typeof st !== 'object') {
+    return undefined;
+  }
+  const root = st as Record<string, unknown>;
+  if (typeof root.getContext === 'function') {
+    try {
+      const ctx = (root.getContext as () => unknown)();
+      if (ctx && typeof ctx === 'object') {
+        return ctx as SillyTavernChatScope;
+      }
+    } catch {
+      /* */
+    }
+  }
+  if (typeof root.getCurrentChatId === 'function' || root.chatId != null) {
+    return st as SillyTavernChatScope;
+  }
+  return undefined;
+}
+
+function pickSillyTavernFromWindow(w: Window): SillyTavernChatScope | undefined {
+  try {
+    const st = (w as Window & { SillyTavern?: unknown }).SillyTavern;
+    return st !== undefined ? resolveSillyTavernChatScope(st) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getSillyTavernForChatScope(): SillyTavernChatScope | undefined {
+  try {
+    const topWin = window.top;
+    if (topWin && topWin !== window) {
+      const st = pickSillyTavernFromWindow(topWin);
+      if (st) {
+        return st;
+      }
+    }
+  } catch {
+    /* 跨域 top */
+  }
+  try {
+    if (window.parent !== window) {
+      const st = pickSillyTavernFromWindow(window.parent);
+      if (st) {
+        return st;
+      }
+    }
+  } catch {
+    /* 跨域 parent */
+  }
+  return pickSillyTavernFromWindow(window);
+}
+
 function getChatScopeId(): string | null {
   try {
-    const win = window.parent as Window & { SillyTavern?: { getCurrentChatId?: () => string } };
-    const id = win.SillyTavern?.getCurrentChatId?.();
+    const st = getSillyTavernForChatScope();
+    if (!st) {
+      return null;
+    }
+    // 优先用 getCurrentChatId（需要聊天已保存才有值）
+    const id = st.getCurrentChatId?.();
     if (id != null && String(id).trim() !== '') {
       return String(id);
+    }
+    // 备选：用 chatId（酒馆加载角色卡时就有值）
+    const chatId = st.chatId;
+    if (chatId != null && String(chatId).trim() !== '') {
+      return String(chatId);
     }
   } catch {
     /* */
@@ -880,7 +955,17 @@ function getWbSyncScriptCfg(): WbSyncScriptCfg | null {
     const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
     const raw = scriptVars.phone_wechat_wb_sync;
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-      return null;
+      // 未配置 phone_wechat_wb_sync → 只要 phone_ui_url 存在就自动启用
+      if (!getPhoneUiUrl()) {
+        return null;
+      }
+      return {
+        enabled: true,
+        worldbookName: '',
+        strategy: 'constant',
+        selectiveKeys: [],
+        statePath: 'stat_data.手机微信世界书同步',
+      };
     }
     const o = raw as Record<string, unknown>;
     if (o.enabled === false) {
@@ -900,10 +985,18 @@ function getWbSyncScriptCfg(): WbSyncScriptCfg | null {
   }
 }
 
-/** 未配置 worldbookName 时使用当前角色卡绑定的主世界书（否则 additional[0]） */
-function resolveWorldbookNameForWbSync(cfg: WbSyncScriptCfg): string | null {
+/**
+ * 解析世界书名称：
+ * 1. 脚本变量显式配置
+ * 2. chatScopeId（聊天文件名，每个聊天对应独立世界书）
+ * 3. 当前角色卡绑定的主世界书
+ */
+function resolveWorldbookNameForWbSync(cfg: WbSyncScriptCfg, chatScopeId: string): string | null {
   if (cfg.worldbookName) {
     return cfg.worldbookName;
+  }
+  if (chatScopeId && chatScopeId.trim()) {
+    return chatScopeId.trim();
   }
   try {
     const w = getCharWorldbookNames('current');
@@ -918,8 +1011,61 @@ function resolveWorldbookNameForWbSync(cfg: WbSyncScriptCfg): string | null {
   } catch {
     /* */
   }
-  console.warn('[tavern-phone] phone_wechat_wb_sync 未指定 worldbookName，且当前角色卡未绑定世界书');
+  console.warn('[tavern-phone] 无法确定世界书名：chatScopeId 为空且当前角色卡未绑定世界书');
   return null;
+}
+
+/**
+ * 确保世界书存在：不存在则创建（含一个绿灯模板条目），并激活为全局世界书。
+ * 若已存在则直接返回。
+ * 返回创建后的模板条目，供调用方复制设置。
+ */
+async function ensureWorldbookForSync(
+  worldbookName: string,
+): Promise<{ template: WorldbookEntry; isNew: boolean } | null> {
+  try {
+    const existing = await getWorldbook(worldbookName);
+    if (existing.length > 0) {
+      return { template: existing[0], isNew: false };
+    }
+  } catch {
+    /* 世界书不存在，尝试创建 */
+  }
+
+  // 不存在 → 创建
+  const templateEntry: PartialDeep<WorldbookEntry> = {
+    name: '【系统】小手机微信摘要',
+    enabled: true,
+    position: 'normal',
+    probability: 100,
+    strategy: {
+      type: 'constant',
+      keys: [],
+      keys_secondary: { logic: 'and_any', keys: [] },
+      scan_depth: 4,
+    },
+    recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
+    effect: { ...({} as WorldbookEntry['effect']) },
+  };
+
+  const created = await createWorldbook(worldbookName, [templateEntry as WorldbookEntry]);
+  if (!created) {
+    console.error('[tavern-phone] 创建世界书失败', worldbookName);
+    return null;
+  }
+
+  // 激活为全局
+  try {
+    await rebindGlobalWorldbooks([worldbookName]);
+    console.info('[tavern-phone] 已创建并激活全局世界书', worldbookName);
+  } catch {
+    console.warn('[tavern-phone] 世界书创建成功但激活全局失败（需手动在酒馆中开启）', worldbookName);
+  }
+
+  // 重新读取以获取 uid 等填充后的完整条目
+  const after = await getWorldbook(worldbookName);
+  const tmpl = after.length > 0 ? after[0] : (templateEntry as WorldbookEntry);
+  return { template: tmpl, isNew: true };
 }
 
 /** 从当前角色卡 json 等采集可用于绿灯扫描的名称、昵称类词 */
@@ -1102,14 +1248,64 @@ function sliceNewWeChatMessages(messages: WbExportedMsg[], lastMsgId: string | n
   return messages.slice(idx + 1);
 }
 
+function groupMessagesByDate(msgs: WbExportedMsg[]): Map<string, WbExportedMsg[]> {
+  const groups = new Map<string, WbExportedMsg[]>();
+  for (const m of msgs) {
+    const dateStr = new Date(m.time).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    if (!groups.has(dateStr)) {
+      groups.set(dateStr, []);
+    }
+    groups.get(dateStr)!.push(m);
+  }
+  return groups;
+}
+
+/**
+ * 按用户指定格式生成世界书条目内容块：
+ * 更新时间: MM月DD日 HH:mm
+ * 私聊对象: 联系人名
+ * ---
+ * 【MM月DD日】
+ * [HH:mm] 玩家: 内容
+ * [HH:mm] 对方: 内容
+ * ...
+ */
 function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]): string {
-  const lines = msgs.map(m => {
-    const who = m.role === 'user' ? '用户' : '对方';
-    const time = new Date(m.time).toLocaleString('zh-CN');
-    return `[${time}] ${who}：${m.content}`;
+  const now = new Date();
+  const timeStr = now.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
   });
-  const head = `\n\n--- [小手机微信 · ${displayName} · ${new Date().toLocaleString('zh-CN')}] ---\n`;
-  return head + lines.join('\n');
+
+  const parts: string[] = [];
+  parts.push(`更新时间: ${timeStr}`);
+  parts.push(`私聊对象: ${displayName}`);
+  parts.push('---');
+
+  const groups = groupMessagesByDate(msgs);
+  for (const [dateStr, dayMsgs] of groups) {
+    const dateLine = dateStr.replace(/^(\d{4})\/(\d{2})\/(\d{2})$/, (_m, y, mo, d) => `${mo}月${d}日`);
+    parts.push(`【${dateLine}】`);
+    for (const m of dayMsgs) {
+      const t = new Date(m.time);
+      const timeLabel = t.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      const who = m.role === 'user' ? '玩家' : '对方';
+      parts.push(`[${timeLabel}] ${who}: ${m.content}`);
+    }
+  }
+
+  return '\n' + parts.join('\n');
 }
 
 function sanitizeWorldbookEntryName(s: string): string {
@@ -1200,6 +1396,10 @@ function unmountTavernPhoneApi() {
 
 $(() => {
   let phoneUiUrl = getPhoneUiUrl();
+  console.info('[tavern-phone] 📱 脚本启动', {
+    phone_ui_url: phoneUiUrl ?? '(未配置)',
+    worldbook_sync_enabled: getWbSyncScriptCfg() !== null,
+  });
 
   let $overlay: JQuery | null = null;
   let $phoneRoot: JQuery | null = null;
@@ -1789,22 +1989,26 @@ $(() => {
   async function runWeChatWorldbookSyncOnGenerate(): Promise<void> {
     const cfg = getWbSyncScriptCfg();
     if (!cfg) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：getWbSyncScriptCfg() 返回 null（phone_wechat_wb_sync 未配置或未启用）');
       return;
     }
     if (!getPhoneUiUrl()) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：getPhoneUiUrl() 为空（phone_ui_url 未配置）');
       return;
     }
-    const worldbookName = resolveWorldbookNameForWbSync(cfg);
+    const chatScopeId = getChatScopeId() ?? 'local-offline';
+    const scopeKey = chatScopeId.trim() || 'local-offline';
+    const worldbookName = resolveWorldbookNameForWbSync(cfg, chatScopeId);
     if (!worldbookName) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：resolveWorldbookNameForWbSync() 返回 null（chatScopeId 为空且角色卡未绑定世界书）');
       return;
     }
+    console.info('[tavern-phone][wb-sync] ✅ 开始同步 → 世界书：', worldbookName, '  chatScopeId：', chatScopeId);
     ensurePhoneIframeBuiltForSync();
     const iframeWin = getIframeEl()?.contentWindow;
     if (!iframeWin) {
       return;
     }
-    const chatScopeId = getChatScopeId() ?? 'local-offline';
-    const scopeKey = chatScopeId.trim() || 'local-offline';
     let threads: WbExportedThread[];
     try {
       threads = await requestExportThreadsFromIframe(iframeWin, chatScopeId);
@@ -1813,6 +2017,7 @@ $(() => {
       return;
     }
     if (threads.length === 0) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：IndexedDB 中无任何微信线程（threads 为空）');
       return;
     }
     const ctx = await buildWeChatContext();
@@ -1837,20 +2042,28 @@ $(() => {
       pending.push({ contactId: th.roleId, displayName, block, tailId });
     }
     if (pending.length === 0) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：各联系人均无新消息（所有线程已同步过）');
       return;
     }
-    let wb: WorldbookEntry[];
+    // 确保世界书存在：不存在则自动创建并激活为全局
+    console.info('[tavern-phone][wb-sync] → 调用 ensureWorldbookForSync', worldbookName);
+    let wbResult: { template: import('@types/function/worldbook').WorldbookEntry; isNew: boolean } | null = null;
     try {
-      wb = await getWorldbook(worldbookName);
+      wbResult = await ensureWorldbookForSync(worldbookName);
     } catch (e) {
-      console.warn('[tavern-phone] 读取世界书失败（请确认名称存在）', worldbookName, e);
+      console.error('[tavern-phone][wb-sync] ❌ ensureWorldbookForSync 抛出异常', e);
       return;
     }
-    if (wb.length === 0) {
-      console.warn('[tavern-phone] 世界书无条目或不存在，请先创建该世界书', worldbookName);
+    if (!wbResult) {
+      console.error('[tavern-phone][wb-sync] ❌ ensureWorldbookForSync 返回 null（同上，已打印过错误）');
       return;
     }
-    const template = wb[0];
+    if (!wbResult) {
+      console.error('[tavern-phone] 无法创建/读取世界书，同步中止', worldbookName);
+      return;
+    }
+    console.info('[tavern-phone][wb-sync] ✅ 世界书存在/已创建，模板条目：', wbResult.template.name);
+    const { template } = wbResult;
     const rec = wbSyncRecursionClosed();
     await updateWorldbookWith(
       worldbookName,
@@ -1859,32 +2072,31 @@ $(() => {
         for (const u of pending) {
           const entryName = sanitizeWorldbookEntryName(`${u.displayName}小手机聊天记录摘要`);
           const idx = next.findIndex(e => e.name === entryName);
-          const strat =
-            cfg.strategy === 'constant'
-              ? wbStrategyConstantFromTemplate(template.strategy)
-              : wbStrategySelectiveFromDynamicKeys(dynamicKeys, template.strategy);
-          if (idx < 0) {
-            const neu: PartialDeep<WorldbookEntry> = {
-              name: entryName,
-              content: u.block,
-              enabled: true,
-              strategy: strat,
-              position: template.position,
-              probability: template.probability ?? 100,
-              recursion: rec,
-              effect: template.effect,
-            };
-            next.push(neu as WorldbookEntry);
-          } else {
-            const e = next[idx];
-            const cur = typeof e.content === 'string' ? e.content : '';
-            next[idx] = {
-              ...e,
-              content: cur + u.block,
-              strategy: strat,
-              recursion: rec,
-            };
-          }
+            // 聊天记录条目固定蓝灯 + 深度4（不受脚本配置影响）
+            const strat = wbStrategyConstantFromTemplate(template.strategy);
+            strat.scan_depth = 4;
+            if (idx < 0) {
+              const neu: PartialDeep<WorldbookEntry> = {
+                name: entryName,
+                content: u.block,
+                enabled: true,
+                strategy: strat,
+                position: template.position,
+                probability: template.probability ?? 100,
+                recursion: rec,
+                effect: template.effect,
+              };
+              next.push(neu as WorldbookEntry);
+            } else {
+              const e = next[idx];
+              const cur = typeof e.content === 'string' ? e.content : '';
+              next[idx] = {
+                ...e,
+                content: cur + u.block,
+                strategy: strat,
+                recursion: rec,
+              };
+            }
         }
         return next;
       },
@@ -1912,6 +2124,7 @@ $(() => {
   mountTavernPhoneApi(api);
 
   wbSyncListener = eventOn(tavern_events.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
+    console.info('[tavern-phone][wb-sync] 📡 收到 GENERATE_BEFORE_COMBINE_PROMPTS，开始同步…');
     void runWeChatWorldbookSyncOnGenerate().catch(e => {
       console.warn('[tavern-phone] 世界书同步失败', e);
     });

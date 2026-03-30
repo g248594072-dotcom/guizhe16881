@@ -9,6 +9,8 @@ import {
   User,
   Send,
   Plus,
+  Trash2,
+  Undo2,
 } from 'lucide-react';
 import {
   requestTavernPhoneContext,
@@ -238,6 +240,10 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [injectBusy, setInjectBusy] = useState(false);
   const [regeneratingAssistantId, setRegeneratingAssistantId] = useState<string | null>(null);
   const [debugCtxBusy, setDebugCtxBusy] = useState(false);
+  /** 撤回模式：true 时点击消息会撤回而不是填入 */
+  const [retractMode, setRetractMode] = useState(false);
+  /** 最后撤回的消息ID */
+  const [lastRetractedId, setLastRetractedId] = useState<string | null>(null);
   /** 仅最后一次 context 请求生效，避免与初次加载 / chat_scope 推送竞态导致看起来「刷新无效」 */
   const contextFetchGenRef = useRef(0);
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
@@ -422,22 +428,28 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
       if (idx < 0 || messages[idx].role !== 'assistant') {
         return;
       }
+      // 只保留被重新生成消息之前的上下文，重新生成后不留旧回复
       const historyForApi = messages.slice(0, idx).map(m => ({ role: m.role, content: m.content }));
       if (historyForApi.length === 0) {
         return;
       }
       setRegeneratingAssistantId(assistantMsgId);
       setSendError('');
+      const originalLastId = messages[idx].lastId;
       try {
         const reply = await completeWeChatReply(chatCtx, historyForApi, { regenerate: true });
         setMessages(prev => {
-          const next = [...prev];
-          const i = next.findIndex(m => m.id === assistantMsgId);
-          if (i >= 0) {
-            next[i] = { ...next[i], content: reply, time: Date.now() };
-            schedulePhoneMemoryPersist(next, selectedContact.id, chatScopeId);
-          }
-          return next;
+          const next = prev.slice(0, idx);
+          const newMsg: WeChatStoredMessage = {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: reply,
+            time: Date.now(),
+            lastId: originalLastId,
+          };
+          const final = [...next, newMsg];
+          schedulePhoneMemoryPersist(final, selectedContact.id, chatScopeId);
+          return final;
         });
       } catch (e) {
         setSendError(e instanceof Error ? e.message : String(e));
@@ -471,6 +483,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         role: 'assistant',
         content: reply,
         time: Date.now(),
+        lastId: ctx?.lastChatMessageId != null ? ctx.lastChatMessageId + 1 : undefined,
       };
       const fullThread = [...messages, userMsg, assistantMsg];
       setMessages(prev => [...prev, assistantMsg]);
@@ -493,7 +506,66 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     setSelectedContact(null);
     setSendError('');
     setListTick(t => t + 1);
+    setRetractMode(false);
   };
+
+  /**
+   * 撤回最后 N 条消息（用户消息 + AI 回复）
+   */
+  const retractLastMessages = useCallback(async (count: number = 2) => {
+    if (!selectedContact || messages.length === 0) return;
+
+    // 找到最后 count 条消息
+    const toRetract = messages.slice(-count);
+    if (toRetract.length === 0) return;
+
+    // 检查被撤回的最后一条AI消息的 last_id 是否为1（开场白）
+    const assistantToRetract = [...toRetract].reverse().find(m => m.role === 'assistant');
+    const isOpeningMessage = assistantToRetract ? assistantToRetract.lastId === 1 : false;
+
+    // 更新消息列表
+    const remaining = messages.slice(0, -count);
+
+    // 记录最后撤回的消息ID（用于UI提示）
+    const lastRetracted = toRetract[toRetract.length - 1];
+    setLastRetractedId(lastRetracted.id);
+
+    // 清除提示
+    window.setTimeout(() => {
+      setLastRetractedId(null);
+    }, 3000);
+
+    if (isOpeningMessage) {
+      // 要撤回的是开场白（last_id=1），回到开始界面
+      console.log('[WeChatApp] 要撤回AI开场白(last_id=1)，回到开始界面');
+      setMessages(remaining);
+      backToList();
+    } else {
+      // 不是开场白，正常展示消息
+      setMessages(remaining);
+
+      // 把最后一条用户消息的内容复制到输入框
+      const lastUserMsg = [...remaining].reverse().find(m => m.role === 'user');
+      if (lastUserMsg) {
+        setInput(lastUserMsg.content);
+      }
+
+      // 触发记忆重新同步
+      if (remaining.length > 0) {
+        schedulePhoneMemoryPersist(remaining, selectedContact.id, chatScopeId);
+      }
+    }
+
+    console.log('[WeChatApp] 已撤回', count, '条消息');
+  }, [selectedContact, messages, chatScopeId, schedulePhoneMemoryPersist]);
+
+  /**
+   * 切换撤回模式
+   */
+  const toggleRetractMode = useCallback(() => {
+    setRetractMode(prev => !prev);
+    setSendError('');
+  }, []);
 
   const saveMe = () => {
     saveWeChatMe(meDraft);
@@ -600,8 +672,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const headerTitle = mainTab === 'me' ? '我' : '微信';
 
   const injectPreviewText = useMemo(() => lastAssistantOrUserText(messages), [messages]);
-  /** 仅最后一条楼层显示「可能未发完」与重发（与最新消息 id 对齐） */
-  const lastWeChatMessage = messages.length > 0 ? messages[messages.length - 1] : null;
 
   const startAvatarPick = useCallback((target: AvatarPickTarget) => {
     avatarPickTargetRef.current = target;
@@ -677,16 +747,31 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
               <h1 className="text-[17px] font-semibold text-gray-900 truncate">{selectedContact.displayName}</h1>
             </div>
             {!showOffline ? (
-              <button
-                type="button"
-                title="将最近一条消息追加到酒馆主界面输入框"
-                disabled={injectBusy || !injectPreviewText.trim()}
-                onClick={() => void handleInjectToMainInput()}
-                className="shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] text-[#576b95] disabled:opacity-40 active:bg-black/5"
-              >
-                {injectBusy ? <Loader2 className="animate-spin" size={16} /> : <ArrowUpFromLine size={16} />}
-                填入
-              </button>
+              <>
+                <button
+                  type="button"
+                  title={retractMode ? '退出撤回模式' : '撤回最后消息'}
+                  onClick={toggleRetractMode}
+                  className={`shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] active:bg-black/5 ${
+                    retractMode
+                      ? 'bg-red-100 text-red-600'
+                      : 'text-[#576b95]'
+                  }`}
+                >
+                  {retractMode ? <Undo2 size={16} /> : <Trash2 size={16} />}
+                  {retractMode ? '退出' : '撤回'}
+                </button>
+                <button
+                  type="button"
+                  title="将最近一条消息追加到酒馆主界面输入框"
+                  disabled={injectBusy || !injectPreviewText.trim()}
+                  onClick={() => void handleInjectToMainInput()}
+                  className="shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] text-[#576b95] disabled:opacity-40 active:bg-black/5"
+                >
+                  {injectBusy ? <Loader2 className="animate-spin" size={16} /> : <ArrowUpFromLine size={16} />}
+                  填入
+                </button>
+              </>
             ) : null}
           </div>
 
@@ -700,7 +785,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               {messages.map(m => {
                 const showAssistantRegenerate =
-                  m.role === 'assistant' && lastWeChatMessage != null && lastWeChatMessage.id === m.id;
+                  m.role === 'assistant' &&
+                  (looksLikeTruncatedReply(m.content) || m.content.trim() === '');
                 return (
                 <div
                   key={m.id}
@@ -717,7 +803,16 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   {m.role === 'assistant' ? (
                     <div className="flex items-start gap-1 max-w-[78%] min-w-0">
                       <div
-                        className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm`}
+                        className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm ${
+                          retractMode
+                            ? 'cursor-pointer hover:bg-red-50 active:bg-red-100'
+                            : ''
+                        }`}
+                        onClick={
+                          retractMode
+                            ? () => void retractLastMessages(2)
+                            : undefined
+                        }
                       >
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-400">{formatMsgTime(m.time)}</p>
@@ -752,7 +847,16 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   ) : (
                     <>
                       <div
-                        className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black`}
+                        className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black ${
+                          retractMode
+                            ? 'cursor-pointer hover:bg-red-50 active:bg-red-100'
+                            : ''
+                        }`}
+                        onClick={
+                          retractMode
+                            ? () => void retractLastMessages(2)
+                            : undefined
+                        }
                       >
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-600">{formatMsgTime(m.time)}</p>
@@ -772,6 +876,20 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
           {sendError ? (
             <div className="px-3 py-1 text-[12px] text-red-600 bg-red-50 shrink-0">{sendError}</div>
+          ) : null}
+
+          {lastRetractedId ? (
+            <div className="px-3 py-1 text-[12px] text-green-600 bg-green-50 shrink-0 flex items-center gap-2">
+              <Undo2 size={14} />
+              已撤回上一条消息
+              <button
+                type="button"
+                onClick={() => setLastRetractedId(null)}
+                className="ml-auto text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
           ) : null}
 
           <div className="shrink-0 border-t border-gray-200 bg-[#F7F7F7] px-2 py-2 pb-6 flex items-end gap-2">

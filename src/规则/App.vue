@@ -471,6 +471,13 @@
             <div v-else-if="modalType === 'add_region'" class="rule-form">
               <label class="form-label">区域名称</label>
               <input v-model="modalForm.regionName" type="text" class="form-input" placeholder="输入区域名称" />
+              <label class="form-label">规则名字</label>
+              <input
+                v-model="modalForm.regionFirstRuleName"
+                type="text"
+                class="form-input"
+                placeholder="该区域内一条细分规则的名称（可选；填写后会同步到变量「细分规则」）"
+              />
               <label class="form-label">规则细节</label>
               <textarea
                 v-model="modalForm.regionDetail"
@@ -586,6 +593,156 @@
                 rows="3"
                 placeholder="输入隐藏性癖描述..."
               />
+
+              <!-- 敏感部位详情编辑 -->
+              <div class="detail-edit-section">
+                <button
+                  type="button"
+                  class="detail-edit-toggle"
+                  @click="modalForm.showSensitivePartDetails = !modalForm.showSensitivePartDetails"
+                >
+                  <i :class="modalForm.showSensitivePartDetails ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
+                  <span>编辑敏感部位详情（等级、生理反应、开发细节）</span>
+                </button>
+                <div v-if="modalForm.showSensitivePartDetails" class="detail-edit-content">
+                  <div
+                    v-for="(part, idx) in modalForm.sensitivePartDetails"
+                    :key="idx"
+                    class="detail-edit-row"
+                  >
+                    <div class="detail-edit-header">
+                      <input
+                        v-model="part.name"
+                        type="text"
+                        class="form-input detail-name-input"
+                        placeholder="部位名称"
+                      />
+                      <button
+                        type="button"
+                        class="btn-icon btn-danger"
+                        @click="modalForm.sensitivePartDetails.splice(idx, 1)"
+                        title="删除"
+                      >
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </div>
+                    <div class="detail-edit-fields">
+                      <div class="detail-field">
+                        <label>敏感等级</label>
+                        <input
+                          v-model.number="part.level"
+                          type="number"
+                          class="form-input"
+                          min="1"
+                          max="10"
+                          placeholder="1-10"
+                        />
+                      </div>
+                      <div class="detail-field">
+                        <label>生理反应</label>
+                        <input
+                          v-model="part.reaction"
+                          type="text"
+                          class="form-input"
+                          placeholder="被触碰时的反应"
+                        />
+                      </div>
+                      <div class="detail-field full-width">
+                        <label>开发细节</label>
+                        <textarea
+                          v-model="part.devDetails"
+                          class="form-textarea"
+                          rows="2"
+                          placeholder="部位的开发进度和细节..."
+                        ></textarea>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    @click="modalForm.sensitivePartDetails.push({ name: '', level: 1, reaction: '', devDetails: '' })"
+                  >
+                    <i class="fa-solid fa-plus"></i>
+                    添加敏感部位
+                  </button>
+                </div>
+              </div>
+
+              <!-- 性癖详情编辑 -->
+              <div class="detail-edit-section">
+                <button
+                  type="button"
+                  class="detail-edit-toggle"
+                  @click="modalForm.showFetishDetails = !modalForm.showFetishDetails"
+                >
+                  <i :class="modalForm.showFetishDetails ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
+                  <span>编辑性癖详情（等级、细节描述、自我合理化）</span>
+                </button>
+                <div v-if="modalForm.showFetishDetails" class="detail-edit-content">
+                  <div
+                    v-for="(fetish, idx) in modalForm.fetishDetails"
+                    :key="idx"
+                    class="detail-edit-row"
+                  >
+                    <div class="detail-edit-header">
+                      <input
+                        v-model="fetish.name"
+                        type="text"
+                        class="form-input detail-name-input"
+                        placeholder="性癖名称"
+                      />
+                      <button
+                        type="button"
+                        class="btn-icon btn-danger"
+                        @click="modalForm.fetishDetails.splice(idx, 1)"
+                        title="删除"
+                      >
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </div>
+                    <div class="detail-edit-fields">
+                      <div class="detail-field">
+                        <label>等级</label>
+                        <input
+                          v-model.number="fetish.level"
+                          type="number"
+                          class="form-input"
+                          min="1"
+                          max="10"
+                          placeholder="1-10"
+                        />
+                      </div>
+                      <div class="detail-field">
+                        <label>细节描述</label>
+                        <input
+                          v-model="fetish.description"
+                          type="text"
+                          class="form-input"
+                          placeholder="性癖的具体表现"
+                        />
+                      </div>
+                      <div class="detail-field full-width">
+                        <label>自我合理化</label>
+                        <textarea
+                          v-model="fetish.justification"
+                          class="form-textarea"
+                          rows="2"
+                          placeholder="傲娇的借口或理智与本能的冲突..."
+                        ></textarea>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-secondary"
+                    @click="modalForm.fetishDetails.push({ name: '', level: 1, description: '', justification: '' })"
+                  >
+                    <i class="fa-solid fa-plus"></i>
+                    添加性癖
+                  </button>
+                </div>
+              </div>
             </div>
             <div v-else-if="modalType === 'edit_avatar'" class="rule-form edit-avatar-form">
               <label class="form-label">本地上传</label>
@@ -625,6 +782,44 @@
               <div v-if="isAvatarPreviewable(modalForm.avatarUrl)" class="avatar-edit-preview">
                 <img :src="modalForm.avatarUrl" alt="头像预览" />
               </div>
+            </div>
+            <!-- 编辑身份标签 -->
+            <div v-else-if="modalType === 'edit_identity_tags'" class="rule-form identity-tags-form">
+              <p class="form-hint">身份标签用于记录角色的核心萌点、招牌口癖等，便于随时口胡设定。</p>
+              <div
+                v-for="(tag, idx) in modalForm.identityTags"
+                :key="idx"
+                class="identity-tag-edit-row"
+              >
+                <input
+                  v-model="tag.category"
+                  type="text"
+                  class="form-input identity-category-input"
+                  placeholder="分类（如：核心萌点、招牌口癖）"
+                />
+                <input
+                  v-model="tag.value"
+                  type="text"
+                  class="form-input identity-value-input"
+                  placeholder="标签内容"
+                />
+                <button
+                  type="button"
+                  class="btn-icon btn-danger"
+                  @click="modalForm.identityTags.splice(idx, 1)"
+                  title="删除"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="btn-secondary"
+                @click="modalForm.identityTags.push({ category: '', value: '' })"
+              >
+                <i class="fa-solid fa-plus"></i>
+                添加身份标签
+              </button>
             </div>
             <div v-else class="modal-placeholder">
               <p>未配置的弹窗类型：<code>{{ modalType }}</code></p>
@@ -1106,6 +1301,8 @@ const modalForm = ref({
   worldRuleDetail: '',
   regionName: '',
   regionDetail: '',
+  /** 新增区域：中间项「规则名字」，对应首条细分规则的键名 */
+  regionFirstRuleName: '',
   regionRuleName: '',
   regionRuleDetail: '',
   personalRuleCharacter: '',
@@ -1115,6 +1312,14 @@ const modalForm = ref({
   characterPsychFetishes: '',
   characterPsychSensitiveParts: '',
   characterPsychHiddenFetish: '',
+  // 性癖详情编辑
+  showFetishDetails: false,
+  fetishDetails: [] as Array<{ name: string; level: number; description: string; justification: string }>,
+  // 敏感部位详情编辑
+  showSensitivePartDetails: false,
+  sensitivePartDetails: [] as Array<{ name: string; level: number; reaction: string; devDetails: string }>,
+  // 身份标签编辑
+  identityTags: [] as Array<{ category: string; value: string }>,
   avatarUrl: '',
 });
 
@@ -1478,6 +1683,7 @@ const modalTitles: Record<string, string> = {
   edit_personal_rule: '编辑个人规则',
   edit_character_mind: '编辑心理状态',
   edit_character_fetish: '编辑性癖与敏感带',
+  edit_identity_tags: '编辑身份标签',
   edit_avatar: '编辑角色头像',
 };
 const modalTitle = computed(() => modalTitles[modalType.value] || (modalType.value.includes('add') ? '新增条目' : '编辑条目'));
@@ -1574,6 +1780,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
     worldRuleDetail: payload?.desc ?? '',
     regionName: payload?.name ?? '',
     regionDetail: payload?.description ?? '',
+    regionFirstRuleName: '',
     regionRuleName: payload?.rule?.title ?? '',
     regionRuleDetail: payload?.rule?.desc ?? '',
     personalRuleCharacter: payload?.title ?? payload?.character ?? '',
@@ -1583,6 +1790,11 @@ async function openModal(type: string, payload?: Record<string, any>) {
     characterPsychFetishes: '',
     characterPsychSensitiveParts: '',
     characterPsychHiddenFetish: '',
+    showFetishDetails: false,
+    fetishDetails: [],
+    showSensitivePartDetails: false,
+    sensitivePartDetails: [],
+    identityTags: [],
     avatarUrl: '',
   };
 
@@ -1607,9 +1819,48 @@ async function openModal(type: string, payload?: Record<string, any>) {
         modalForm.value.characterPsychFetishes = tagMapToEditableText(c.fetishes);
         modalForm.value.characterPsychSensitiveParts = tagMapToEditableText(c.sensitiveParts);
         modalForm.value.characterPsychHiddenFetish = String(c.hiddenFetish ?? '');
+
+        // 预填性癖详情
+        if (c.fetishDetails && typeof c.fetishDetails === 'object') {
+          modalForm.value.showFetishDetails = true;
+          modalForm.value.fetishDetails = Object.entries(c.fetishDetails).map(([name, detail]: [string, any]) => ({
+            name,
+            level: detail?.level ?? detail?.等级 ?? 1,
+            description: detail?.description ?? detail?.细节描述 ?? '',
+            justification: detail?.justification ?? detail?.自我合理化 ?? '',
+          }));
+        }
+
+        // 预填敏感部位详情
+        if (c.sensitivePartDetails && typeof c.sensitivePartDetails === 'object') {
+          modalForm.value.showSensitivePartDetails = true;
+          modalForm.value.sensitivePartDetails = Object.entries(c.sensitivePartDetails).map(([name, detail]: [string, any]) => ({
+            name,
+            level: detail?.level ?? detail?.敏感等级 ?? 1,
+            reaction: detail?.reaction ?? detail?.生理反应 ?? '',
+            devDetails: detail?.devDetails ?? detail?.开发细节 ?? '',
+          }));
+        }
       }
     } catch (e) {
       console.warn('预填角色心理字段失败', e);
+    }
+  }
+
+  // 预填身份标签
+  if (type === 'edit_identity_tags' && payload?.characterId) {
+    try {
+      const { useCharacters } = await import('./store');
+      const characters = useCharacters();
+      const c: any = (characters.value || []).find((x: any) => x?.id === payload.characterId);
+      if (c && c.identityTags && typeof c.identityTags === 'object') {
+        modalForm.value.identityTags = Object.entries(c.identityTags).map(([category, value]: [string, any]) => ({
+          category,
+          value: String(value ?? ''),
+        }));
+      }
+    } catch (e) {
+      console.warn('预填身份标签失败', e);
     }
   }
   isModalOpen.value = true;
@@ -1708,7 +1959,7 @@ async function onModalComplete() {
       messageText = await submitEditWorldRule(payload.id ?? payload.title, form.worldRuleName, form.worldRuleDetail);
     } else if (type === 'add_region') {
       const { submitAddRegion } = await import('./utils/dialogAndVariable');
-      messageText = await submitAddRegion(form.regionName, form.regionDetail);
+      messageText = await submitAddRegion(form.regionName, form.regionDetail, form.regionFirstRuleName);
     } else if (type === 'edit_region' && (payload?.id ?? payload?.name)) {
       const { submitEditRegion } = await import('./utils/dialogAndVariable');
       messageText = await submitEditRegion(payload.id ?? payload.name, form.regionName, form.regionDetail);
@@ -1739,12 +1990,55 @@ async function onModalComplete() {
         traitsText: form.characterPsychTraits,
       });
     } else if (type === 'edit_character_fetish' && payload?.characterId) {
-      const { submitEditCharacterPsych } = await import('./utils/dialogAndVariable');
+      const { submitEditCharacterPsych, updateCharacterFetishDetails, updateCharacterSensitivePartDetails, formatFetishDetailMessage, formatSensitivePartDetailMessage } = await import('./utils/dialogAndVariable');
       messageText = await submitEditCharacterPsych(payload.characterId, {
         fetishesText: form.characterPsychFetishes,
         sensitivePartsText: form.characterPsychSensitiveParts,
         hiddenFetish: form.characterPsychHiddenFetish,
       });
+
+      // 保存性癖详情
+      const validFetishDetails = form.fetishDetails?.filter(f => f.name?.trim()) ?? [];
+      if (validFetishDetails.length > 0) {
+        updateCharacterFetishDetails(payload.characterId, validFetishDetails.map(f => ({
+          name: f.name.trim(),
+          level: f.level ?? 1,
+          description: f.description ?? '',
+          justification: f.justification ?? '',
+        })));
+        messageText += '\n\n' + formatFetishDetailMessage(payload.characterId, validFetishDetails.map(f => ({
+          name: f.name.trim(),
+          level: f.level ?? 1,
+          description: f.description ?? '',
+          justification: f.justification ?? '',
+        })));
+      }
+
+      // 保存敏感部位详情
+      const validSensitivePartDetails = form.sensitivePartDetails?.filter(p => p.name?.trim()) ?? [];
+      if (validSensitivePartDetails.length > 0) {
+        updateCharacterSensitivePartDetails(payload.characterId, validSensitivePartDetails.map(p => ({
+          name: p.name.trim(),
+          level: p.level ?? 1,
+          reaction: p.reaction ?? '',
+          devDetails: p.devDetails ?? '',
+        })));
+        messageText += '\n\n' + formatSensitivePartDetailMessage(payload.characterId, validSensitivePartDetails.map(p => ({
+          name: p.name.trim(),
+          level: p.level ?? 1,
+          reaction: p.reaction ?? '',
+          devDetails: p.devDetails ?? '',
+        })));
+      }
+    } else if (type === 'edit_identity_tags' && payload?.characterId) {
+      const { updateCharacterIdentityTags, formatIdentityTagsMessage } = await import('./utils/dialogAndVariable');
+      const validTags = form.identityTags?.filter(t => t.category?.trim() && t.value?.trim()) ?? [];
+      const tagsObj: Record<string, string> = {};
+      for (const t of validTags) {
+        tagsObj[t.category.trim()] = t.value.trim();
+      }
+      updateCharacterIdentityTags(payload.characterId, tagsObj);
+      messageText = formatIdentityTagsMessage(payload.characterId, tagsObj);
     } else if (type === 'edit_avatar' && payload?.characterId) {
       const { submitEditCharacterAvatar } = await import('./utils/dialogAndVariable');
       messageText = await submitEditCharacterAvatar(payload.characterId, form.avatarUrl);
@@ -1885,11 +2179,11 @@ async function confirmOrphanUserFloorDelete() {
 }
 
 /**
- * 正文为空时：删除最后一条用户发言，将其内容写入酒馆对话框（供重新发送）
+ * 正文为空时：删除最后一条用户发言；若其后紧跟一条 AI 回复则一并删除；将其内容写入酒馆对话框（供重新发送）
  */
 async function onRecoverLastUserMessage() {
   const ok = window.confirm(
-    '这将删除最后一次的用户发言并且把用户发言放置到对话框内，是否执行。',
+    '这将删除最后一次的用户发言；若其后紧跟 AI 回复也会一并删除，并把该用户发言放入对话框。是否执行？',
   );
   if (!ok) return;
 
@@ -1905,7 +2199,8 @@ async function onRecoverLastUserMessage() {
     }
 
     const range = `0-${lastId}`;
-    const users = getChatMessages(range, { role: 'user', hide_state: 'unhidden' });
+    const all = getChatMessages(range, { hide_state: 'unhidden' });
+    const users = all.filter(m => m.role === 'user');
     if (!users.length) {
       toastr.warning('没有可恢复的用户发言');
       return;
@@ -1918,19 +2213,31 @@ async function onRecoverLastUserMessage() {
       return;
     }
 
-    const mid = lastUser.message_id;
+    const idx = all.findIndex(m => m.message_id === lastUser.message_id);
+    const idsToDelete: number[] = [lastUser.message_id];
+    if (idx >= 0 && idx + 1 < all.length) {
+      const next = all[idx + 1];
+      if (next.role === 'assistant') {
+        idsToDelete.push(next.message_id);
+      }
+    }
+    idsToDelete.sort((a, b) => b - a);
+
     if (typeof deleteChatMessages !== 'function') {
       toastr.error('deleteChatMessages 不可用');
       return;
     }
-    await deleteChatMessages([mid], { refresh: 'affected' });
+    await deleteChatMessages(idsToDelete, { refresh: 'all' });
 
     const { sendToDialog } = await import('./utils/dialogAndVariable');
     await sendToDialog(text);
 
-    currentMessageId.value = undefined;
-    loadMessageContent();
-    toastr.success('已删除该条用户发言，内容已填入对话框');
+    refreshMessage();
+    toastr.success(
+      idsToDelete.length > 1
+        ? '已删除该条用户发言与对应 AI 楼层，内容已填入对话框'
+        : '已删除该条用户发言，内容已填入对话框',
+    );
   } catch (e) {
     console.error('❌ [App] 恢复用户发言失败:', e);
     toastr.error('操作失败: ' + String(e));
@@ -2953,7 +3260,8 @@ function saveGameSnapshot(userInput: string) {
 }
 
 /**
- * 回退完成后：若当前聊天中可见的 user 至多 1 条（仅有开局时自动写入的那条提示词楼层，无玩家后续发送），则回到开始界面。
+ * 回退完成后：若当前聊天中可见的 user 至多 1 条、且仍无任何 assistant 楼层（仅有开局 user、第一回合 AI 尚未落层），则回到开始界面。
+ * 若已有 assistant（例如开局已成功生成过第一回合），即使 user 只有 1 条，也说明对局已开始，回退后须留在游戏界面并仅恢复快照 UI。
  */
 function maybeReturnToOpeningAfterRollback(): boolean {
   if (gamePhase.value !== GamePhase.GAME) return false;
@@ -2964,9 +3272,11 @@ function maybeReturnToOpeningAfterRollback(): boolean {
 
     const all = getChatMessages(`0-${last}`, { hide_state: 'unhidden' });
     const userCount = all.filter(m => m.role === 'user').length;
+    const assistantCount = all.filter(m => m.role === 'assistant').length;
     if (userCount > 1) return false;
+    if (assistantCount >= 1) return false;
 
-    console.log('🏠 [App] 回退后检测到无玩家后续楼层（仅开局或更少），返回开始界面');
+    console.log('🏠 [App] 回退后检测到无玩家后续楼层（仅开局 user、尚无 AI 楼层），返回开始界面');
     gamePhase.value = GamePhase.OPENING;
     isOpeningPhase.value = false;
     viewMode.value = 'normal';
@@ -6788,6 +7098,178 @@ body.has-dragging-fab {
 
 .light .avatar-edit-preview img {
   border-color: rgba(0, 0, 0, 0.12);
+}
+
+// 详情编辑区域样式
+.detail-edit-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.light .detail-edit-section {
+  border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+.detail-edit-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #a1a1aa;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #d4d4d8;
+  }
+
+  i {
+    transition: transform 0.2s;
+  }
+}
+
+.light .detail-edit-toggle {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.02);
+  color: #71717a;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #3f3f46;
+  }
+}
+
+.detail-edit-content {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-edit-row {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.light .detail-edit-row {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.detail-edit-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.detail-name-input {
+  flex: 1;
+  font-weight: 500;
+}
+
+.detail-edit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &.full-width {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    font-size: 11px;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .form-input,
+  .form-textarea {
+    font-size: 13px;
+  }
+}
+
+.light .detail-field {
+  label {
+    color: #71717a;
+  }
+}
+
+.btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+
+  &.btn-danger {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+  }
+}
+
+.light .btn-icon.btn-danger {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.15);
+  }
+}
+
+// 身份标签编辑样式
+.identity-tags-form {
+  .form-hint {
+    font-size: 12px;
+    color: #71717a;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+}
+
+.identity-tag-edit-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.identity-category-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.identity-value-input {
+  flex: 2;
+  min-width: 0;
+}
+
+.light .identity-tags-form .form-hint {
+  color: #71717a;
 }
 
 .form-label {

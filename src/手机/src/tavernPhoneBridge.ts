@@ -46,6 +46,7 @@ export interface TavernPhoneWeChatContact {
 /** 壳脚本可选下发的 OpenAI 兼容默认值（仅填补手机本地未填的项） */
 export type TavernPhoneOpenAiDefaults = {
   apiBaseUrl: string | null;
+  apiKey?: string | null;
   model: string | null;
 };
 
@@ -73,6 +74,8 @@ export interface TavernPhoneContextPayload {
   openAiDefaults: TavernPhoneOpenAiDefaults;
   /** 未在超时内收到壳脚本响应（如单独打开 Vite 预览） */
   offline?: boolean;
+  /** 当前酒馆聊天中最后一条消息的 last_id（用于判断开场白）；开场白为 1 */
+  lastChatMessageId?: number;
 }
 
 /** 请求关闭整个小手机浮层（由壳脚本处理） */

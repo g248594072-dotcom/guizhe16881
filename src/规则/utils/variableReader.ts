@@ -400,6 +400,39 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
 
     const 生理描述 = value?.['当前综合生理描述'] ?? value?.['currentPhysiologicalDesc'] ?? '';
 
+    // 性癖详情
+    const fetishDetails: Record<string, { level: number; description: string; justification: string }> = {};
+    const rawFetishes = value?.['性癖'] ?? value?.['fetishes'] ?? {};
+    if (rawFetishes && typeof rawFetishes === 'object') {
+      for (const [key, val] of Object.entries(rawFetishes)) {
+        if (val && typeof val === 'object') {
+          fetishDetails[key] = {
+            level: val['等级'] ?? val['level'] ?? 1,
+            description: val['细节描述'] ?? val['description'] ?? '',
+            justification: val['自我合理化'] ?? val['justification'] ?? '',
+          };
+        }
+      }
+    }
+
+    // 敏感部位详情
+    const sensitivePartDetails: Record<string, { level: number; reaction: string; devDetails: string }> = {};
+    const rawSensitiveParts = value?.['敏感部位'] ?? value?.['sensitiveParts'] ?? {};
+    if (rawSensitiveParts && typeof rawSensitiveParts === 'object') {
+      for (const [key, val] of Object.entries(rawSensitiveParts)) {
+        if (val && typeof val === 'object') {
+          sensitivePartDetails[key] = {
+            level: val['敏感等级'] ?? val['level'] ?? 1,
+            reaction: val['生理反应'] ?? val['reaction'] ?? '',
+            devDetails: val['开发细节'] ?? val['devDetails'] ?? '',
+          };
+        }
+      }
+    }
+
+    // 身份标签
+    const identityTags = value?.['身份标签'] ?? value?.['identityTags'] ?? {};
+
     return {
       id,
       name,
@@ -413,6 +446,9 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       sensitiveParts: 敏感部位,
       hiddenFetish: 隐藏性癖,
       currentPhysiologicalDesc: typeof 生理描述 === 'string' ? 生理描述 : '',
+      fetishDetails,
+      sensitivePartDetails,
+      identityTags,
     } as CharacterData;
   });
 }
