@@ -31,6 +31,10 @@
  *    条目名为「联系人显示名 + 小手机聊天记录摘要」。未写 worldbookName 时使用当前角色卡绑定的主世界书（getCharWorldbookNames('current').primary）。
  *    默认绿灯（selective），主要关键字每轮按当前角色卡名、展示名、书卡 json 内昵称类字段、各联系人显示名等自动刷新；绿灯条目默认禁止递归与禁止下一步递归。
  *    同步指针存于聊天变量 statePath（默认 stat_data.手机微信世界书同步）。需 phone_ui_url；壳会预建隐藏 iframe 读 IndexedDB。
+ *
+ * phone_ui_url 兼容说明：jsDelivr、raw.githubusercontent.com 等对 index.html 常返回 Content-Type: text/plain，
+ * 浏览器与 iframe 不会按 HTML 解析（表现为整页源码或黑屏）。壳脚本会 fetch 后检测该情况，将 ./assets 等改为绝对地址并
+ * 以 blob:text/html 注入 iframe（仅对上述来源做探测，本地与其它站点仍直接设 src）。
  */
 const VERSION = '1.0.0';
 const PHONE_W = 375;
@@ -1417,6 +1421,73 @@ $(() => {
   let phoneDragOffsetY = 0;
   let phoneDragListenersBound = false;
   const PHONE_DRAG_NS = 'tavernPhoneDrag';
+  /** 由 resolvePhoneUiSrc 创建的 blob: URL，须在更换 URL 或卸载 DOM 时 revoke */
+  let phoneUiBlobUrl: string | null = null;
+
+  function revokePhoneUiBlob(): void {
+    if (phoneUiBlobUrl) {
+      URL.revokeObjectURL(phoneUiBlobUrl);
+      phoneUiBlobUrl = null;
+    }
+  }
+
+  /** 这些来源上的 index.html 常被标成 text/plain，需 fetch + blob 修正 */
+  function shouldProbePhoneUiMime(url: string): boolean {
+    try {
+      const { hostname, pathname } = new URL(url);
+      if (hostname === 'raw.githubusercontent.com') {
+        return true;
+      }
+      if (hostname.endsWith('jsdelivr.net') && pathname.includes('/gh/')) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  function looksLikeHtmlDocument(text: string): boolean {
+    const t = text.trimStart();
+    return /^\s*<!doctype\s+html/i.test(t) || /^\s*<html[\s>/]/i.test(t);
+  }
+
+  /** 将 Vite 产物的 ./assets/... 改为基于页面 URL 的绝对地址，便于 blob: 文档加载子资源 */
+  function rewritePhoneHtmlAssetRefs(html: string, pageUrl: string): string {
+    const baseHref = new URL('./', pageUrl).href;
+    return html.replace(/\b(src|href)=(["'])(\.\/[^"']+)\2/gi, (_m, attr, q, rel) => {
+      const abs = new URL(rel as string, baseHref).href;
+      return `${attr}=${q}${abs}${q}`;
+    });
+  }
+
+  /**
+   * 返回 iframe 可用的 src：对 jsDelivr/gh、raw GitHub 等在 text/plain 下返回 blob:；否则返回原始 URL。
+   */
+  async function resolvePhoneUiSrc(url: string): Promise<string> {
+    if (!shouldProbePhoneUiMime(url)) {
+      return url;
+    }
+    try {
+      const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+      const ct = (res.headers.get('content-type') ?? '').toLowerCase();
+      const text = await res.text();
+      if (!looksLikeHtmlDocument(text)) {
+        return url;
+      }
+      const plainButHtml = ct.includes('text/plain') || !ct.includes('text/html');
+      if (!plainButHtml) {
+        return url;
+      }
+      const rewritten = rewritePhoneHtmlAssetRefs(text, url);
+      revokePhoneUiBlob();
+      phoneUiBlobUrl = URL.createObjectURL(new Blob([rewritten], { type: 'text/html;charset=utf-8' }));
+      return phoneUiBlobUrl;
+    } catch (e) {
+      console.warn('[tavern-phone] phone_ui_url fetch 失败，回退直连（可能仍为黑屏）', e);
+      return url;
+    }
+  }
 
   function ensureChatScopeListener() {
     if (chatScopeListener) {
@@ -1622,6 +1693,7 @@ $(() => {
   }
 
   function removeDom() {
+    revokePhoneUiBlob();
     if (resizeTargetWindow) {
       teardownPhoneDrag(resizeTargetWindow);
     }
@@ -1786,14 +1858,15 @@ $(() => {
     applyLayout();
   }
 
-  function setIframeSrc() {
+  async function setIframeSrc(): Promise<void> {
     phoneUiUrl = getPhoneUiUrl();
     const el = getIframeEl();
     if (!el || !phoneUiUrl) {
       return;
     }
-    if (el.src !== phoneUiUrl) {
-      el.src = phoneUiUrl;
+    const resolved = await resolvePhoneUiSrc(phoneUiUrl);
+    if (el.src !== resolved) {
+      el.src = resolved;
     }
   }
 
@@ -1917,7 +1990,10 @@ $(() => {
     }
 
     buildDom();
-    setIframeSrc();
+    void setIframeSrc().catch(err => {
+      console.error('[tavern-phone] 加载手机界面失败', err);
+      toastr.error('加载手机界面失败，请检查 phone_ui_url 与网络');
+    });
 
     $overlay?.css('display', 'block');
     $phoneRoot?.css('display', 'flex');
@@ -1952,7 +2028,9 @@ $(() => {
     if (!$phoneRoot?.length) {
       buildDom();
     }
-    setIframeSrc();
+    void setIframeSrc().catch(() => {
+      /* 世界书预同步：静默失败 */
+    });
   }
 
   function requestExportThreadsFromIframe(iframeWin: Window, chatScopeId: string): Promise<WbExportedThread[]> {
