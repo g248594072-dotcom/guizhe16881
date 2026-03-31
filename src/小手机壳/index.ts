@@ -1449,7 +1449,7 @@ $(() => {
 
   function looksLikeHtmlDocument(text: string): boolean {
     const t = text.trimStart();
-    return /^\s*<!doctype\s+html/i.test(t) || /^\s*<html[\s>/]/i.test(t);
+    return /^\s*<!doctype\s+html/i.test(t) || /^\s*<html[^\w]/.test(t);
   }
 
   /** 将 Vite 产物的 ./assets/... 改为基于页面 URL 的绝对地址，便于 blob: 文档加载子资源 */
