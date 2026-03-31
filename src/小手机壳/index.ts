@@ -60,6 +60,8 @@ const MSG = {
   READY: 'tavern-phone:ready',
   REQUEST_EXPORT_THREADS_FOR_WB: 'tavern-phone:request-export-threads-for-wb',
   EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
+  /** 其他 iframe → 父窗口：主动触发世界书同步（如 App.vue 发送消息后） */
+  REQUEST_TRIGGER_WB_SYNC: 'tavern-phone:request-trigger-wb-sync',
 } as const;
 
 function getByPath(obj: unknown, path: string): unknown {
@@ -1977,6 +1979,13 @@ $(() => {
           '*',
         );
       }
+      return;
+    }
+    if (t === MSG.REQUEST_TRIGGER_WB_SYNC) {
+      console.info('[tavern-phone][wb-sync] 📡 收到主动触发同步请求（REQUEST_TRIGGER_WB_SYNC）');
+      void runWeChatWorldbookSyncOnGenerate().catch(e => {
+        console.warn('[tavern-phone] 主动触发世界书同步失败', e);
+      });
       return;
     }
     if (t === MSG.REQUEST_CLOSE) {

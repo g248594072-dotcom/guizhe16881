@@ -2351,9 +2351,8 @@ async function sendMessage() {
 
         try {
           const result = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandler);
-          // 严格检查返回值是否为函数
-          if (typeof result === 'function') {
-            unsubscribeStream = result;
+          if (result && typeof result === 'object' && typeof result.stop === 'function') {
+            unsubscribeStream = result.stop;
             streamSubscriptionSuccess = true;
             console.log('✅ [App] 流式事件监听已注册（带过滤机制）');
           } else if (result === undefined || result === null) {
@@ -2392,6 +2391,14 @@ async function sendMessage() {
       await new Promise(r => setTimeout(r, 50));
       pendingUserMessageId.value = getLastMessageId();
       console.log('✅ [App] 已写入 user 消息，message_id:', pendingUserMessageId.value);
+
+      // 主动通知小手机壳触发世界书同步（App.vue 走的不是酒馆助手生成流程，不会触发 GENERATE_BEFORE_COMBINE_PROMPTS）
+      try {
+        window.parent.postMessage({ type: 'tavern-phone:request-trigger-wb-sync' }, '*');
+        console.log('📡 [App] 已发送世界书同步请求给小手机壳');
+      } catch (e) {
+        console.warn('⚠️ [App] 通知小手机壳失败:', e);
+      }
 
       const uid = pendingUserMessageId.value;
       if (uid != null) {
@@ -3884,8 +3891,8 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
       };
       try {
         const result = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandler);
-        if (typeof result === 'function') {
-          unsubscribeStream = result;
+        if (result && typeof result === 'object' && typeof result.stop === 'function') {
+          unsubscribeStream = result.stop;
         }
       } catch (err) {
         console.error('❌ [App] 注册流式事件监听失败:', err);
@@ -3910,6 +3917,12 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
       await new Promise(r => setTimeout(r, 50));
       pendingUserMessageId.value = getLastMessageId();
       console.log('✅ [App] 已写入开局 user 消息，message_id:', pendingUserMessageId.value);
+      // 主动通知小手机壳触发世界书同步
+      try {
+        window.parent.postMessage({ type: 'tavern-phone:request-trigger-wb-sync' }, '*');
+      } catch (e) {
+        console.warn('⚠️ [App] 通知小手机壳失败:', e);
+      }
       const ouid = pendingUserMessageId.value;
       if (ouid != null) {
         await applyMvuParseToMessageFloor(userPrompt, openingUserBaseMvu, ouid);

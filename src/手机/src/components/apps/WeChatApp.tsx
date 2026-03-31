@@ -214,6 +214,98 @@ function looksLikeTruncatedReply(text: string): boolean {
   return true;
 }
 
+/**
+ * 将消息分割成多个段落，用于分段发送（模拟真实微信聊天）
+ * 分割规则：
+ * 1. 按空行分割
+ * 2. 每段不超过 300 字
+ * 3. 最多分割成 3 段
+ */
+function splitMessageIntoSegments(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  // 按空行分割
+  const paragraphs = trimmed.split(/\n\s*\n/).filter(p => p.trim());
+
+  if (paragraphs.length <= 1) {
+    // 没有空行，按长度分割
+    return splitByLength(trimmed, 300);
+  }
+
+  // 将每个段落组合起来
+  const segments: string[] = [];
+  let currentSegment = '';
+  const MAX_SEGMENT_LENGTH = 300;
+
+  for (const para of paragraphs) {
+    if (para.length <= MAX_SEGMENT_LENGTH) {
+      if (currentSegment.length + para.length + 1 <= MAX_SEGMENT_LENGTH) {
+        currentSegment = currentSegment ? `${currentSegment}\n\n${para}` : para;
+      } else {
+        if (currentSegment) {
+          segments.push(currentSegment);
+        }
+        currentSegment = para;
+      }
+    } else {
+      // 段落本身超过长度，需要拆分
+      if (currentSegment) {
+        segments.push(currentSegment);
+        currentSegment = '';
+      }
+      const subParts = splitByLength(para, MAX_SEGMENT_LENGTH);
+      segments.push(...subParts.slice(0, MAX_SEGMENT_LENGTH - segments.length));
+    }
+  }
+
+  if (currentSegment) {
+    segments.push(currentSegment);
+  }
+
+  // 最多返回3段
+  return segments.slice(0, 3);
+}
+
+/**
+ * 按字符长度分割文本，优先在句末标点处分割
+ */
+function splitByLength(text: string, maxLength: number): string[] {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const segments: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > maxLength) {
+    // 向前寻找最近的句末标点
+    let cutIndex = maxLength;
+    const searchRange = remaining.slice(0, maxLength + 50);
+    const lastPunctuation = Math.max(
+      searchRange.lastIndexOf('。'),
+      searchRange.lastIndexOf('！'),
+      searchRange.lastIndexOf('？'),
+      searchRange.lastIndexOf('…'),
+    );
+
+    if (lastPunctuation > maxLength * 0.6) {
+      cutIndex = lastPunctuation + 1;
+    }
+
+    segments.push(remaining.slice(0, cutIndex).trim());
+    remaining = remaining.slice(cutIndex).trim();
+  }
+
+  if (remaining) {
+    segments.push(remaining);
+  }
+
+  return segments.slice(0, 3);
+}
+
 export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [ctx, setCtx] = useState<TavernPhoneContextPayload | null>(null);
   const [ctxLoading, setCtxLoading] = useState(true);
@@ -438,16 +530,21 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
       const originalLastId = messages[idx].lastId;
       try {
         const reply = await completeWeChatReply(chatCtx, historyForApi, { regenerate: true });
+
+        // 将回复分割成多个气泡
+        const segments = splitMessageIntoSegments(reply);
+        const baseTime = Date.now();
+
         setMessages(prev => {
           const next = prev.slice(0, idx);
-          const newMsg: WeChatStoredMessage = {
+          const newMessages: WeChatStoredMessage[] = segments.map((segment, index) => ({
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: reply,
-            time: Date.now(),
-            lastId: originalLastId,
-          };
-          const final = [...next, newMsg];
+            content: segment,
+            time: baseTime + index * 500,
+            lastId: index === 0 ? originalLastId : undefined,
+          }));
+          const final = [...next, ...newMessages];
           schedulePhoneMemoryPersist(final, selectedContact.id, chatScopeId);
           return final;
         });
@@ -478,15 +575,23 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     const historyForApi = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
     try {
       const reply = await completeWeChatReply(chatCtx, historyForApi);
-      const assistantMsg: WeChatStoredMessage = {
+
+      // 将回复分割成多个气泡
+      const segments = splitMessageIntoSegments(reply);
+      const baseTime = Date.now();
+
+      const assistantMessages: WeChatStoredMessage[] = segments.map((segment, index) => ({
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: reply,
-        time: Date.now(),
-        lastId: ctx?.lastChatMessageId != null ? ctx.lastChatMessageId + 1 : undefined,
-      };
-      const fullThread = [...messages, userMsg, assistantMsg];
-      setMessages(prev => [...prev, assistantMsg]);
+        content: segment,
+        time: baseTime + index * 500, // 每个气泡间隔500ms
+        lastId: index === 0
+          ? (ctx?.lastChatMessageId != null ? ctx.lastChatMessageId + 1 : undefined)
+          : undefined,
+      }));
+
+      const fullThread = [...messages, userMsg, ...assistantMessages];
+      setMessages(prev => [...prev, ...assistantMessages]);
       schedulePhoneMemoryPersist(fullThread, selectedContact.id, chatScopeId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -934,8 +1039,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   type="button"
                   onClick={() => setAddModalOpen(true)}
                   className="p-1 -mr-1 text-gray-900"
-                  aria-label="从可能认识的人添加"
-                  title="从可能认识的人添加"
+                  aria-label="从变量中添加"
+                  title="从变量中添加"
                 >
                   <Plus size={26} strokeWidth={2.25} />
                 </button>
@@ -1194,7 +1299,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
               />
               <div className="max-h-[72%] rounded-t-2xl bg-white shadow-xl flex flex-col">
                 <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 shrink-0">
-                  <span className="text-[16px] font-semibold text-gray-900">从可能认识的人添加</span>
+                  <span className="text-[16px] font-semibold text-gray-900">从变量中添加</span>
                   <button
                     type="button"
                     onClick={() => setAddModalOpen(false)}
@@ -1210,11 +1315,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                       读取变量…
                     </div>
                   ) : archiveCandidates.length === 0 ? (
-                    <p className="px-3 py-6 text-[13px] text-gray-500 leading-relaxed">
-                      未在变量中找到角色列表。若数据在规则 JSON 的{' '}
-                      <code className="rounded bg-gray-100 px-1">stat_data.角色档案</code> 下，请更新小手机壳脚本后重试；也可在脚本变量中设置{' '}
-                      <code className="rounded bg-gray-100 px-1">phone_wechat_contacts_path</code>{' '}
-                      （例如 stat_data.角色档案）。
+                    <p className="px-3 py-6 text-[13px] text-gray-500 leading-relaxed text-center">
+                      暂无联系人，请从变量中添加。
                     </p>
                   ) : (
                     <ul className="divide-y divide-gray-100">

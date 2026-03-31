@@ -25,6 +25,8 @@ export const TAVERN_PHONE_MSG = {
   REQUEST_EXPORT_THREADS_FOR_WB: 'tavern-phone:request-export-threads-for-wb',
   /** iframe → 父：线程导出结果 */
   EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
+  /** 其他 iframe → 父窗口：主动触发世界书同步（如 App.vue 发送消息后） */
+  REQUEST_TRIGGER_WB_SYNC: 'tavern-phone:request-trigger-wb-sync',
 } as const;
 
 /** 微信会话列表中的联系人（可与人物属性编辑器等数据源对齐） */
