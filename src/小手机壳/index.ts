@@ -1447,9 +1447,11 @@ $(() => {
     }
   }
 
+  /** 不用正则：打包器曾把含 `/` 的正则压坏，导致永远不进入 blob 分支 */
   function looksLikeHtmlDocument(text: string): boolean {
     const t = text.trimStart();
-    return /^\s*<!doctype\s+html/i.test(t) || /^\s*<html[^\w]/.test(t);
+    const head = t.slice(0, 32).toLowerCase();
+    return head.startsWith('<!doctype') || head.startsWith('<html');
   }
 
   /** 将 Vite 产物的 ./assets/... 改为基于页面 URL 的绝对地址，便于 blob: 文档加载子资源 */
@@ -1482,6 +1484,7 @@ $(() => {
       const rewritten = rewritePhoneHtmlAssetRefs(text, url);
       revokePhoneUiBlob();
       phoneUiBlobUrl = URL.createObjectURL(new Blob([rewritten], { type: 'text/html;charset=utf-8' }));
+      console.info('[tavern-phone] 已对 phone_ui_url 使用 blob:text/html（修正 CDN 将 index.html 标为 text/plain）');
       return phoneUiBlobUrl;
     } catch (e) {
       console.warn('[tavern-phone] phone_ui_url fetch 失败，回退直连（可能仍为黑屏）', e);
