@@ -2393,9 +2393,10 @@ async function sendMessage() {
       console.log('✅ [App] 已写入 user 消息，message_id:', pendingUserMessageId.value);
 
       // 主动通知小手机壳触发世界书同步（App.vue 走的不是酒馆助手生成流程，不会触发 GENERATE_BEFORE_COMBINE_PROMPTS）
+      // 使用 REQUEST_TRIGGER_GAME_STORY_SYNC 让小手机壳路由到剧情摘要同步流程
       try {
-        window.parent.postMessage({ type: 'tavern-phone:request-trigger-wb-sync' }, '*');
-        console.log('📡 [App] 已发送世界书同步请求给小手机壳');
+        window.parent.postMessage({ type: 'tavern-phone:request-trigger-game-story-sync' }, '*');
+        console.log('📡 [App] 已发送剧情摘要同步请求给小手机壳');
       } catch (e) {
         console.warn('⚠️ [App] 通知小手机壳失败:', e);
       }
@@ -3917,9 +3918,9 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
       await new Promise(r => setTimeout(r, 50));
       pendingUserMessageId.value = getLastMessageId();
       console.log('✅ [App] 已写入开局 user 消息，message_id:', pendingUserMessageId.value);
-      // 主动通知小手机壳触发世界书同步
+      // 主动通知小手机壳触发剧情摘要同步
       try {
-        window.parent.postMessage({ type: 'tavern-phone:request-trigger-wb-sync' }, '*');
+        window.parent.postMessage({ type: 'tavern-phone:request-trigger-game-story-sync' }, '*');
       } catch (e) {
         console.warn('⚠️ [App] 通知小手机壳失败:', e);
       }
@@ -3987,6 +3988,7 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
 // 组件挂载时加载消息并监听事件
 let unsubscribeMessageUpdate: any = null;
 let unsubscribeChatChange: (() => void) | null = null;
+let unsubscribeGameStorySync: (() => void) | null = null;
 
 watch(
   () => gamePhase.value,
@@ -4003,6 +4005,22 @@ watch(
 watch(isGeneratingOpening, (v) => {
   if (!v) openingSecondaryApiPhase.value = false;
 });
+
+/**
+ * 监听小手机壳转发的剧情摘要同步触发消息
+ * 当规则 App 发送消息后，小手机壳会通过 GAME_STORY_WB_SYNC_TRIGGERED 消息通知规则 App
+ * 触发剧情摘要同步到世界书「编年史」
+ */
+function onGameStorySyncMessage(event: MessageEvent) {
+  const msg = event.data;
+  if (msg?.type === 'tavern-phone:game-story-wb-sync-triggered') {
+    console.info('📡 [App] 收到小手机壳转发的剧情同步触发，开始同步剧情到世界书...');
+    void (async () => {
+      const { syncGameStoryToWorldbook } = await import('./utils/dialogAndVariable');
+      await syncGameStoryToWorldbook();
+    })();
+  }
+}
 
 function onPageShowStaleUserCheck() {
   if (gamePhase.value === GamePhase.GAME) {
@@ -4109,6 +4127,9 @@ onMounted(() => {
     console.warn('⚠️ [App] 无法监听 CHAT_CHANGED:', e);
   }
 
+  // 监听小手机壳转发的剧情摘要同步触发消息
+  window.addEventListener('message', onGameStorySyncMessage);
+
   window.addEventListener('pageshow', onPageShowStaleUserCheck);
 
   console.log('✅ [App] 同层前端界面挂载完成');
@@ -4129,6 +4150,9 @@ onUnmounted(() => {
   }
   if (typeof unsubscribeChatChange === 'function') {
     unsubscribeChatChange();
+  }
+  if (typeof unsubscribeGameStorySync === 'function') {
+    unsubscribeGameStorySync();
   }
   stopIframeHeightFix?.();
   stopIframeHeightFix = null;

@@ -62,6 +62,26 @@ const MSG = {
   EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
   /** 其他 iframe → 父窗口：主动触发世界书同步（如 App.vue 发送消息后） */
   REQUEST_TRIGGER_WB_SYNC: 'tavern-phone:request-trigger-wb-sync',
+  /** 其他 iframe → 父窗口：主动触发剧情摘要同步到世界书（规则 App → 小手机壳 → 规则 App） */
+  REQUEST_TRIGGER_GAME_STORY_SYNC: 'tavern-phone:request-trigger-game-story-sync',
+  /** 小手机壳 → 父窗口：通知规则 App 触发剧情摘要同步 */
+  GAME_STORY_WB_SYNC_TRIGGERED: 'tavern-phone:game-story-wb-sync-triggered',
+  /** 小手机前端 → 壳脚本：请求角色档案（MVU 角色档案） */
+  REQUEST_CHARACTER_ARCHIVE: 'tavern-phone:request-character-archive',
+  /** 壳脚本 → 小手机前端：返回角色档案数据 */
+  CHARACTER_ARCHIVE_RESPONSE: 'tavern-phone:character-archive-response',
+  /** 小手机前端 → 壳脚本：写回角色分析结果到 MVU 变量 */
+  REQUEST_WRITE_CHARACTER_ANALYSIS: 'tavern-phone:request-write-character-analysis',
+  /** 壳脚本 → 小手机前端：写回结果响应 */
+  WRITE_CHARACTER_ANALYSIS_RESULT: 'tavern-phone:write-character-analysis-result',
+  /** 小手机前端 → 壳脚本：请求将角色分析结果同步到世界书 */
+  REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
+  /** 壳脚本 → 小手机前端：世界书同步结果响应 */
+  SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
+  /** 小手机前端 → 壳脚本：保存自动分析间隔设置 */
+  SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
+  /** 壳脚本 → 小手机前端：通知自动触发分析全部角色 */
+  TRIGGER_AUTO_ANALYZE_ALL: 'tavern-phone:trigger-auto-analyze-all',
 } as const;
 
 function getByPath(obj: unknown, path: string): unknown {
@@ -942,6 +962,156 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
   );
 }
 
+/**
+ * 将角色分析结果同步到世界书
+ * 创建/更新名为「【角色分析】xxx」的世界书条目
+ */
+async function syncCharacterAnalysisToWorldbook(
+  characterId: string,
+  updates: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const charName = (updates['姓名'] as string) || characterId;
+    const entryName = `【角色分析】${charName}`;
+
+    // 构建分析结果内容
+    const lines: string[] = [];
+    lines.push(`更新时间: ${new Date().toLocaleString('zh-CN')}`);
+
+    if (updates['当前内心想法']) {
+      lines.push(`当前想法: ${updates['当前内心想法']}`);
+    }
+    if (updates['性格']) {
+      const 性格 = updates['性格'] as Record<string, string>;
+      lines.push(`性格: ${Object.entries(性格).map(([k, v]) => `${k}:${v}`).join(' / ')}`);
+    }
+    if (updates['身份标签']) {
+      const 标签 = updates['身份标签'] as Record<string, string>;
+      lines.push(`身份标签: ${Object.entries(标签).map(([k, v]) => `${k}:${v}`).join(' / ')}`);
+    }
+    if (updates['数值']) {
+      const 数值 = updates['数值'] as Record<string, number>;
+      lines.push(`数值状态:`);
+      for (const [k, v] of Object.entries(数值)) {
+        lines.push(`  - ${k}: ${v}`);
+      }
+    }
+    if (updates['性癖']) {
+      const 性癖 = updates['性癖'] as Record<string, { 等级?: number; 细节描述?: string }>;
+      lines.push(`性癖:`);
+      for (const [k, v] of Object.entries(性癖)) {
+        lines.push(`  - ${k} Lv.${v.等级 || 1}: ${v.细节描述 || ''}`);
+      }
+    }
+    if (updates['敏感部位']) {
+      const 敏感 = updates['敏感部位'] as Record<string, { 敏感等级?: number; 生理反应?: string }>;
+      lines.push(`敏感部位:`);
+      for (const [k, v] of Object.entries(敏感)) {
+        lines.push(`  - ${k} Lv.${v.敏感等级 || 1}: ${v.生理反应 || ''}`);
+      }
+    }
+    if (updates['当前综合生理描述']) {
+      lines.push(`综合生理: ${updates['当前综合生理描述']}`);
+    }
+
+    const content = lines.join('\n');
+
+    // 获取世界书名称（优先使用聊天作用域 chatScopeId，与角色卡聊天文件名一致）
+    let worldbookName: string | null = null;
+    const chatScopeId = getChatScopeId();
+    if (chatScopeId) {
+      worldbookName = chatScopeId;
+    }
+    if (!worldbookName) {
+      // 兜底：使用当前角色卡的主世界书名
+      try {
+        const w = getCharWorldbookNames('current');
+        worldbookName = w?.primary?.trim() || (Array.isArray(w?.additional) ? w.additional[0]?.trim() : null) || null;
+      } catch {
+        /* */
+      }
+    }
+    if (!worldbookName) {
+      return { ok: false, error: '无法确定世界书名称' };
+    }
+
+    // 确保世界书存在：不存在则创建并激活为全局
+    try {
+      const existing = await getWorldbook(worldbookName);
+      if (existing.length === 0) {
+        // 世界书不存在，创建并激活为全局
+        const templateEntry: PartialDeep<WorldbookEntry> = {
+          name: '【系统】角色分析摘要',
+          enabled: true,
+          position: 'normal',
+          probability: 100,
+          strategy: {
+            type: 'selective',
+            keys: [charName],
+            keys_secondary: { logic: 'and_any', keys: [] },
+            scan_depth: 4,
+          },
+          recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
+          effect: {} as WorldbookEntry['effect'],
+        };
+        const created = await createWorldbook(worldbookName, [templateEntry as WorldbookEntry]);
+        if (!created) {
+          return { ok: false, error: `创建世界书「${worldbookName}」失败` };
+        }
+        // 激活为全局世界书
+        try {
+          await rebindGlobalWorldbooks([worldbookName]);
+          console.info('[tavern-phone] 已创建并激活全局世界书:', worldbookName);
+        } catch {
+          console.warn('[tavern-phone] 世界书创建成功但激活全局失败（需手动在酒馆中开启）', worldbookName);
+        }
+      }
+    } catch (err) {
+      console.warn('[tavern-phone] 检查/创建世界书时出错:', err);
+    }
+
+    await updateWorldbookWith(
+      worldbookName,
+      entries => {
+        const idx = entries.findIndex(e => e.name === entryName);
+        if (idx < 0) {
+          // 创建新条目（绿灯，默认启用）
+          const neu: PartialDeep<WorldbookEntry> = {
+            name: entryName,
+            content,
+            enabled: true,
+            position: 'normal',
+            probability: 100,
+            strategy: {
+              type: 'selective',
+              keys: [charName],
+              keys_secondary: { logic: 'and_any', keys: [] },
+              scan_depth: 'same_as_global',
+            },
+            recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
+          };
+          return [...entries, neu as WorldbookEntry];
+        } else {
+          // 更新已有条目
+          const e = entries[idx];
+          return [
+            ...entries.slice(0, idx),
+            { ...e, content },
+            ...entries.slice(idx + 1),
+          ];
+        }
+      },
+      { render: 'debounced' },
+    );
+
+    console.info('[tavern-phone] ✅ 角色分析已同步到世界书:', entryName);
+    return { ok: true };
+  } catch (err) {
+    console.error('[tavern-phone] 同步角色分析到世界书失败:', err);
+    return { ok: false, error: String(err) };
+  }
+}
+
 type WbExportedMsg = { id: string; role: 'user' | 'assistant'; content: string; time: number };
 type WbExportedThread = { roleId: string; conversationId: string; messages: WbExportedMsg[] };
 
@@ -1411,7 +1581,7 @@ $(() => {
   let $phoneRoot: JQuery | null = null;
   let $iframe: JQuery<HTMLIFrameElement> | null = null;
   let isOpen = false;
-  let messageHandler: ((e: MessageEvent) => void) | null = null;
+  let messageHandler: ((e: MessageEvent) => Promise<void>) | null = null;
   let resizeHandler: (() => void) | null = null;
   /** 与 buildDom 里绑定 resize 的窗口一致，便于 removeDom 卸载 */
   let resizeTargetWindow: Window | null = null;
@@ -1875,7 +2045,7 @@ $(() => {
     }
   }
 
-  messageHandler = (e: MessageEvent) => {
+  messageHandler = async (e: MessageEvent) => {
     if (e.source !== getIframeEl()?.contentWindow) {
       return;
     }
@@ -1986,6 +2156,145 @@ $(() => {
       void runWeChatWorldbookSyncOnGenerate().catch(e => {
         console.warn('[tavern-phone] 主动触发世界书同步失败', e);
       });
+      return;
+    }
+    if (t === MSG.REQUEST_TRIGGER_GAME_STORY_SYNC) {
+      console.info('[tavern-phone][game-story] 📡 收到规则 App 剧情摘要同步请求（REQUEST_TRIGGER_GAME_STORY_SYNC）');
+      // 通知父窗口（规则 App iframe）触发剧情摘要同步
+      window.parent.postMessage(
+        {
+          type: MSG.GAME_STORY_WB_SYNC_TRIGGERED,
+          payload: {},
+        },
+        '*',
+      );
+      return;
+    }
+    if (t === MSG.REQUEST_CHARACTER_ARCHIVE) {
+      console.info('[tavern-phone] 📡 收到角色档案请求（REQUEST_CHARACTER_ARCHIVE）');
+      const reqData = e.data as { requestId?: string };
+      const requestId = reqData.requestId;
+      if (!requestId) return;
+      const source = e.source as Window | null;
+      if (!source) return;
+      try {
+        await waitGlobalInitialized('Mvu');
+        const mvuData = (Mvu as Record<string, (...args: unknown[]) => unknown>).getMvuData({ type: 'message', message_id: 'latest' });
+        const 角色档案 = (mvuData as Record<string, unknown>)?.stat_data?.角色档案 || {};
+        source.postMessage(
+          { type: MSG.CHARACTER_ARCHIVE_RESPONSE, requestId, payload: { 角色档案 } },
+          '*',
+        );
+      } catch (err) {
+        console.warn('[tavern-phone] 读取角色档案失败:', err);
+        source.postMessage(
+          { type: MSG.CHARACTER_ARCHIVE_RESPONSE, requestId, payload: { 角色档案: {} } },
+          '*',
+        );
+      }
+      return;
+    }
+    if (t === MSG.REQUEST_WRITE_CHARACTER_ANALYSIS) {
+      console.info('[tavern-phone] 📡 收到角色分析结果写回请求（REQUEST_WRITE_CHARACTER_ANALYSIS）');
+      const reqData = e.data as { requestId?: string; characterId?: string; updates?: Record<string, unknown> };
+      const { requestId, characterId, updates } = reqData;
+      const source = e.source as Window | null;
+      if (!requestId || !characterId || !updates) {
+        source?.postMessage(
+          { type: MSG.WRITE_CHARACTER_ANALYSIS_RESULT, requestId, ok: false, error: '缺少必要参数' },
+          '*',
+        );
+        return;
+      }
+      try {
+        await waitGlobalInitialized('Mvu');
+        const mvuData = (Mvu as Record<string, (...args: unknown[]) => unknown>).getMvuData({ type: 'message', message_id: 'latest' });
+        const statData = ((mvuData as Record<string, unknown>)?.stat_data as Record<string, unknown>) || {};
+        const 角色档案 = (statData['角色档案'] as Record<string, Record<string, unknown>>) || {};
+
+        if (!角色档案[characterId]) {
+          source?.postMessage(
+            { type: MSG.WRITE_CHARACTER_ANALYSIS_RESULT, requestId, ok: false, error: '未找到该角色档案' },
+            '*',
+          );
+          return;
+        }
+
+        const charData = 角色档案[characterId];
+        if (updates['当前内心想法'] !== undefined) {
+          charData['当前内心想法'] = updates['当前内心想法'];
+        }
+        if (updates['性格'] !== undefined) {
+          charData['性格'] = updates['性格'];
+        }
+        if (updates['性癖'] !== undefined) {
+          charData['性癖'] = updates['性癖'];
+        }
+        if (updates['敏感部位'] !== undefined) {
+          charData['敏感部位'] = updates['敏感部位'];
+        }
+        if (updates['身份标签'] !== undefined) {
+          charData['身份标签'] = updates['身份标签'];
+        }
+        if (updates['数值'] !== undefined) {
+          charData['数值'] = { ...(charData['数值'] as Record<string, unknown>), ...(updates['数值'] as Record<string, unknown>) };
+        }
+        if (updates['当前综合生理描述'] !== undefined) {
+          charData['当前综合生理描述'] = updates['当前综合生理描述'];
+        }
+
+        (Mvu as Record<string, (...args: unknown[]) => unknown>).setMvuData({ type: 'message', message_id: 'latest' }, mvuData);
+
+        console.info('[tavern-phone] ✅ 角色分析结果已写回 MVU:', characterId);
+        source?.postMessage(
+          { type: MSG.WRITE_CHARACTER_ANALYSIS_RESULT, requestId, ok: true },
+          '*',
+        );
+      } catch (err) {
+        console.warn('[tavern-phone] 写回角色分析结果失败:', err);
+        source?.postMessage(
+          { type: MSG.WRITE_CHARACTER_ANALYSIS_RESULT, requestId, ok: false, error: String(err) },
+          '*',
+        );
+      }
+      return;
+    }
+    if (t === MSG.REQUEST_SYNC_CHARACTER_TO_WORLDBOOK) {
+      console.info('[tavern-phone] 📡 收到角色分析结果同步到世界书请求（REQUEST_SYNC_CHARACTER_TO_WORLDBOOK）');
+      const reqData = e.data as { requestId?: string; characterId?: string; updates?: Record<string, unknown> };
+      const { requestId, characterId, updates } = reqData;
+      const source = e.source as Window | null;
+      if (!requestId || !characterId || !updates) {
+        source?.postMessage(
+          { type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT, requestId, ok: false, error: '缺少必要参数' },
+          '*',
+        );
+        return;
+      }
+      void (async () => {
+        const result = await syncCharacterAnalysisToWorldbook(characterId, updates);
+        source?.postMessage(
+          { type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT, requestId, ...result },
+          '*',
+        );
+      })();
+      return;
+    }
+    // 保存自动分析间隔设置
+    if (t === MSG.SAVE_AUTO_ANALYZE_INTERVAL) {
+      const interval = e.data?.interval;
+      if (typeof interval === 'number' && interval > 0) {
+        try {
+          const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
+          const current = scriptVars.auto_analyze_interval;
+          if (current !== interval) {
+            replaceVariables({ auto_analyze_interval: interval }, { type: 'script', script_id: getScriptId() });
+            console.info(`[tavern-phone] ✅ 已保存自动分析间隔: ${interval} 楼`);
+          }
+        } catch (err) {
+          console.warn('[tavern-phone] 保存自动分析间隔失败:', err);
+        }
+      }
       return;
     }
     if (t === MSG.REQUEST_CLOSE) {
@@ -2213,6 +2522,54 @@ $(() => {
 
   mountTavernPhoneApi(api);
 
+  // 自动分析全部角色：监听 MESSAGE_RECEIVED 事件
+  let lastAnalyzedMessageId = -1;
+  let autoAnalyzeListener: ReturnType<typeof eventOn> | null = null;
+
+  const setupAutoAnalyzeListener = () => {
+    if (autoAnalyzeListener) {
+      autoAnalyzeListener.stop();
+      autoAnalyzeListener = null;
+    }
+    // 读取设置的间隔
+    try {
+      const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
+      const interval = scriptVars.auto_analyze_interval;
+      if (typeof interval === 'number' && interval > 0) {
+        autoAnalyzeListener = eventOn(tavern_events.MESSAGE_RECEIVED, (messageId: number) => {
+          const lastMsgId = getLastMessageId();
+          // 检查是否达到间隔
+          if (lastMsgId - lastAnalyzedMessageId >= interval) {
+            lastAnalyzedMessageId = lastMsgId;
+            console.info(`[tavern-phone] 📡 每 ${interval} 楼自动触发分析全部角色，当前楼层: ${lastMsgId}`);
+            // 通知手机 UI 触发分析全部角色
+            if (isOpen) {
+              const iframeWin = getIframeEl()?.contentWindow;
+              if (iframeWin) {
+                iframeWin.postMessage({ type: MSG.TRIGGER_AUTO_ANALYZE_ALL }, '*');
+              }
+            }
+          }
+        });
+        console.info(`[tavern-phone] ✅ 已启用自动分析，间隔: ${interval} 楼`);
+      }
+    } catch (e) {
+      console.warn('[tavern-phone] 读取自动分析间隔失败:', e);
+    }
+  };
+
+  // 初始化自动分析监听
+  setupAutoAnalyzeListener();
+
+  // 监听聊天切换时重置
+  if (chatScopeListener) {
+    chatScopeListener.stop();
+  }
+  chatScopeListener = eventOn(tavern_events.CHAT_CHANGED, () => {
+    lastAnalyzedMessageId = -1;
+    setupAutoAnalyzeListener();
+  });
+
   wbSyncListener = eventOn(tavern_events.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
     console.info('[tavern-phone][wb-sync] 📡 收到 GENERATE_BEFORE_COMBINE_PROMPTS，开始同步…');
     void runWeChatWorldbookSyncOnGenerate().catch(e => {
@@ -2233,6 +2590,10 @@ $(() => {
     if (chatScopeListener) {
       chatScopeListener.stop();
       chatScopeListener = null;
+    }
+    if (autoAnalyzeListener) {
+      autoAnalyzeListener.stop();
+      autoAnalyzeListener = null;
     }
     if (messageHandler) {
       window.parent.removeEventListener('message', messageHandler);

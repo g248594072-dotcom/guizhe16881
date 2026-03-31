@@ -27,6 +27,22 @@ export const TAVERN_PHONE_MSG = {
   EXPORT_THREADS_FOR_WB_RESULT: 'tavern-phone:export-threads-for-wb-result',
   /** 其他 iframe → 父窗口：主动触发世界书同步（如 App.vue 发送消息后） */
   REQUEST_TRIGGER_WB_SYNC: 'tavern-phone:request-trigger-wb-sync',
+  /** 前端 → 壳脚本 → 请求角色档案（MVU 角色档案） */
+  REQUEST_CHARACTER_ARCHIVE: 'tavern-phone:request-character-archive',
+  /** 壳脚本 → 前端：返回角色档案数据 */
+  CHARACTER_ARCHIVE_RESPONSE: 'tavern-phone:character-archive-response',
+  /** 前端 → 壳脚本：写回角色分析结果到 MVU 变量 */
+  REQUEST_WRITE_CHARACTER_ANALYSIS: 'tavern-phone:request-write-character-analysis',
+  /** 壳脚本 → 前端：写回结果响应 */
+  WRITE_CHARACTER_ANALYSIS_RESULT: 'tavern-phone:write-character-analysis-result',
+  /** 前端 → 壳脚本：请求将角色分析结果同步到世界书 */
+  REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
+  /** 壳脚本 → 前端：世界书同步结果响应 */
+  SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
+  /** 前端 → 壳脚本：保存自动分析间隔设置 */
+  SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
+  /** 壳脚本 → 前端：通知自动触发分析全部角色 */
+  TRIGGER_AUTO_ANALYZE_ALL: 'tavern-phone:trigger-auto-analyze-all',
 } as const;
 
 /** 微信会话列表中的联系人（可与人物属性编辑器等数据源对齐） */
@@ -113,6 +129,14 @@ type PendingInjectInput = {
 };
 
 const pendingInjectInput = new Map<string, PendingInjectInput>();
+
+/** 角色档案响应 */
+type PendingCharacterArchive = {
+  resolve: (v: Record<string, unknown>) => void;
+  timeout: number;
+};
+
+const pendingCharacterArchive = new Map<string, PendingCharacterArchive>();
 
 function ensureContextListener(): void {
   const w = window as Window & { __tavernPhoneContextListener?: boolean };
@@ -207,6 +231,26 @@ function ensureContextListener(): void {
       const ok = Boolean((d as { ok?: boolean }).ok);
       const err = (d as { error?: string }).error;
       p.resolve({ ok, error: typeof err === 'string' ? err : undefined });
+      return;
+    }
+    if (d?.type === TAVERN_PHONE_MSG.CHARACTER_ARCHIVE_RESPONSE && typeof d.requestId === 'string') {
+      const p = pendingCharacterArchive.get(d.requestId);
+      if (!p) {
+        return;
+      }
+      clearTimeout(p.timeout);
+      pendingCharacterArchive.delete(d.requestId);
+      p.resolve((d.payload as Record<string, unknown>) || {});
+    }
+    if (d?.type === TAVERN_PHONE_MSG.WRITE_CHARACTER_ANALYSIS_RESULT && typeof d.requestId === 'string') {
+      // 由 bridge.ts 中的 pendingWriteAnalysis 处理
+      // 此处透传，不拦截
+      const p = pendingCharacterArchive.get(d.requestId);
+      if (p) {
+        clearTimeout(p.timeout);
+        pendingCharacterArchive.delete(d.requestId);
+        p.resolve({} as Record<string, unknown>);
+      }
     }
   });
 }
@@ -357,4 +401,53 @@ export function requestRoleArchiveList(): Promise<TavernPhoneWeChatContact[]> {
       resolve([]);
     }
   });
+}
+
+const CHARACTER_ARCHIVE_TIMEOUT_MS = 6000;
+
+/**
+ * 向壳脚本请求从规则 App MVU 变量中读取「角色档案」
+ * 返回原始 MVU 数据，前端负责类型映射
+ */
+export function requestCharacterArchive(): Promise<Record<string, unknown>> {
+  ensureContextListener();
+  const requestId = crypto.randomUUID();
+  return new Promise(resolve => {
+    const timeout = window.setTimeout(() => {
+      pendingCharacterArchive.delete(requestId);
+      resolve({});
+    }, CHARACTER_ARCHIVE_TIMEOUT_MS);
+    pendingCharacterArchive.set(requestId, { resolve, timeout });
+    try {
+      window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_CHARACTER_ARCHIVE, requestId }, '*');
+    } catch {
+      clearTimeout(timeout);
+      pendingCharacterArchive.delete(requestId);
+      resolve({});
+    }
+  });
+}
+
+/**
+ * 保存自动分析间隔到脚本变量
+ * @param interval 间隔楼层数，设为 0 表示关闭自动分析
+ */
+export function saveAutoAnalyzeInterval(interval: number): void {
+  try {
+    window.parent.postMessage({ type: TAVERN_PHONE_MSG.SAVE_AUTO_ANALYZE_INTERVAL, interval }, '*');
+  } catch (e) {
+    console.warn('[tavernPhoneBridge] 保存自动分析间隔失败:', e);
+  }
+}
+
+/** 监听壳脚本推送的自动触发分析全部角色事件 */
+export function subscribeAutoAnalyzeAll(handler: () => void): () => void {
+  const fn = (e: MessageEvent) => {
+    const d = e.data as { type?: string };
+    if (d?.type === TAVERN_PHONE_MSG.TRIGGER_AUTO_ANALYZE_ALL) {
+      handler();
+    }
+  };
+  window.addEventListener('message', fn);
+  return () => window.removeEventListener('message', fn);
 }

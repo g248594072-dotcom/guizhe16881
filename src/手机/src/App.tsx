@@ -12,8 +12,13 @@ import {
   Settings as SettingsIcon,
   X,
   MessageSquare,
+  UserCheck,
 } from 'lucide-react';
 import { postRequestCloseTavernPhone } from './tavernPhoneBridge';
+import { loadTheme, saveTheme, getThemeVars, injectThemeVars, THEME_LABELS } from './theme';
+import type { PhoneTheme } from './theme';
+import TenantArchiveApp from './components/apps/TenantArchiveApp';
+import AnalysisQueueWidget from './components/AnalysisQueueWidget';
 
 // Import Apps
 import ForumApp from './components/apps/ForumApp';
@@ -24,35 +29,54 @@ import MomentsApp from './components/apps/MomentsApp';
 import SettingsApp from './components/apps/SettingsApp';
 import GroupChatApp from './components/apps/GroupChatApp';
 
-type AppId = 'forum' | 'news' | 'wechat' | 'diary' | 'moments' | 'settings' | 'groupchat' | null;
+type AppId = 'wechat' | 'groupchat' | 'moments' | 'diary' | 'news' | 'forum' | 'settings' | 'archive' | null;
 
 interface AppConfig {
   id: AppId;
   name: string;
   icon: React.ReactNode;
   color: string;
-  component: React.FC<{ onClose: () => void, setWallpaper?: (url: string) => void }>;
+  component: React.FC<{
+    onClose: () => void,
+    setWallpaper?: (url: string) => void,
+    switchTheme?: (theme: PhoneTheme) => void,
+    currentTheme?: PhoneTheme,
+  }>;
 }
 
 const APPS: AppConfig[] = [
+  { id: 'archive', name: '档案', icon: <UserCheck size={34} color="white" strokeWidth={1.5} />, color: 'bg-gradient-to-br from-[#6c5ce7] to-[#a29bfe]', component: TenantArchiveApp },
   { id: 'wechat', name: '微信', icon: <MessageCircle size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#07C160]', component: WeChatApp },
   { id: 'groupchat', name: '群聊', icon: <MessageSquare size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#5856D6]', component: GroupChatApp },
-  { id: 'moments', name: '朋友圈', icon: <Aperture size={34} color="white" strokeWidth={1.5} />, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500', component: MomentsApp },
   { id: 'diary', name: '日记', icon: <BookHeart size={34} color="#f59e0b" strokeWidth={1.5} />, color: 'bg-white', component: DiaryApp },
+  { id: 'moments', name: '朋友圈', icon: <Aperture size={34} color="white" strokeWidth={1.5} />, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500', component: MomentsApp },
   { id: 'news', name: '新闻', icon: <Newspaper size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#FF2D55]', component: NewsApp },
   { id: 'forum', name: '论坛', icon: <Users size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#007AFF]', component: ForumApp },
   { id: 'settings', name: '设置', icon: <SettingsIcon size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#8E8E93]', component: SettingsApp },
 ];
 
-/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊与设置除外 */
+/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊、设置与档案除外 */
 function isPlaceholderApp(id: AppId): boolean {
-  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings';
+  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings' && id !== 'archive';
 }
 
 export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeApp, setActiveApp] = useState<AppId>(null);
   const [wallpaper, setWallpaper] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop');
+  const [currentTheme, setCurrentTheme] = useState<PhoneTheme>(() => loadTheme());
+
+  useEffect(() => {
+    // 初始化时注入主题变量
+    injectThemeVars(getThemeVars(currentTheme));
+  }, []);
+
+  /** 切换主题并保存 */
+  const switchTheme = (theme: PhoneTheme) => {
+    setCurrentTheme(theme);
+    saveTheme(theme);
+    injectThemeVars(getThemeVars(theme));
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -77,7 +101,8 @@ export default function App() {
     <div className="relative box-border flex h-dvh w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden bg-black p-0 font-sans">
       <button
         type="button"
-        className="absolute right-2 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-md transition hover:bg-black/55"
+        className="absolute right-2 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+        style={{ backgroundColor: 'var(--close-btn-bg)', color: 'var(--status-text, white)' }}
         title="关闭小手机"
         aria-label="关闭小手机"
         onClick={() => postRequestCloseTavernPhone()}
@@ -89,15 +114,15 @@ export default function App() {
         className="relative shrink-0 overflow-hidden rounded-[40px] shadow-[0_2px_20px_rgba(0,0,0,0.35)]"
         style={phoneShellStyle}
       >
-        {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；勿用 mix-blend-difference 以免黑底上文字/图标看不见 */}
-        <div className="absolute inset-0 bg-linear-to-b from-slate-700 via-slate-800 to-slate-950">
+        {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；渐变色跟随主题 */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, var(--phone-bg-from, #778899), var(--phone-bg-via, #2c3e50), var(--phone-bg-to, #1a252f))' }}>
           <div
             className="absolute inset-0 bg-cover bg-center transition-all duration-500"
             style={{ backgroundImage: `url(${wallpaper})` }}
           />
           <div className="absolute inset-0 flex flex-col">
           {/* Status Bar */}
-          <div className="absolute top-0 inset-x-0 z-50 flex h-14 items-center justify-between px-7 text-[15px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+          <div className="absolute top-0 inset-x-0 z-50 flex h-14 items-center justify-between px-7 text-[15px] font-semibold drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]" style={{ color: 'var(--status-text, white)', textShadow: 'var(--status-shadow)' }}>
             <span className="mt-1">{timeString}</span>
             <div className="flex items-center gap-1.5 mt-1">
               <Signal size={17} strokeWidth={2.5} />
@@ -107,9 +132,9 @@ export default function App() {
           </div>
 
           {/* Dynamic Island / Notch */}
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[120px] h-[35px] bg-black rounded-[24px] z-50 flex items-center justify-between px-2 shadow-sm">
-            <div className="w-2.5 h-2.5 rounded-full bg-[#111] ml-1 shadow-inner"></div>
-            <div className="w-2.5 h-2.5 rounded-full bg-[#111] mr-1 shadow-inner"></div>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-[120px] h-[35px] rounded-[24px] z-50 flex items-center justify-between px-2 shadow-sm" style={{ backgroundColor: 'var(--dynamic-island-bg, #000)' }}>
+            <div className="w-2.5 h-2.5 rounded-full ml-1 shadow-inner" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
+            <div className="w-2.5 h-2.5 rounded-full mr-1 shadow-inner" style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}></div>
           </div>
 
           {/* Home Screen */}
@@ -133,9 +158,9 @@ export default function App() {
 
           {/* Dock */}
           <div className="absolute bottom-5 inset-x-4 h-[88px] bg-white/25 backdrop-blur-2xl rounded-[34px] flex items-center justify-center gap-6 px-4 border border-white/10 shadow-xl">
-             {APPS.slice(6, 7).map((app) => (
-                <button 
-                  key={app.id} 
+             {APPS.slice(6, 8).map((app) => (
+                <button
+                  key={app.id}
                   onClick={() => setActiveApp(app.id)}
                   className="flex flex-col items-center group"
                 >
@@ -188,6 +213,8 @@ export default function App() {
                     <ActiveAppComponent
                       onClose={() => setActiveApp(null)}
                       setWallpaper={activeApp === 'settings' ? setWallpaper : undefined}
+                      switchTheme={activeApp === 'settings' ? switchTheme : undefined}
+                      currentTheme={currentTheme}
                     />
                     <div
                       className="absolute bottom-0 inset-x-0 z-50 flex h-8 cursor-pointer items-end justify-center bg-linear-to-t from-white/80 to-transparent pb-1.5"
@@ -201,6 +228,8 @@ export default function App() {
             )}
           </AnimatePresence>
 
+          {/* 分析队列悬浮小组件 */}
+          <AnalysisQueueWidget />
           </div>
         </div>
       </div>

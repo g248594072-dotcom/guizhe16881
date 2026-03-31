@@ -10,6 +10,7 @@ import {
 import {
   requestTavernPhoneContext,
   subscribeChatScopeChange,
+  TAVERN_PHONE_MSG,
   type TavernPhoneContextPayload,
 } from '../../tavernPhoneBridge';
 import {
@@ -247,6 +248,9 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
       // 重新加载消息列表
       const allMessages = await loadWeChatThreadForScope(chatScopeId, sessionInfo.id);
       setMessages(allMessages as GroupChatMessage[]);
+
+      // 发群聊消息时主动触发世界书同步（立即通知壳脚本）
+      window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSendError(msg);

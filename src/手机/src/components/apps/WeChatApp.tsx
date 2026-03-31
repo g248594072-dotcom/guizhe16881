@@ -18,6 +18,7 @@ import {
   requestInjectToInput,
   requestWritePhoneMemory,
   subscribeChatScopeChange,
+  TAVERN_PHONE_MSG,
   type TavernPhoneContextPayload,
   type TavernPhoneWeChatContact,
 } from '../../tavernPhoneBridge';
@@ -29,6 +30,7 @@ import {
   saveWeChatThreadForScope,
   type WeChatStoredMessage,
 } from '../../weChatStorage';
+import { triggerInstantSync } from '../../chatSync';
 import { LOCAL_OFFLINE_SCOPE, resolveChatScopeId } from '../../weChatScope';
 import {
   loadWeChatMe,
@@ -593,6 +595,9 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
       const fullThread = [...messages, userMsg, ...assistantMessages];
       setMessages(prev => [...prev, ...assistantMessages]);
       schedulePhoneMemoryPersist(fullThread, selectedContact.id, chatScopeId);
+
+      // 发微信时主动触发世界书同步（立即通知壳脚本）
+      window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSendError(msg);

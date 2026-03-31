@@ -1005,3 +1005,28 @@ export async function submitRestorePersonalRule(idOrTitle: string, characterName
   restorePersonalRuleInVariables(idOrTitle);
   toastr.success(`已复原「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
 }
+
+// ---------- 世界书同步 ----------
+
+/**
+ * 将当前回合的剧情摘要同步到世界书「编年史」条目
+ * 由 App.vue 发送消息后调用，也由小手机壳的 REQUEST_TRIGGER_WB_SYNC 消息路由触发
+ *
+ * 流程：
+ * 1. 从最新消息楼层读取 <sum> 标签内容（编年史Updater 已封装此逻辑）
+ * 2. 读取 <maintext> 最近正文片段（用于生成更丰富的摘要）
+ * 3. 调用编年史更新函数写入世界书
+ */
+export async function syncGameStoryToWorldbook(): Promise<void> {
+  try {
+    const { checkAndUpdateChronicle } = await import('./chronicleUpdater');
+    const success = await checkAndUpdateChronicle();
+    if (success) {
+      console.log('✅ [dialogAndVariable] 剧情摘要已同步到世界书「编年史」');
+    } else {
+      console.warn('⚠️ [dialogAndVariable] 剧情摘要同步失败（可能没有 <sum> 内容）');
+    }
+  } catch (e) {
+    console.warn('⚠️ [dialogAndVariable] 同步剧情到世界书失败:', e);
+  }
+}
