@@ -964,57 +964,145 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
 
 /**
  * 将角色分析结果同步到世界书
- * 创建/更新名为「【角色分析】xxx」的世界书条目
+ * 创建/更新名为「【角色名】角色档案」的世界书条目
+ * 首次创建新条目，后续更新已有条目
  */
 async function syncCharacterAnalysisToWorldbook(
   characterId: string,
   updates: Record<string, unknown>,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; isNew?: boolean }> {
   try {
     const charName = (updates['姓名'] as string) || characterId;
-    const entryName = `【角色分析】${charName}`;
+    const entryName = `【${charName}】角色档案`;
 
-    // 构建分析结果内容
-    const lines: string[] = [];
-    lines.push(`更新时间: ${new Date().toLocaleString('zh-CN')}`);
+    // 构建完整角色档案内容
+    const sections: string[] = [];
+    
+    // 更新时间
+    sections.push(`更新时间: ${new Date().toLocaleString('zh-CN')}`);
+    sections.push('');
 
-    if (updates['当前内心想法']) {
-      lines.push(`当前想法: ${updates['当前内心想法']}`);
+    // 基本信息
+    const basicInfo: string[] = [];
+    if (updates['姓名']) basicInfo.push(`姓名: ${updates['姓名']}`);
+    if (updates['性别']) basicInfo.push(`性别: ${updates['性别']}`);
+    if (updates['年龄']) basicInfo.push(`年龄: ${updates['年龄']}`);
+    if (updates['职业']) basicInfo.push(`职业: ${updates['职业']}`);
+    if (updates['外貌']) basicInfo.push(`外貌: ${updates['外貌']}`);
+    if (updates['外貌细节']) basicInfo.push(`外貌细节: ${updates['外貌细节']}`);
+    if (basicInfo.length > 0) {
+      sections.push('基本信息:');
+      sections.push(...basicInfo.map(s => `  ${s}`));
+      sections.push('');
     }
+
+    // 性格特点
     if (updates['性格']) {
       const 性格 = updates['性格'] as Record<string, string>;
-      lines.push(`性格: ${Object.entries(性格).map(([k, v]) => `${k}:${v}`).join(' / ')}`);
-    }
-    if (updates['身份标签']) {
-      const 标签 = updates['身份标签'] as Record<string, string>;
-      lines.push(`身份标签: ${Object.entries(标签).map(([k, v]) => `${k}:${v}`).join(' / ')}`);
-    }
-    if (updates['数值']) {
-      const 数值 = updates['数值'] as Record<string, number>;
-      lines.push(`数值状态:`);
-      for (const [k, v] of Object.entries(数值)) {
-        lines.push(`  - ${k}: ${v}`);
+      sections.push('性格特点:');
+      for (const [k, v] of Object.entries(性格)) {
+        sections.push(`  - ${k}: ${v}`);
       }
-    }
-    if (updates['性癖']) {
-      const 性癖 = updates['性癖'] as Record<string, { 等级?: number; 细节描述?: string }>;
-      lines.push(`性癖:`);
-      for (const [k, v] of Object.entries(性癖)) {
-        lines.push(`  - ${k} Lv.${v.等级 || 1}: ${v.细节描述 || ''}`);
-      }
-    }
-    if (updates['敏感部位']) {
-      const 敏感 = updates['敏感部位'] as Record<string, { 敏感等级?: number; 生理反应?: string }>;
-      lines.push(`敏感部位:`);
-      for (const [k, v] of Object.entries(敏感)) {
-        lines.push(`  - ${k} Lv.${v.敏感等级 || 1}: ${v.生理反应 || ''}`);
-      }
-    }
-    if (updates['当前综合生理描述']) {
-      lines.push(`综合生理: ${updates['当前综合生理描述']}`);
+      sections.push('');
     }
 
-    const content = lines.join('\n');
+    // 性癖 & 玩法
+    if (updates['性癖'] || updates['敏感部位']) {
+      sections.push('性癖 & 玩法:');
+      if (updates['性癖']) {
+        const 性癖 = updates['性癖'] as Record<string, { 等级?: number; 细节描述?: string; 自我合理化?: string }>;
+        for (const [k, v] of Object.entries(性癖)) {
+          sections.push(`  - ${k} Lv.${v.等级 || 1}:`);
+          if (v.细节描述) sections.push(`    ${v.细节描述}`);
+        }
+      }
+      if (updates['敏感部位']) {
+        const 敏感 = updates['敏感部位'] as Record<string, { 敏感等级?: number; 生理反应?: string; 开发细节?: string }>;
+        sections.push('  敏感部位:');
+        for (const [k, v] of Object.entries(敏感)) {
+          sections.push(`    - ${k} Lv.${v.敏感等级 || 1}: ${v.生理反应 || ''}`);
+        }
+      }
+      sections.push('');
+    }
+
+    // 背景故事
+    if (updates['背景故事']) {
+      sections.push('背景故事:');
+      sections.push(`  ${updates['背景故事']}`);
+      sections.push('');
+    }
+
+    // 兴趣爱好
+    if (updates['兴趣爱好']) {
+      sections.push('兴趣爱好:');
+      const 爱好 = updates['兴趣爱好'] as string[] | string;
+      if (Array.isArray(爱好)) {
+        爱好.forEach(h => sections.push(`  - ${h}`));
+      } else {
+        sections.push(`  ${爱好}`);
+      }
+      sections.push('');
+    }
+
+    // 生活习惯
+    if (updates['生活习惯']) {
+      sections.push('生活习惯:');
+      const 习惯 = updates['生活习惯'] as string[] | string;
+      if (Array.isArray(习惯)) {
+        习惯.forEach(h => sections.push(`  - ${h}`));
+      } else {
+        sections.push(`  ${习惯}`);
+      }
+      sections.push('');
+    }
+
+    // 说话风格
+    if (updates['说话风格'] || updates['日常对话示例']) {
+      sections.push('说话风格:');
+      if (updates['说话风格']) {
+        sections.push(`  ${updates['说话风格']}`);
+      }
+      if (updates['日常对话示例']) {
+        sections.push('  日常对话示例:');
+        const 示例 = updates['日常对话示例'] as string[];
+        示例.forEach(ex => {
+          sections.push(`    - ${ex}`);
+        });
+      }
+      sections.push('');
+    }
+
+    // 当前状态（动态更新部分）
+    if (updates['当前内心想法'] || updates['当前综合生理描述'] || updates['数值']) {
+      sections.push('当前状态:');
+      if (updates['当前内心想法']) {
+        sections.push(`  当前想法: ${updates['当前内心想法']}`);
+      }
+      if (updates['当前综合生理描述']) {
+        sections.push(`  生理状态: ${updates['当前综合生理描述']}`);
+      }
+      if (updates['数值']) {
+        const 数值 = updates['数值'] as Record<string, number>;
+        sections.push('  数值状态:');
+        for (const [k, v] of Object.entries(数值)) {
+          sections.push(`    - ${k}: ${v}`);
+        }
+      }
+      sections.push('');
+    }
+
+    // 身份标签
+    if (updates['身份标签']) {
+      const 标签 = updates['身份标签'] as Record<string, string>;
+      sections.push('身份标签:');
+      for (const [k, v] of Object.entries(标签)) {
+        sections.push(`  - ${k}: ${v}`);
+      }
+      sections.push('');
+    }
+
+    const content = sections.join('\n');
 
     // 获取世界书名称（优先使用聊天作用域 chatScopeId，与角色卡聊天文件名一致）
     let worldbookName: string | null = null;
@@ -1035,47 +1123,21 @@ async function syncCharacterAnalysisToWorldbook(
       return { ok: false, error: '无法确定世界书名称' };
     }
 
-    // 确保世界书存在：不存在则创建并激活为全局
-    try {
-      const existing = await getWorldbook(worldbookName);
-      if (existing.length === 0) {
-        // 世界书不存在，创建并激活为全局
-        const templateEntry: PartialDeep<WorldbookEntry> = {
-          name: '【系统】角色分析摘要',
-          enabled: true,
-          position: 'normal',
-          probability: 100,
-          strategy: {
-            type: 'selective',
-            keys: [charName],
-            keys_secondary: { logic: 'and_any', keys: [] },
-            scan_depth: 4,
-          },
-          recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
-          effect: {} as WorldbookEntry['effect'],
-        };
-        const created = await createWorldbook(worldbookName, [templateEntry as WorldbookEntry]);
-        if (!created) {
-          return { ok: false, error: `创建世界书「${worldbookName}」失败` };
-        }
-        // 激活为全局世界书
-        try {
-          await rebindGlobalWorldbooks([worldbookName]);
-          console.info('[tavern-phone] 已创建并激活全局世界书:', worldbookName);
-        } catch {
-          console.warn('[tavern-phone] 世界书创建成功但激活全局失败（需手动在酒馆中开启）', worldbookName);
-        }
-      }
-    } catch (err) {
-      console.warn('[tavern-phone] 检查/创建世界书时出错:', err);
+    // 确保世界书存在并激活为全局
+    const wbResult = await ensureWorldbookForSync(worldbookName);
+    if (!wbResult) {
+      return { ok: false, error: `无法确保世界书「${worldbookName}」存在` };
     }
+
+    let isNewEntry = false;
 
     await updateWorldbookWith(
       worldbookName,
       entries => {
         const idx = entries.findIndex(e => e.name === entryName);
         if (idx < 0) {
-          // 创建新条目（绿灯，默认启用）
+          // 首次分析：创建新条目（绿灯，启用）
+          isNewEntry = true;
           const neu: PartialDeep<WorldbookEntry> = {
             name: entryName,
             content,
@@ -1084,7 +1146,7 @@ async function syncCharacterAnalysisToWorldbook(
             probability: 100,
             strategy: {
               type: 'selective',
-              keys: [charName],
+              keys: [charName, ...Object.values(updates['身份标签'] || {}).filter(Boolean) as string[]],
               keys_secondary: { logic: 'and_any', keys: [] },
               scan_depth: 'same_as_global',
             },
@@ -1092,7 +1154,8 @@ async function syncCharacterAnalysisToWorldbook(
           };
           return [...entries, neu as WorldbookEntry];
         } else {
-          // 更新已有条目
+          // 后续分析：更新已有条目内容
+          isNewEntry = false;
           const e = entries[idx];
           return [
             ...entries.slice(0, idx),
@@ -1104,8 +1167,12 @@ async function syncCharacterAnalysisToWorldbook(
       { render: 'debounced' },
     );
 
-    console.info('[tavern-phone] ✅ 角色分析已同步到世界书:', entryName);
-    return { ok: true };
+    if (isNewEntry) {
+      console.info('[tavern-phone] ✅ 已创建新角色档案条目:', entryName);
+    } else {
+      console.info('[tavern-phone] ✅ 已更新角色档案条目:', entryName);
+    }
+    return { ok: true, isNew: isNewEntry };
   } catch (err) {
     console.error('[tavern-phone] 同步角色分析到世界书失败:', err);
     return { ok: false, error: String(err) };
@@ -1193,55 +1260,65 @@ function resolveWorldbookNameForWbSync(cfg: WbSyncScriptCfg, chatScopeId: string
 
 /**
  * 确保世界书存在：不存在则创建（含一个绿灯模板条目），并激活为全局世界书。
- * 若已存在则直接返回。
+ * 若已存在，也重新确保其为全局世界书（防止切换角色卡或刷新后全局状态丢失）。
  * 返回创建后的模板条目，供调用方复制设置。
  */
 async function ensureWorldbookForSync(
   worldbookName: string,
 ): Promise<{ template: WorldbookEntry; isNew: boolean } | null> {
+  let template: WorldbookEntry | null = null;
+  let isNew = false;
+
   try {
     const existing = await getWorldbook(worldbookName);
     if (existing.length > 0) {
-      return { template: existing[0], isNew: false };
+      template = existing[0];
+      isNew = false;
     }
   } catch {
     /* 世界书不存在，尝试创建 */
   }
 
   // 不存在 → 创建
-  const templateEntry: PartialDeep<WorldbookEntry> = {
-    name: '【系统】小手机微信摘要',
-    enabled: true,
-    position: 'normal',
-    probability: 100,
-    strategy: {
-      type: 'constant',
-      keys: [],
-      keys_secondary: { logic: 'and_any', keys: [] },
-      scan_depth: 4,
-    },
-    recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
-    effect: { ...({} as WorldbookEntry['effect']) },
-  };
+  if (!template) {
+    const templateEntry: PartialDeep<WorldbookEntry> = {
+      name: '【系统】小手机微信摘要',
+      enabled: true,
+      position: 'normal',
+      probability: 100,
+      strategy: {
+        type: 'constant',
+        keys: [],
+        keys_secondary: { logic: 'and_any', keys: [] },
+        scan_depth: 4,
+      },
+      recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
+      effect: { ...({} as WorldbookEntry['effect']) },
+    };
 
-  const created = await createWorldbook(worldbookName, [templateEntry as WorldbookEntry]);
-  if (!created) {
-    console.error('[tavern-phone] 创建世界书失败', worldbookName);
-    return null;
+    const created = await createWorldbook(worldbookName, [templateEntry as WorldbookEntry]);
+    if (!created) {
+      console.error('[tavern-phone] 创建世界书失败', worldbookName);
+      return null;
+    }
+
+    // 重新读取以获取 uid 等填充后的完整条目
+    const after = await getWorldbook(worldbookName);
+    template = after.length > 0 ? after[0] : (templateEntry as WorldbookEntry);
+    isNew = true;
+    console.info('[tavern-phone] 已创建世界书', worldbookName);
   }
 
-  // 激活为全局
+  // 无论是否新创建，都确保激活为全局
+  // 这可以防止切换角色卡或刷新后全局状态丢失
   try {
     await rebindGlobalWorldbooks([worldbookName]);
-    console.info('[tavern-phone] 已创建并激活全局世界书', worldbookName);
+    console.info('[tavern-phone] 已确保全局世界书', worldbookName);
   } catch {
-    console.warn('[tavern-phone] 世界书创建成功但激活全局失败（需手动在酒馆中开启）', worldbookName);
+    console.warn('[tavern-phone] 激活全局失败（需手动在酒馆中开启）', worldbookName);
   }
 
-  // 重新读取以获取 uid 等填充后的完整条目
-  const after = await getWorldbook(worldbookName);
-  const tmpl = after.length > 0 ? after[0] : (templateEntry as WorldbookEntry);
-  return { template: tmpl, isNew: true };
+  return { template, isNew };
 }
 
 /** 从当前角色卡 json 等采集可用于绿灯扫描的名称、昵称类词 */

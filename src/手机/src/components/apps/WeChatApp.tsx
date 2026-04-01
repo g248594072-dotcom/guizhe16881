@@ -41,6 +41,9 @@ import {
   mergeContactLists,
 } from '../../weChatPinnedContacts';
 import { fileToAvatarDataUrl } from '../../weChatAvatarFile';
+import { getCharacterAnalyzer } from '../../characterArchive/characterAnalyzer';
+import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
+import { loadCharacterArchiveById } from '../../characterArchive/bridge';
 
 type AvatarPickTarget = { kind: 'me' } | { kind: 'contact'; contact: TavernPhoneWeChatContact };
 
@@ -924,6 +927,48 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   }, [contacts, chatScopeId, listTick, ctx, ctxLoading]);
 
   const addedIds = useMemo(() => new Set(contacts.map(c => c.id)), [contacts]);
+
+  // 新联系人自动检测与分析
+  const analyzedContactIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!ctx || contacts.length === 0) return;
+
+    // 找出未分析过的新联系人
+    const newContacts = contacts.filter(c => !analyzedContactIdsRef.current.has(c.id));
+    if (newContacts.length === 0) return;
+
+    // 延迟执行，避免阻塞初始化
+    const timer = setTimeout(() => {
+      const scheduler = getAnalysisScheduler();
+      const analyzer = getCharacterAnalyzer();
+
+      newContacts.forEach(contact => {
+        // 标记为已分析
+        analyzedContactIdsRef.current.add(contact.id);
+
+        // 从角色档案加载该联系人的完整数据
+        void (async () => {
+          try {
+            const archive = await loadCharacterArchiveById(contact.id);
+            if (archive) {
+              // 有完整档案，添加低优先级分析任务
+              scheduler.addTask({
+                type: 'ANALYZE_CHARACTER',
+                priority: 'NORMAL',
+                characterId: contact.id,
+                characterName: contact.displayName,
+              });
+              console.log('[WeChatApp] 自动为新联系人添加分析任务:', contact.displayName);
+            }
+          } catch (e) {
+            console.warn('[WeChatApp] 自动分析新联系人失败:', e);
+          }
+        })();
+      });
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [contacts, ctx]);
 
   const handleAddContact = (c: TavernPhoneWeChatContact) => {
     addPinnedContact(chatScopeId, c);
