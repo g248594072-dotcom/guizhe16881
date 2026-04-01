@@ -1447,7 +1447,7 @@ function groupMessagesByDate(msgs: WbExportedMsg[]): Map<string, WbExportedMsg[]
  * ---
  * 【MM月DD日】
  * [HH:mm] 玩家: 内容
- * [HH:mm] 对方: 内容
+ * [HH:mm] 联系人名: 内容
  * ...
  */
 function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]): string {
@@ -1476,7 +1476,8 @@ function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]):
         minute: '2-digit',
         hour12: false,
       });
-      const who = m.role === 'user' ? '玩家' : '对方';
+      // 玩家消息使用"玩家"，AI 消息使用联系人显示名
+      const who = m.role === 'user' ? '玩家' : displayName;
       parts.push(`[${timeLabel}] ${who}: ${m.content}`);
     }
   }

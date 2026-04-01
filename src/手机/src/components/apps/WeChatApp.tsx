@@ -404,6 +404,15 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [debugCtxBusy, setDebugCtxBusy] = useState(false);
   /** 仅最后一次 context 请求生效，避免与初次加载 / chat_scope 推送竞态导致看起来「刷新无效」 */
   const contextFetchGenRef = useRef(0);
+  /** 长按菜单状态 */
+  const [longPressMenu, setLongPressMenu] = useState<{
+    visible: boolean;
+    messageId: string | null;
+    messageContent: string;
+    position: { x: number; y: number };
+  }>({ visible: false, messageId: null, messageContent: '', position: { x: 0, y: 0 } });
+  const longPressTimerRef = useRef<number | null>(null);
+  const [retractingIds, setRetractingIds] = useState<Set<string>>(new Set());
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const phoneMemoryTimerRef = useRef<number | null>(null);
@@ -700,6 +709,128 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     setListTick(t => t + 1);
   };
 
+  /** 长按检测处理 */
+  const handleMessageTouchStart = useCallback((e: React.TouchEvent | React.MouseEvent, message: WeChatStoredMessage) => {
+    // 只处理 AI 消息
+    if (message.role !== 'assistant') return;
+
+    // 清除之前的定时器
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+    }
+
+    // 获取点击位置
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      setLongPressMenu({
+        visible: true,
+        messageId: message.id,
+        messageContent: message.content,
+        position: { x: clientX, y: clientY },
+      });
+    }, 600); // 600ms 长按阈值
+  }, []);
+
+  const handleMessageTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const closeLongPressMenu = useCallback(() => {
+    setLongPressMenu(prev => ({ ...prev, visible: false }));
+    // 延迟清除 messageId，避免菜单消失动画突兀
+    window.setTimeout(() => {
+      setLongPressMenu({ visible: false, messageId: null, messageContent: '', position: { x: 0, y: 0 } });
+    }, 200);
+  }, []);
+
+  /** 撤回消息 */
+  const handleRetractMessage = useCallback(async () => {
+    const messageId = longPressMenu.messageId;
+    if (!messageId || !selectedContact) return;
+
+    closeLongPressMenu();
+    setRetractingIds(prev => new Set(prev).add(messageId));
+
+    try {
+      setMessages(prev => {
+        const next = prev.filter(m => m.id !== messageId);
+        // 保存到 IndexedDB
+        void saveWeChatThreadForScope(chatScopeId, selectedContact.id, next);
+        // 触发世界书同步
+        window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
+        return next;
+      });
+
+      console.info('[WeChatApp] 消息已撤回:', messageId);
+    } finally {
+      setRetractingIds(prev => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
+  }, [longPressMenu.messageId, selectedContact, chatScopeId, closeLongPressMenu]);
+
+  /** 重发消息 */
+  const handleResendMessage = useCallback(async () => {
+    const messageId = longPressMenu.messageId;
+    const messageContent = longPressMenu.messageContent;
+    if (!messageId || !selectedContact || !chatCtx) return;
+
+    closeLongPressMenu();
+
+    // 找到消息索引
+    const idx = messages.findIndex(m => m.id === messageId);
+    if (idx < 0 || messages[idx].role !== 'assistant') return;
+
+    setRegeneratingAssistantId(messageId);
+    setSendError('');
+
+    try {
+      // 只保留被重新生成消息之前的上下文
+      const historyForApi = messages.slice(0, idx).map(m => ({ role: m.role, content: m.content }));
+      if (historyForApi.length === 0) return;
+
+      // 调用 API 重新生成
+      const reply = await completeWeChatReply(chatCtx, historyForApi, { regenerate: true });
+
+      // 将回复分割成多个气泡
+      const segments = splitMessageIntoSegments(reply);
+      const baseTime = Date.now();
+      const originalLastId = messages[idx].lastId;
+
+      setMessages(prev => {
+        // 移除原消息，插入新消息
+        const next = prev.slice(0, idx);
+        const newMessages: WeChatStoredMessage[] = segments.map((segment, index) => ({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: segment,
+          time: baseTime + index * 500,
+          lastId: index === 0 ? originalLastId : undefined,
+        }));
+        const final = [...next, ...newMessages];
+
+        // 保存到 IndexedDB 并触发世界书同步
+        void saveWeChatThreadForScope(chatScopeId, selectedContact.id, final);
+        schedulePhoneMemoryPersist(final, selectedContact.id, chatScopeId);
+        window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
+
+        return final;
+      });
+
+      console.info('[WeChatApp] 消息已重发:', messageId);
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRegeneratingAssistantId(null);
+    }
+  }, [longPressMenu.messageId, longPressMenu.messageContent, selectedContact, chatCtx, messages, chatScopeId, schedulePhoneMemoryPersist, closeLongPressMenu]);
 
   const saveMe = () => {
     saveWeChatMe(meDraft);
@@ -888,7 +1019,20 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   ) : null}
                   {m.role === 'assistant' ? (
                     <div className="flex items-start gap-1 max-w-[78%] min-w-0">
-                      <div className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm">
+                      <div
+                        className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm select-none ${regeneratingAssistantId === m.id ? 'opacity-60' : ''} ${retractingIds.has(m.id) ? 'opacity-40' : ''}`}
+                        onTouchStart={(e) => handleMessageTouchStart(e, m)}
+                        onTouchEnd={handleMessageTouchEnd}
+                        onMouseDown={(e) => handleMessageTouchStart(e, m)}
+                        onMouseUp={handleMessageTouchEnd}
+                        onMouseLeave={handleMessageTouchEnd}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleMessageTouchStart(e, m);
+                          window.setTimeout(() => handleMessageTouchEnd(), 100);
+                        }}
+                        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                      >
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-400">{formatMsgTime(m.time)}</p>
                       </div>
@@ -1270,6 +1414,45 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             </div>
           ) : null}
         </>
+      )}
+
+      {/* 长按菜单 - 微信风格 Action Sheet */}
+      {longPressMenu.visible && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/30"
+          onClick={closeLongPressMenu}
+          onTouchStart={closeLongPressMenu}
+        >
+          <div
+            className="absolute bg-white rounded-2xl shadow-xl overflow-hidden min-w-[180px] max-w-[240px]"
+            style={{
+              left: Math.min(Math.max(longPressMenu.position.x - 90, 16), window.innerWidth - 200),
+              top: longPressMenu.position.y > window.innerHeight / 2
+                ? Math.max(longPressMenu.position.y - 120, 100)
+                : Math.min(longPressMenu.position.y + 20, window.innerHeight - 150),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col">
+              <button
+                type="button"
+                onClick={handleRetractMessage}
+                disabled={retractingIds.has(longPressMenu.messageId || '')}
+                className="px-5 py-4 text-[17px] text-center text-red-500 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100 disabled:opacity-50"
+              >
+                {retractingIds.has(longPressMenu.messageId || '') ? '撤回中…' : '撤回'}
+              </button>
+              <button
+                type="button"
+                onClick={handleResendMessage}
+                disabled={regeneratingAssistantId === longPressMenu.messageId}
+                className="px-5 py-4 text-[17px] text-center text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50"
+              >
+                {regeneratingAssistantId === longPressMenu.messageId ? '重发中…' : '重发'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
