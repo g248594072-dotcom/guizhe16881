@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowUpFromLine,
   Bug,
   ChevronLeft,
   Loader2,
@@ -9,18 +8,16 @@ import {
   User,
   Send,
   Plus,
-  Trash2,
-  Undo2,
 } from 'lucide-react';
 import {
   requestTavernPhoneContext,
   requestRoleArchiveList,
-  requestInjectToInput,
   requestWritePhoneMemory,
   subscribeChatScopeChange,
   TAVERN_PHONE_MSG,
   type TavernPhoneContextPayload,
   type TavernPhoneWeChatContact,
+  initExportThreadsListener,
 } from '../../tavernPhoneBridge';
 import { buildWeChatMessages, completeWeChatReply, summarizePhoneExchangeForMemory } from '../../chatCompletions';
 import { applyOpenAiDefaultsFromParent, getTavernPhoneApiConfig } from '../../tavernPhoneApiConfig';
@@ -203,25 +200,14 @@ function lastAssistantOrUserText(msgs: WeChatStoredMessage[]): string {
   return lastU?.content ?? '';
 }
 
-/** 粗略判断助手回复是否可能被 API 截断（句末无收束标点等） */
-function looksLikeTruncatedReply(text: string): boolean {
-  const t = text.trim();
-  if (t.length < 10) {
-    return false;
-  }
-  const last = t[t.length - 1];
-  if (/[。！？…」'"）】\s\n]$/.test(last)) {
-    return false;
-  }
-  return true;
-}
-
 /**
- * 将消息分割成多个段落，用于分段发送（模拟真实微信聊天）
- * 分割规则：
- * 1. 按空行分割
- * 2. 每段不超过 300 字
- * 3. 最多分割成 3 段
+ * 按句子分割消息，用于分段发送（模拟真实微信聊天）
+ * 简化版分割规则：
+ * 1. 优先按强标点（。！？…~）分割，每个带标点的句子独立成段
+ * 2. 逗号、分号作为次要分割点
+ * 3. 空格、换行作为第三级分割点（用于处理多段话有空格的情况）
+ * 4. 无标点的长文本按 100 字强制分割
+ * 5. 每个句子最多 150 字，超长则继续分割
  */
 function splitMessageIntoSegments(text: string): string[] {
   const trimmed = text.trim();
@@ -229,46 +215,129 @@ function splitMessageIntoSegments(text: string): string[] {
     return [];
   }
 
-  // 按空行分割
-  const paragraphs = trimmed.split(/\n\s*\n/).filter(p => p.trim());
-
-  if (paragraphs.length <= 1) {
-    // 没有空行，按长度分割
-    return splitByLength(trimmed, 300);
+  // 非常短的消息（<=30字）直接返回
+  if (trimmed.length <= 30) {
+    return [trimmed];
   }
 
-  // 将每个段落组合起来
-  const segments: string[] = [];
-  let currentSegment = '';
-  const MAX_SEGMENT_LENGTH = 300;
+  const MAX_SEGMENT_LENGTH = 150;
+  const TARGET_SEGMENT_LENGTH = 100; // 目标段落长度，让气泡更紧凑
 
-  for (const para of paragraphs) {
-    if (para.length <= MAX_SEGMENT_LENGTH) {
-      if (currentSegment.length + para.length + 1 <= MAX_SEGMENT_LENGTH) {
-        currentSegment = currentSegment ? `${currentSegment}\n\n${para}` : para;
-      } else {
-        if (currentSegment) {
-          segments.push(currentSegment);
-        }
-        currentSegment = para;
+  // 第一步：按强标点分割句子（。！？…~）
+  const rawSentences: string[] = [];
+  // 使用 match + split 的组合，保留标点
+  const strongPunctuation = /[。！？…~]+/;
+  let remaining = trimmed;
+
+  while (remaining.length > 0) {
+    const match = remaining.match(strongPunctuation);
+    if (!match) {
+      // 没有更多标点了，处理剩余文本
+      if (remaining.trim()) {
+        rawSentences.push(remaining.trim());
       }
+      break;
+    }
+
+    const idx = match.index!;
+    const sentence = remaining.slice(0, idx + match[0].length).trim();
+    if (sentence) {
+      rawSentences.push(sentence);
+    }
+    remaining = remaining.slice(idx + match[0].length);
+  }
+
+  // 第二步：对每个句子按空格/换行进行二次分割
+  // 这样 "你是说我这瓶草莓牛奶吗？ 好啦好啦..." 会变成两段
+  const sentences: string[] = [];
+  for (const raw of rawSentences) {
+    // 按换行或2个以上空格分割
+    const parts = raw.split(/\n+|\s{2,}/).filter(s => s.trim().length > 0);
+    if (parts.length > 1) {
+      // 有空格/换行分隔，分割成多个句子
+      sentences.push(...parts.map(s => s.trim()));
     } else {
-      // 段落本身超过长度，需要拆分
-      if (currentSegment) {
-        segments.push(currentSegment);
-        currentSegment = '';
-      }
-      const subParts = splitByLength(para, MAX_SEGMENT_LENGTH);
-      segments.push(...subParts.slice(0, MAX_SEGMENT_LENGTH - segments.length));
+      sentences.push(raw);
     }
   }
 
-  if (currentSegment) {
-    segments.push(currentSegment);
+  // 第三步：处理每个句子，如果过长则用逗号/分号分割
+  const segments: string[] = [];
+
+  for (const sentence of sentences) {
+    // 如果句子在目标长度内，直接添加
+    if (sentence.length <= TARGET_SEGMENT_LENGTH) {
+      segments.push(sentence);
+      continue;
+    }
+
+    // 如果句子较长（>100字），尝试用逗号、分号分割
+    if (sentence.length > TARGET_SEGMENT_LENGTH) {
+      const weakPunctuation = /[，,；;]/;
+      let temp = '';
+      let remainingSentence = sentence;
+
+      while (remainingSentence.length > 0) {
+        const match = remainingSentence.match(weakPunctuation);
+
+        if (!match) {
+          // 没有更多弱标点了
+          temp += remainingSentence;
+          break;
+        }
+
+        const idx = match.index!;
+        const part = remainingSentence.slice(0, idx + 1); // 包含标点
+
+        if ((temp + part).length <= TARGET_SEGMENT_LENGTH) {
+          temp += part;
+        } else {
+          if (temp.trim()) {
+            segments.push(temp.trim());
+          }
+          temp = part;
+        }
+
+        remainingSentence = remainingSentence.slice(idx + 1);
+      }
+
+      if (temp.trim()) {
+        // 检查最后一段是否过长
+        if (temp.length > MAX_SEGMENT_LENGTH) {
+          // 按长度强制分割
+          for (let i = 0; i < temp.length; i += MAX_SEGMENT_LENGTH) {
+            segments.push(temp.slice(i, i + MAX_SEGMENT_LENGTH));
+          }
+        } else {
+          segments.push(temp.trim());
+        }
+      }
+    }
   }
 
-  // 最多返回3段
-  return segments.slice(0, 3);
+  // 最后检查：如果只有一个段落且长度适中，尝试再细分
+  if (segments.length === 1 && segments[0].length > 60) {
+    const single = segments[0];
+    const mid = Math.floor(single.length / 2);
+    // 在中点附近找最近的标点
+    let splitIdx = mid;
+    for (let i = 0; i < 20 && mid + i < single.length; i++) {
+      if (/[，,；;]/.test(single[mid + i])) {
+        splitIdx = mid + i + 1;
+        break;
+      }
+      if (mid - i > 0 && /[，,；;]/.test(single[mid - i])) {
+        splitIdx = mid - i + 1;
+        break;
+      }
+    }
+    if (splitIdx !== mid || single.length > 100) {
+      return [single.slice(0, splitIdx).trim(), single.slice(splitIdx).trim()];
+    }
+  }
+
+  // 最多返回12段
+  return segments.slice(0, 12);
 }
 
 /**
@@ -331,13 +400,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveCandidates, setArchiveCandidates] = useState<TavernPhoneWeChatContact[]>([]);
-  const [injectBusy, setInjectBusy] = useState(false);
   const [regeneratingAssistantId, setRegeneratingAssistantId] = useState<string | null>(null);
   const [debugCtxBusy, setDebugCtxBusy] = useState(false);
-  /** 撤回模式：true 时点击消息会撤回而不是填入 */
-  const [retractMode, setRetractMode] = useState(false);
-  /** 最后撤回的消息ID */
-  const [lastRetractedId, setLastRetractedId] = useState<string | null>(null);
   /** 仅最后一次 context 请求生效，避免与初次加载 / chat_scope 推送竞态导致看起来「刷新无效」 */
   const contextFetchGenRef = useRef(0);
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
@@ -345,6 +409,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const phoneMemoryTimerRef = useRef<number | null>(null);
   const avatarPickTargetRef = useRef<AvatarPickTarget | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  /** 记录上一次的 chatScopeId，避免重复重置视图 */
+  const lastChatScopeIdRef = useRef<string>(LOCAL_OFFLINE_SCOPE);
 
   useEffect(() => {
     return () => {
@@ -383,6 +449,12 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     void initWeChatStorage();
   }, []);
 
+  // 初始化微信线程导出监听（供壳脚本世界书同步使用）
+  useEffect(() => {
+    const unsubscribe = initExportThreadsListener();
+    return unsubscribe;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -418,11 +490,18 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     return subscribeChatScopeChange(scope => {
-      setChatScopeId(resolveChatScopeId(scope));
-      setView('list');
-      setSelectedContact(null);
-      setSendError('');
-      setListTick(t => t + 1);
+      const newScopeId = resolveChatScopeId(scope);
+      // 只有当 chatScopeId 真正改变时才重置视图
+      // 避免 iframe 重新加载或世界书同步时重复发送 CHAT_SCOPE 导致界面重置
+      if (newScopeId !== lastChatScopeIdRef.current) {
+        lastChatScopeIdRef.current = newScopeId;
+        setChatScopeId(newScopeId);
+        setView('list');
+        setSelectedContact(null);
+        setSendError('');
+        setListTick(t => t + 1);
+      }
+      // 无论是否改变视图，都刷新上下文
       void (async () => {
         const gen = ++contextFetchGenRef.current;
         try {
@@ -594,9 +673,12 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
       const fullThread = [...messages, userMsg, ...assistantMessages];
       setMessages(prev => [...prev, ...assistantMessages]);
+
+      // 显式保存到 IndexedDB 并等待完成，确保世界书同步时能读取到数据
+      await saveWeChatThreadForScope(chatScopeId, selectedContact.id, fullThread);
       schedulePhoneMemoryPersist(fullThread, selectedContact.id, chatScopeId);
 
-      // 发微信时主动触发世界书同步（立即通知壳脚本）
+      // 发微信时主动触发世界书同步（在 IndexedDB 保存完成后通知壳脚本）
       window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -616,66 +698,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     setSelectedContact(null);
     setSendError('');
     setListTick(t => t + 1);
-    setRetractMode(false);
   };
 
-  /**
-   * 撤回最后 N 条消息（用户消息 + AI 回复）
-   */
-  const retractLastMessages = useCallback(async (count: number = 2) => {
-    if (!selectedContact || messages.length === 0) return;
-
-    // 找到最后 count 条消息
-    const toRetract = messages.slice(-count);
-    if (toRetract.length === 0) return;
-
-    // 检查被撤回的最后一条AI消息的 last_id 是否为1（开场白）
-    const assistantToRetract = [...toRetract].reverse().find(m => m.role === 'assistant');
-    const isOpeningMessage = assistantToRetract ? assistantToRetract.lastId === 1 : false;
-
-    // 更新消息列表
-    const remaining = messages.slice(0, -count);
-
-    // 记录最后撤回的消息ID（用于UI提示）
-    const lastRetracted = toRetract[toRetract.length - 1];
-    setLastRetractedId(lastRetracted.id);
-
-    // 清除提示
-    window.setTimeout(() => {
-      setLastRetractedId(null);
-    }, 3000);
-
-    if (isOpeningMessage) {
-      // 要撤回的是开场白（last_id=1），回到开始界面
-      console.log('[WeChatApp] 要撤回AI开场白(last_id=1)，回到开始界面');
-      setMessages(remaining);
-      backToList();
-    } else {
-      // 不是开场白，正常展示消息
-      setMessages(remaining);
-
-      // 把最后一条用户消息的内容复制到输入框
-      const lastUserMsg = [...remaining].reverse().find(m => m.role === 'user');
-      if (lastUserMsg) {
-        setInput(lastUserMsg.content);
-      }
-
-      // 触发记忆重新同步
-      if (remaining.length > 0) {
-        schedulePhoneMemoryPersist(remaining, selectedContact.id, chatScopeId);
-      }
-    }
-
-    console.log('[WeChatApp] 已撤回', count, '条消息');
-  }, [selectedContact, messages, chatScopeId, schedulePhoneMemoryPersist]);
-
-  /**
-   * 切换撤回模式
-   */
-  const toggleRetractMode = useCallback(() => {
-    setRetractMode(prev => !prev);
-    setSendError('');
-  }, []);
 
   const saveMe = () => {
     saveWeChatMe(meDraft);
@@ -781,8 +805,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   const headerTitle = mainTab === 'me' ? '我' : '微信';
 
-  const injectPreviewText = useMemo(() => lastAssistantOrUserText(messages), [messages]);
-
   const startAvatarPick = useCallback((target: AvatarPickTarget) => {
     avatarPickTargetRef.current = target;
     avatarFileInputRef.current?.click();
@@ -820,23 +842,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     }
   }, [chatScopeId]);
 
-  const handleInjectToMainInput = async () => {
-    const text = injectPreviewText.trim();
-    if (!text || showOffline || injectBusy) {
-      return;
-    }
-    setInjectBusy(true);
-    setSendError('');
-    try {
-      const r = await requestInjectToInput(text);
-      if (!r.ok) {
-        setSendError(r.error ?? '填入输入框失败');
-      }
-    } finally {
-      setInjectBusy(false);
-    }
-  };
-
   return (
     <div className="relative flex flex-col h-full bg-[#EDEDED]">
       <input
@@ -856,33 +861,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="flex-1 min-w-0">
               <h1 className="text-[17px] font-semibold text-gray-900 truncate">{selectedContact.displayName}</h1>
             </div>
-            {!showOffline ? (
-              <>
-                <button
-                  type="button"
-                  title={retractMode ? '退出撤回模式' : '撤回最后消息'}
-                  onClick={toggleRetractMode}
-                  className={`shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] active:bg-black/5 ${
-                    retractMode
-                      ? 'bg-red-100 text-red-600'
-                      : 'text-[#576b95]'
-                  }`}
-                >
-                  {retractMode ? <Undo2 size={16} /> : <Trash2 size={16} />}
-                  {retractMode ? '退出' : '撤回'}
-                </button>
-                <button
-                  type="button"
-                  title="将最近一条消息追加到酒馆主界面输入框"
-                  disabled={injectBusy || !injectPreviewText.trim()}
-                  onClick={() => void handleInjectToMainInput()}
-                  className="shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] text-[#576b95] disabled:opacity-40 active:bg-black/5"
-                >
-                  {injectBusy ? <Loader2 className="animate-spin" size={16} /> : <ArrowUpFromLine size={16} />}
-                  填入
-                </button>
-              </>
-            ) : null}
           </div>
 
           <div className="flex-1 overflow-y-auto bg-[#EDEDED] px-3 py-2 min-h-0">
@@ -894,9 +872,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             ) : null}
             <div className="space-y-3">
               {messages.map(m => {
-                const showAssistantRegenerate =
-                  m.role === 'assistant' &&
-                  (looksLikeTruncatedReply(m.content) || m.content.trim() === '');
+                const isAssistant = m.role === 'assistant';
                 return (
                 <div
                   key={m.id}
@@ -912,62 +888,14 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   ) : null}
                   {m.role === 'assistant' ? (
                     <div className="flex items-start gap-1 max-w-[78%] min-w-0">
-                      <div
-                        className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm ${
-                          retractMode
-                            ? 'cursor-pointer hover:bg-red-50 active:bg-red-100'
-                            : ''
-                        }`}
-                        onClick={
-                          retractMode
-                            ? () => void retractLastMessages(2)
-                            : undefined
-                        }
-                      >
+                      <div className="min-w-0 flex-1 rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-white text-gray-900 shadow-sm">
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-400">{formatMsgTime(m.time)}</p>
                       </div>
-                      {showAssistantRegenerate ? (
-                        <div className="flex flex-col items-center gap-0.5 shrink-0 pt-0.5">
-                          {looksLikeTruncatedReply(m.content) ? (
-                            <span
-                              className="text-[9px] text-amber-800/90 leading-tight text-center max-w-14"
-                              title="模型输出长度有限，或句末未正常结束，可点右侧刷新重试"
-                            >
-                              可能未发完
-                            </span>
-                          ) : null}
-                          <button
-                            type="button"
-                            title="重新生成此条回复"
-                            disabled={Boolean(regeneratingAssistantId) || sending}
-                            aria-label="重新生成回复"
-                            onClick={() => void regenerateAssistantMessage(m.id)}
-                            className="p-1.5 rounded-md text-[#576b95] hover:bg-black/5 active:bg-black/10 disabled:opacity-40"
-                          >
-                            {regeneratingAssistantId === m.id ? (
-                              <Loader2 className="animate-spin" size={20} />
-                            ) : (
-                              <RefreshCw size={20} strokeWidth={2.25} />
-                            )}
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
                   ) : (
                     <>
-                      <div
-                        className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black ${
-                          retractMode
-                            ? 'cursor-pointer hover:bg-red-50 active:bg-red-100'
-                            : ''
-                        }`}
-                        onClick={
-                          retractMode
-                            ? () => void retractLastMessages(2)
-                            : undefined
-                        }
-                      >
+                      <div className="max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black">
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-600">{formatMsgTime(m.time)}</p>
                       </div>
@@ -986,20 +914,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
           {sendError ? (
             <div className="px-3 py-1 text-[12px] text-red-600 bg-red-50 shrink-0">{sendError}</div>
-          ) : null}
-
-          {lastRetractedId ? (
-            <div className="px-3 py-1 text-[12px] text-green-600 bg-green-50 shrink-0 flex items-center gap-2">
-              <Undo2 size={14} />
-              已撤回上一条消息
-              <button
-                type="button"
-                onClick={() => setLastRetractedId(null)}
-                className="ml-auto text-gray-400 hover:text-gray-600"
-              >
-                ×
-              </button>
-            </div>
           ) : null}
 
           <div className="shrink-0 border-t border-gray-200 bg-[#F7F7F7] px-2 py-2 pb-6 flex items-end gap-2">

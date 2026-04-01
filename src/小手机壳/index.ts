@@ -2348,17 +2348,22 @@ $(() => {
     }
     if (!$phoneRoot?.length) {
       buildDom();
+      // 仅当 iframe 不存在时才设置 src
+      void setIframeSrc().catch(() => {
+        /* 世界书预同步：静默失败 */
+      });
     }
-    void setIframeSrc().catch(() => {
-      /* 世界书预同步：静默失败 */
-    });
+    // 如果 iframe 已存在，不要重新加载，直接通过 postMessage 通信
   }
 
   function requestExportThreadsFromIframe(iframeWin: Window, chatScopeId: string): Promise<WbExportedThread[]> {
     return new Promise((resolve, reject) => {
       const requestId = crypto.randomUUID();
+      // 消息监听器必须挂在 window.parent（SillyTavern 主页面）上，
+      // 因为手机 iframe 通过 window.parent.postMessage 向主页面发送消息
+      const shellWindow = window.parent;
       const timer = window.setTimeout(() => {
-        window.removeEventListener('message', onMsg);
+        shellWindow.removeEventListener('message', onMsg);
         console.warn('[tavern-phone] 导出微信线程超时，跳过世界书同步');
         resolve([]);
       }, 8000);
@@ -2373,14 +2378,14 @@ $(() => {
           return;
         }
         window.clearTimeout(timer);
-        window.removeEventListener('message', onMsg);
+        shellWindow.removeEventListener('message', onMsg);
         if (e.data.error) {
           reject(new Error(String(e.data.error)));
           return;
         }
         resolve(Array.isArray(e.data.threads) ? (e.data.threads as WbExportedThread[]) : []);
       }
-      window.addEventListener('message', onMsg);
+      shellWindow.addEventListener('message', onMsg);
       iframeWin.postMessage({ type: MSG.REQUEST_EXPORT_THREADS_FOR_WB, requestId, chatScopeId }, '*');
     });
   }

@@ -451,3 +451,65 @@ export function subscribeAutoAnalyzeAll(handler: () => void): () => void {
   window.addEventListener('message', fn);
   return () => window.removeEventListener('message', fn);
 }
+
+// 动态导入避免循环依赖
+async function getExporter() {
+  const { idbExportThreadsForScope } = await import('./weChatIndexedDb');
+  return idbExportThreadsForScope;
+}
+
+/**
+ * 初始化微信线程导出监听（供壳脚本在世界书同步时调用）
+ * 当壳脚本需要同步聊天记录到世界书时，会发送 REQUEST_EXPORT_THREADS_FOR_WB 消息
+ * 直接读取 IndexedDB 中该 scope 下的所有线程
+ */
+export function initExportThreadsListener(): () => void {
+  const w = window as Window & { __tavernPhoneExportListener?: boolean };
+  if (w.__tavernPhoneExportListener) {
+    console.info('[tavernPhoneBridge] 导出监听器已存在，跳过重复初始化');
+    return () => {};
+  }
+  w.__tavernPhoneExportListener = true;
+  console.info('[tavernPhoneBridge] ✅ 初始化导出监听器');
+
+  const handler = async (e: MessageEvent) => {
+    const d = e.data as { type?: string; requestId?: string; chatScopeId?: string };
+
+    if (d?.type === TAVERN_PHONE_MSG.REQUEST_EXPORT_THREADS_FOR_WB && typeof d.requestId === 'string') {
+      console.info('[tavernPhoneBridge] 📤 收到导出线程请求:', d.chatScopeId);
+      try {
+        const idbExportThreadsForScope = await getExporter();
+        const threads = await idbExportThreadsForScope(d.chatScopeId ?? 'local-offline');
+        window.parent.postMessage({
+          type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT,
+          requestId: d.requestId,
+          threads: threads.map(t => ({
+            roleId: t.roleId,
+            conversationId: t.conversationId,
+            messages: t.messages.map(m => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              time: m.time,
+            })),
+          })),
+        }, '*');
+        console.info('[tavernPhoneBridge] ✅ 导出线程完成:', threads.length, '个联系人');
+      } catch (err) {
+        console.error('[tavernPhoneBridge] ❌ 导出线程失败:', err);
+        window.parent.postMessage({
+          type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT,
+          requestId: d.requestId,
+          error: err instanceof Error ? err.message : String(err),
+          threads: [],
+        }, '*');
+      }
+    }
+  };
+
+  window.addEventListener('message', handler);
+  return () => {
+    window.removeEventListener('message', handler);
+    w.__tavernPhoneExportListener = false;
+  };
+}
