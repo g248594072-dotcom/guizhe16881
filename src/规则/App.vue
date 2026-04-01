@@ -768,15 +768,15 @@
                 </button>
               </div>
               <p class="avatar-upload-hint">
-                支持常见图片格式，原图建议小于 12MB；将自动缩放（长边约 512px 以内）并优先转为 WebP / JPEG 后再保存（与 URL 二选一即可）
+                头像与 MVU 角色档案里的「头像」字段无关：仅写入本机 localStorage（与小手机微信/档案经壳同步）。支持常见格式，原图建议小于 12MB；将自动缩放并转为 WebP / JPEG。
               </p>
 
-              <label class="form-label">或填写图片 URL</label>
+              <label class="form-label">或填写图片 URL（同样仅存浏览器）</label>
               <input
                 v-model="modalForm.avatarUrl"
                 type="text"
                 class="form-input"
-                placeholder="粘贴图片链接（留空则清空头像）"
+                placeholder="粘贴 https 图片链接（留空并确定则清除本机覆盖）"
               />
 
               <div v-if="isAvatarPreviewable(modalForm.avatarUrl)" class="avatar-edit-preview">
@@ -1195,6 +1195,11 @@ import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
 import { tagMapToEditableText } from './utils/tagMap';
+import {
+  PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
+  PHONE_CHARACTER_AVATAR_SYNC_TYPE,
+  applyCharacterAvatarOverrideLocal,
+} from '../shared/phoneCharacterAvatarStorage';
 
 /** 构建时注入，见 webpack DefinePlugin `__APP_VERSION__` */
 const appBuildVersion = __APP_VERSION__;
@@ -1800,11 +1805,17 @@ async function openModal(type: string, payload?: Record<string, any>) {
 
   if (type === 'edit_avatar' && payload?.characterId) {
     try {
+      const { resolveCharacterAvatarFromBrowserOnly, loadCharacterAvatarOverrides } = await import('../shared/phoneCharacterAvatarStorage');
       const store = useDataStore();
       const raw = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
-      modalForm.value.avatarUrl = String(raw?.头像链接 ?? raw?.avatar ?? '');
+      const displayName = String(raw?.姓名 ?? raw?.name ?? '').trim();
+      modalForm.value.avatarUrl = resolveCharacterAvatarFromBrowserOnly(
+        payload.characterId,
+        loadCharacterAvatarOverrides(),
+        displayName,
+      );
     } catch (e) {
-      console.warn('预填头像链接失败', e);
+      console.warn('预填头像失败', e);
     }
   }
 
@@ -2041,14 +2052,17 @@ async function onModalComplete() {
       messageText = formatIdentityTagsMessage(payload.characterId, tagsObj);
     } else if (type === 'edit_avatar' && payload?.characterId) {
       const { submitEditCharacterAvatar } = await import('./utils/dialogAndVariable');
-      messageText = await submitEditCharacterAvatar(payload.characterId, form.avatarUrl);
+      const store = useDataStore();
+      const raw = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
+      const displayName = String(raw?.姓名 ?? raw?.name ?? '').trim();
+      messageText = await submitEditCharacterAvatar(payload.characterId, form.avatarUrl, displayName || null);
     } else {
       toastr.warning('未知的弹窗类型或缺少数据');
       return;
     }
 
-    // 将生成的文本放入前端输入框（追加模式，不影响现有内容）
-    if (messageText) {
+    // 将生成的文本放入前端输入框（追加模式，不影响现有内容）；头像编辑不写对话框
+    if (messageText && type !== 'edit_avatar') {
       copyToInput(messageText, 'append');
 
       // 角色心理/性癖编辑：同时写入对话框（创建一条 user 消息）
@@ -4022,6 +4036,21 @@ function onGameStorySyncMessage(event: MessageEvent) {
   }
 }
 
+/** 小手机壳中继：与 Vite 手机页跨端口同步浏览器头像覆盖 */
+function onCharacterAvatarParentMessage(event: MessageEvent) {
+  if (event.source !== window.parent) {
+    return;
+  }
+  const msg = event.data;
+  if (msg?.type === PHONE_CHARACTER_AVATAR_SYNC_TYPE) {
+    const roleId = typeof msg.roleId === 'string' ? msg.roleId.trim() : '';
+    if (!roleId) {
+      return;
+    }
+    applyCharacterAvatarOverrideLocal(roleId, typeof msg.avatarUrl === 'string' ? msg.avatarUrl : '');
+  }
+}
+
 function onPageShowStaleUserCheck() {
   if (gamePhase.value === GamePhase.GAME) {
     setTimeout(() => maybeOfferOrphanUserFloorFix(), 400);
@@ -4129,6 +4158,14 @@ onMounted(() => {
 
   // 监听小手机壳转发的剧情摘要同步触发消息
   window.addEventListener('message', onGameStorySyncMessage);
+  window.addEventListener('message', onCharacterAvatarParentMessage);
+  if (window.parent !== window) {
+    try {
+      window.parent.postMessage({ type: PHONE_CHARACTER_AVATAR_MIRROR_REQUEST }, '*');
+    } catch {
+      /* */
+    }
+  }
 
   window.addEventListener('pageshow', onPageShowStaleUserCheck);
 
@@ -4141,6 +4178,7 @@ onUnmounted(() => {
   window.removeEventListener('th:copy-to-input', onCopyToInputEvent as EventListener);
   window.removeEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
   window.removeEventListener('pageshow', onPageShowStaleUserCheck);
+  window.removeEventListener('message', onCharacterAvatarParentMessage);
   if (secondaryApiBannerHideTimer) {
     clearTimeout(secondaryApiBannerHideTimer);
     secondaryApiBannerHideTimer = null;

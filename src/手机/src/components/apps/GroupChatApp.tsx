@@ -19,6 +19,10 @@ import {
 } from '../../weChatStorage';
 import { LOCAL_OFFLINE_SCOPE, resolveChatScopeId } from '../../weChatScope';
 import {
+  resolveRoleAvatarDisplay,
+  usePhoneCharacterAvatarOverrides,
+} from '../../phoneCharacterAvatars';
+import {
   getOrCreateGroupChatSession,
   getGroupChatDisplayInfo,
   generateGroupChatReplies,
@@ -60,10 +64,12 @@ function contactInitial(displayName: string): string {
 
 function GroupMemberAvatar({
   member,
+  avatarSrc,
   size = 'bubble',
   className = '',
 }: {
   member: GroupMember;
+  avatarSrc: string;
   size?: 'bubble' | 'list' | 'header';
   className?: string;
 }) {
@@ -73,10 +79,11 @@ function GroupMemberAvatar({
     header: 'h-9 w-9 text-sm rounded-md',
   };
 
-  if (member.avatarUrl) {
+  const url = avatarSrc.trim();
+  if (url) {
     return (
       <img
-        src={member.avatarUrl}
+        src={url}
         alt={member.displayName}
         className={`object-cover ${sizeClasses[size]} ${className}`}
       />
@@ -95,6 +102,7 @@ function GroupMemberAvatar({
 // ==================== 主组件 ====================
 
 export default function GroupChatApp({ onClose }: { onClose: () => void }) {
+  const avatarOverrides = usePhoneCharacterAvatarOverrides();
   const [ctx, setCtx] = useState<TavernPhoneContextPayload | null>(null);
   const [ctxLoading, setCtxLoading] = useState(true);
   const [chatScopeId, setChatScopeId] = useState<string>(LOCAL_OFFLINE_SCOPE);
@@ -142,6 +150,7 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           displayName: contact.displayName,
           personality: contact.personality,
           thought: contact.thought,
+          avatarUrl: contact.avatarUrl,
         }));
         setGroupMembers(members);
       } finally {
@@ -407,7 +416,16 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 <ul className="divide-y divide-gray-100">
                   {groupMembers.map(member => (
                     <li key={member.id} className="flex items-center gap-3 px-2 py-3">
-                      <GroupMemberAvatar member={member} size="list" />
+                      <GroupMemberAvatar
+                        member={member}
+                        avatarSrc={resolveRoleAvatarDisplay(
+                          member.id,
+                          member.avatarUrl,
+                          avatarOverrides,
+                          member.displayName,
+                        )}
+                        size="list"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="text-[15px] font-medium text-gray-900 truncate">{member.displayName}</p>
                         {member.personality && (
@@ -473,16 +491,26 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 key={m.id}
                 className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
               >
-                {!isUser && (
-                  <GroupMemberAvatar
-                    member={groupMembers.find(gm => gm.id === (m as GroupChatMessage).senderId) || {
+                {!isUser && (() => {
+                  const gm =
+                    groupMembers.find(g => g.id === (m as GroupChatMessage).senderId) || {
                       id: (m as GroupChatMessage).senderId || 'unknown',
                       displayName: senderName || '未知',
-                    }}
-                    size="bubble"
-                    className="mt-0.5 shrink-0"
-                  />
-                )}
+                    };
+                  return (
+                    <GroupMemberAvatar
+                      member={gm}
+                      avatarSrc={resolveRoleAvatarDisplay(
+                        gm.id,
+                        gm.avatarUrl,
+                        avatarOverrides,
+                        gm.displayName,
+                      )}
+                      size="bubble"
+                      className="mt-0.5 shrink-0"
+                    />
+                  );
+                })()}
                 <div className={`max-w-[75%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                   {!isUser && senderName && (
                     <span className="text-[10px] text-gray-400 mb-0.5 ml-1">{senderName}</span>
@@ -578,7 +606,16 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
               <ul className="divide-y divide-gray-100">
                 {groupMembers.map(member => (
                   <li key={member.id} className="flex items-center gap-3 px-2 py-3">
-                    <GroupMemberAvatar member={member} size="list" />
+                    <GroupMemberAvatar
+                      member={member}
+                      avatarSrc={resolveRoleAvatarDisplay(
+                        member.id,
+                        member.avatarUrl,
+                        avatarOverrides,
+                        member.displayName,
+                      )}
+                      size="list"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-[15px] font-medium text-gray-900 truncate">{member.displayName}</p>
                       {member.personality && (

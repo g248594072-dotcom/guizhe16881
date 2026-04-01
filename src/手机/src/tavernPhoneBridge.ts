@@ -92,6 +92,8 @@ export interface TavernPhoneContextPayload {
   openAiDefaults: TavernPhoneOpenAiDefaults;
   /** 未在超时内收到壳脚本响应（如单独打开 Vite 预览） */
   offline?: boolean;
+  /** 当前酒馆角色卡头像（与角色管理一致），本地未自定义「我」的头像时可用 */
+  currentCharacterAvatarUrl?: string;
   /** 当前酒馆聊天中最后一条消息的 last_id（用于判断开场白）；开场白为 1 */
   lastChatMessageId?: number;
 }
@@ -170,6 +172,7 @@ function ensureContextListener(): void {
           recentStorySnippet: '',
           roleStorySummaries: {},
           openAiDefaults: { apiBaseUrl: null, model: null },
+          currentCharacterAvatarUrl: undefined,
           offline: true,
         });
         return;
@@ -181,6 +184,7 @@ function ensureContextListener(): void {
           recentStorySnippet: raw.recentStorySnippet ?? '',
           roleStorySummaries: raw.roleStorySummaries ?? {},
           openAiDefaults: raw.openAiDefaults ?? { apiBaseUrl: null, model: null },
+          currentCharacterAvatarUrl: raw.currentCharacterAvatarUrl,
         });
       } else {
         p.resolve({
@@ -193,6 +197,7 @@ function ensureContextListener(): void {
           recentStorySnippet: '',
           roleStorySummaries: {},
           openAiDefaults: { apiBaseUrl: null, model: null },
+          currentCharacterAvatarUrl: undefined,
           offline: true,
         });
       }
@@ -277,6 +282,7 @@ export function requestTavernPhoneContext(): Promise<TavernPhoneContextPayload> 
         recentStorySnippet: '',
         roleStorySummaries: {},
         openAiDefaults: { apiBaseUrl: null, model: null },
+        currentCharacterAvatarUrl: undefined,
         offline: true,
       });
     }, CONTEXT_TIMEOUT_MS);
@@ -296,6 +302,7 @@ export function requestTavernPhoneContext(): Promise<TavernPhoneContextPayload> 
         recentStorySnippet: '',
         roleStorySummaries: {},
         openAiDefaults: { apiBaseUrl: null, model: null },
+        currentCharacterAvatarUrl: undefined,
         offline: true,
       });
     }

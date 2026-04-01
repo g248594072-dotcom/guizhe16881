@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   Loader2,
   MessageCircle,
+  Pencil,
   RefreshCw,
   User,
   Send,
@@ -38,10 +39,17 @@ import {
 import {
   addPinnedContact,
   loadPinnedContacts,
+  mergePinnedWithContextAvatars,
 } from '../../weChatPinnedContacts';
 import { fileToAvatarDataUrl } from '../../weChatAvatarFile';
 import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
 import { loadCharacterArchiveById } from '../../characterArchive/bridge';
+import {
+  PHONE_WECHAT_ME_AVATAR_ID,
+  resolveCharacterAvatarFromBrowserOnly,
+  setCharacterAvatarOverride,
+  usePhoneCharacterAvatarOverrides,
+} from '../../phoneCharacterAvatars';
 
 type AvatarPickTarget = { kind: 'me' } | { kind: 'contact'; contact: TavernPhoneWeChatContact };
 
@@ -73,7 +81,7 @@ function MeAvatarBubble({ avatarUrl, onPickClick }: { avatarUrl: string; onPickC
   return (
     <button
       type="button"
-      title="点击上传头像"
+      title="点击上传「我」的头像"
       onClick={onPickClick}
       className="shrink-0 rounded-md p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60"
     >
@@ -99,7 +107,7 @@ function MeAvatarLarge({ avatarUrl, onPickClick }: { avatarUrl: string; onPickCl
   return (
     <button
       type="button"
-      title="点击上传头像"
+      title="点击上传「我」的头像"
       onClick={onPickClick}
       className="rounded-2xl p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60"
     >
@@ -120,20 +128,37 @@ function contactInitial(displayName: string): string {
 
 function ContactAvatar({
   contact,
+  avatarSrc,
   className = '',
   size,
   onPickClick,
 }: {
   contact: TavernPhoneWeChatContact;
+  /** 已合并「浏览器统一头像缓存」后的展示用 URL */
+  avatarSrc: string;
   className?: string;
   /** 列表大头像 / 气泡小头像 / 添加弹层 */
   size: 'list' | 'bubble' | 'picker';
-  /** 点击上传本地头像（会话列表 / 聊天内对方头像） */
+  /** 点击上传角色头像（与角色档案一致，本机缓存） */
   onPickClick?: () => void;
 }) {
   let inner: React.ReactNode;
-  if (contact.avatarUrl) {
-    inner = <img src={contact.avatarUrl} alt="" className={className} />;
+  const url = avatarSrc.trim();
+  /** 与占位块同尺寸，避免竖图撑破布局（微信会话列表约 48px，气泡约 36px） */
+  const imgBoxCls =
+    size === 'bubble'
+      ? 'h-9 w-9 rounded-md'
+      : size === 'picker'
+        ? 'h-11 w-11 rounded-lg'
+        : 'h-12 w-12 rounded-lg';
+  if (url) {
+    inner = (
+      <img
+        src={url}
+        alt=""
+        className={`${imgBoxCls} shrink-0 object-cover bg-[#E5E5EA] ${className}`.trim()}
+      />
+    );
   } else {
     const initial = contactInitial(contact.displayName);
     const sizeCls =
@@ -159,14 +184,22 @@ function ContactAvatar({
   return (
     <button
       type="button"
-      title="点击上传头像"
+      title="点击上传角色头像（与档案一致）"
       onClick={e => {
         e.stopPropagation();
         onPickClick();
       }}
-      className={`shrink-0 p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60 ${rounded}`}
+      className={`relative shrink-0 p-0 border-0 bg-transparent cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#07C160]/60 ${rounded}`}
     >
       {inner}
+      <span
+        className={`pointer-events-none absolute flex items-center justify-center rounded-full bg-black/50 text-white ${
+          size === 'bubble' ? 'bottom-0 right-0 h-3.5 w-3.5' : 'bottom-0.5 right-0.5 h-4 w-4'
+        }`}
+        aria-hidden
+      >
+        <Pencil size={size === 'bubble' ? 7 : 9} strokeWidth={2.5} />
+      </span>
     </button>
   );
 }
@@ -379,6 +412,7 @@ function splitByLength(text: string, maxLength: number): string[] {
 }
 
 export default function WeChatApp({ onClose }: { onClose: () => void }) {
+  const avatarOverrides = usePhoneCharacterAvatarOverrides();
   const [ctx, setCtx] = useState<TavernPhoneContextPayload | null>(null);
   const [ctxLoading, setCtxLoading] = useState(true);
   /** 与酒馆当前聊天文件对齐；切换聊天由父窗口推送或首次 CONTEXT 写入 */
@@ -835,6 +869,8 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   const saveMe = () => {
     saveWeChatMe(meDraft);
+    const a = typeof meDraft.avatarUrl === 'string' ? meDraft.avatarUrl.trim() : '';
+    setCharacterAvatarOverride(PHONE_WECHAT_ME_AVATAR_ID, a);
     setMeProfile(loadWeChatMe());
     setMeSavedHint(true);
     window.setTimeout(() => setMeSavedHint(false), 2000);
@@ -869,7 +905,27 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   /** 会话列表仅显示用户通过「+」手动添加的联系人，变量中的角色只在加号面板里可选 */
   const pinnedContacts = useMemo(() => loadPinnedContacts(chatScopeId), [chatScopeId, pinnedRev]);
 
-  const contacts = pinnedContacts;
+  const contacts = useMemo(
+    () => mergePinnedWithContextAvatars(pinnedContacts, ctx?.contacts ?? []),
+    [pinnedContacts, ctx?.contacts],
+  );
+
+  /** 「我」：优先统一本机缓存键，否则用微信「我」页本地存的链接（仍属浏览器，非酒馆变量） */
+  const meAvatarUrl = useMemo(() => {
+    const fromUnified = resolveCharacterAvatarFromBrowserOnly(PHONE_WECHAT_ME_AVATAR_ID, avatarOverrides);
+    if (fromUnified) {
+      return fromUnified;
+    }
+    return resolveMeAvatarDisplay(meProfile).trim();
+  }, [avatarOverrides, meProfile]);
+
+  const meAvatarLargeDisplay = useMemo(() => {
+    const fromUnified = resolveCharacterAvatarFromBrowserOnly(PHONE_WECHAT_ME_AVATAR_ID, avatarOverrides);
+    if (fromUnified) {
+      return fromUnified;
+    }
+    return resolveMeAvatarDisplay(meDraft).trim();
+  }, [avatarOverrides, meDraft]);
 
   const debugSystemPromptPreview = useMemo(() => {
     if (!ctx || !meDraft.showInjectDebug) {
@@ -940,7 +996,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     })();
   };
   const showOffline = ctx?.offline;
-  const meAvatarUrl = resolveMeAvatarDisplay(meProfile);
 
   const headerTitle = mainTab === 'me' ? '我' : '微信';
 
@@ -963,6 +1018,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     try {
       const dataUrl = await fileToAvatarDataUrl(file);
       if (target.kind === 'me') {
+        setCharacterAvatarOverride(PHONE_WECHAT_ME_AVATAR_ID, dataUrl);
         setMeDraft(prev => {
           const next = { ...prev, avatarUrl: dataUrl };
           saveWeChatMe(next);
@@ -971,6 +1027,9 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         });
         return;
       }
+      setCharacterAvatarOverride(target.contact.id, dataUrl, {
+        displayName: target.contact.displayName,
+      });
       addPinnedContact(chatScopeId, { ...target.contact, avatarUrl: dataUrl });
       setPinnedRev(r => r + 1);
       setSelectedContact(prev =>
@@ -1020,6 +1079,11 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   {m.role === 'assistant' ? (
                     <ContactAvatar
                       contact={selectedContact}
+                      avatarSrc={resolveCharacterAvatarFromBrowserOnly(
+                        selectedContact.id,
+                        avatarOverrides,
+                        selectedContact.displayName,
+                      )}
                       size="bubble"
                       className="mt-0.5"
                       onPickClick={() => startAvatarPick({ kind: 'contact', contact: selectedContact })}
@@ -1162,6 +1226,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                         <div className="relative shrink-0">
                           <ContactAvatar
                             contact={c}
+                            avatarSrc={resolveCharacterAvatarFromBrowserOnly(c.id, avatarOverrides, c.displayName)}
                             size="list"
                             onPickClick={() => startAvatarPick({ kind: 'contact', contact: c })}
                           />
@@ -1184,11 +1249,11 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
               <div className="rounded-[12px] bg-white p-4 shadow-sm">
                 <div className="flex flex-col items-center gap-3 border-b border-gray-100 pb-4">
                   <MeAvatarLarge
-                    avatarUrl={resolveMeAvatarDisplay(meDraft)}
+                    avatarUrl={meAvatarLargeDisplay}
                     onPickClick={() => startAvatarPick({ kind: 'me' })}
                   />
                   <p className="text-[13px] text-gray-400 text-center">
-                    点击头像可本地上传；也可在下方粘贴链接（留空则用微信默认灰色头像）
+                    头像只认本机：统一缓存（与各角色 id / 同名键）或本页填写的链接；不使用酒馆变量、书卡或壳下发的头像 URL。未设置时显示默认剪影。
                   </p>
                 </div>
                 <label className="mt-4 block">
@@ -1404,6 +1469,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                           <li key={c.id} className="flex items-center gap-3 px-2 py-3">
                             <ContactAvatar
                               contact={c}
+                              avatarSrc={resolveCharacterAvatarFromBrowserOnly(c.id, avatarOverrides, c.displayName)}
                               size="picker"
                               onPickClick={() => startAvatarPick({ kind: 'contact', contact: c })}
                             />

@@ -31,7 +31,8 @@
       >
         <div class="card-header">
           <div class="avatar">
-            <i class="fa-solid fa-user"></i>
+            <img v-if="char.displayAvatar" class="avatar-face" :src="char.displayAvatar" alt="" />
+            <i v-else class="fa-solid fa-user"></i>
           </div>
           <div class="info">
             <h4>{{ char.name }}</h4>
@@ -56,6 +57,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useCharacters } from '../store';
+import {
+  loadCharacterAvatarOverrides,
+  PHONE_CHARACTER_AVATARS_CHANGED,
+  resolveCharacterAvatarFromBrowserOnly,
+} from '../../shared/phoneCharacterAvatarStorage';
 
 interface CharacterCardView {
   id: string;
@@ -64,6 +70,7 @@ interface CharacterCardView {
   status: string;
   lust: number;
   affection: number;
+  displayAvatar: string;
 }
 
 const emit = defineEmits<{
@@ -72,11 +79,18 @@ const emit = defineEmits<{
 }>();
 
 const isLoading = ref(true);
+const avatarStorageRev = ref(0);
 
 // ⭐ 使用新的响应式 store
 const characters = useCharacters();
 
+function onBrowserAvatarStorageChange() {
+  avatarStorageRev.value += 1;
+}
+
 const visibleCharacters = computed((): CharacterCardView[] => {
+  void avatarStorageRev.value;
+  const overrides = loadCharacterAvatarOverrides();
   return (characters.value || []).map(c => ({
     id: c.id,
     name: toDisplayName(c.name, c.id),
@@ -84,6 +98,7 @@ const visibleCharacters = computed((): CharacterCardView[] => {
     status: c.status === 'active' ? '出场中' : '暂时退场',
     lust: typeof c.stats?.lust === 'number' ? c.stats.lust : 0,
     affection: typeof c.stats?.affection === 'number' ? c.stats.affection : 0,
+    displayAvatar: resolveCharacterAvatarFromBrowserOnly(c.id, overrides, toDisplayName(c.name, c.id)),
   }));
 });
 
@@ -105,6 +120,7 @@ watch(
 );
 
 onMounted(() => {
+  window.addEventListener(PHONE_CHARACTER_AVATARS_CHANGED, onBrowserAvatarStorageChange);
   void nextTick(() => {
     if (characters.value.length > 0) {
       isLoading.value = false;
@@ -118,6 +134,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener(PHONE_CHARACTER_AVATARS_CHANGED, onBrowserAvatarStorageChange);
   if (emptyFallbackTimer) {
     clearTimeout(emptyFallbackTimer);
     emptyFallbackTimer = null;
@@ -241,6 +258,14 @@ function formatAffection(v: number) {
   justify-content: center;
   color: white;
   font-size: 1.25rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar .avatar-face {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .info h4 {

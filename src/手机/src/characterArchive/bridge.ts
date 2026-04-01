@@ -106,12 +106,13 @@ export function requestCharacterArchiveFromShell(): Promise<Record<string, unkno
   });
 }
 
-/** 小手机 UI 展示用的角色档案（从 MVU CharacterData 映射而来） */
+/** 小手机 UI 展示用的角色档案（从 MVU CharacterData 映射而来；头像见本机缓存，不读 MVU 头像字段） */
 export interface PhoneCharacterArchive {
   id: string;
   name: string;
   status: '出场中' | '暂时退场';
   description: string;
+  /** 不从 MVU 注入；仅在同会话内上传头像后由界面临时写入 */
   avatarUrl?: string;
   body: {
     age: number;
@@ -160,14 +161,13 @@ interface MvuCharacterData {
   当前综合生理描述?: string;
 }
 
-/** 从 MVU 原始数据映射到 PhoneCharacterArchive */
+/** 从 MVU 原始数据映射到 PhoneCharacterArchive（头像走本机 phoneCharacterAvatarStorage，不读变量里的头像字段） */
 function mapMvuCharacter(id: string, raw: MvuCharacterData): PhoneCharacterArchive {
   return {
     id,
     name: raw.姓名 || '未知角色',
     status: raw.状态 || '出场中',
     description: raw.描写 || '',
-    avatarUrl: raw.头像链接 || raw.头像,
     body: {
       age: raw.身体信息?.年龄 ?? 0,
       height: raw.身体信息?.身高 ?? 0,

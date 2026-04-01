@@ -80,3 +80,28 @@ export function mergeContactLists(
   }
   return Array.from(m.values());
 }
+
+/**
+ * 会话列表以本地钉选为准；从头像角度不从壳上下文合并 URL（微信只认本机 tavern-phone:character-avatars）。
+ * 仍会补全 stCharacterName 等便于壳侧其它逻辑。
+ */
+export function mergePinnedWithContextAvatars(
+  pinned: TavernPhoneWeChatContact[],
+  fromContext: TavernPhoneWeChatContact[],
+): TavernPhoneWeChatContact[] {
+  if (fromContext.length === 0) {
+    return pinned;
+  }
+  const byId = new Map(fromContext.map(c => [c.id, c]));
+  return pinned.map(p => {
+    const s = byId.get(p.id);
+    if (!s) {
+      return p;
+    }
+    const next = { ...p };
+    if (!next.stCharacterName?.trim() && s.stCharacterName?.trim()) {
+      next.stCharacterName = s.stCharacterName;
+    }
+    return next;
+  });
+}

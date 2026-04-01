@@ -15,12 +15,17 @@ import {
   ChevronDown,
   ChevronUp,
   Settings2,
+  Pencil,
 } from 'lucide-react';
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
 import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
 import { saveAutoAnalyzeInterval, subscribeAutoAnalyzeAll } from '../../tavernPhoneBridge';
-
-type ViewMode = 'list' | 'detail';
+import {
+  resolveCharacterAvatarFromBrowserOnly,
+  setCharacterAvatarOverride,
+  usePhoneCharacterAvatarOverrides,
+} from '../../phoneCharacterAvatars';
+import { fileToAvatarDataUrl } from '../../weChatAvatarFile';
 
 function ProgressBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
@@ -73,7 +78,60 @@ function DetailCard({ title, icon, children }: DetailCardProps) {
   );
 }
 
-function CharacterCard({ char, onClick }: { char: PhoneCharacterArchive; onClick: () => void }) {
+/** 列表/详情共用：点击上传角色头像（与微信同一套 localStorage + 壳同步） */
+function ArchiveRoleAvatarButton({
+  avatarSrc,
+  size,
+  onPickClick,
+}: {
+  avatarSrc: string;
+  size: 'list' | 'detail';
+  onPickClick: () => void;
+}) {
+  const dim = size === 'list' ? 'h-12 w-12' : 'h-20 w-20';
+  const iconSize = size === 'list' ? 22 : 36;
+  const pencilSize = size === 'list' ? 11 : 14;
+  return (
+    <button
+      type="button"
+      title="上传或更换角色头像（本机，与微信、规则页一致）"
+      className={`relative shrink-0 rounded-full ${dim} flex items-center justify-center text-white overflow-hidden active:opacity-90`}
+      style={{
+        background: 'linear-gradient(135deg, var(--accent), var(--accent-light))',
+        boxShadow: '0 0 0 2px rgba(255,255,255,0.2)',
+      }}
+      onClick={e => {
+        e.stopPropagation();
+        onPickClick();
+      }}
+    >
+      {avatarSrc ? (
+        <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <User size={iconSize} />
+      )}
+      <span
+        className="pointer-events-none absolute bottom-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/55"
+        aria-hidden
+      >
+        <Pencil size={pencilSize} className="text-white" />
+      </span>
+    </button>
+  );
+}
+
+function CharacterCard({
+  char,
+  avatarOverrides,
+  onClick,
+  onAvatarPick,
+}: {
+  char: PhoneCharacterArchive;
+  avatarOverrides: Record<string, string>;
+  onClick: () => void;
+  onAvatarPick: (id: string, name: string) => void;
+}) {
+  const avatarSrc = resolveCharacterAvatarFromBrowserOnly(char.id, avatarOverrides, char.name);
   return (
     <button
       type="button"
@@ -81,16 +139,11 @@ function CharacterCard({ char, onClick }: { char: PhoneCharacterArchive; onClick
       style={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--card-shadow)' }}
       onClick={onClick}
     >
-      <div
-        className="w-12 h-12 rounded-full flex items-center justify-center text-white shrink-0"
-        style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-light))' }}
-      >
-        {char.avatarUrl ? (
-          <img src={char.avatarUrl} alt={char.name} className="w-full h-full rounded-full object-cover" />
-        ) : (
-          <User size={22} />
-        )}
-      </div>
+      <ArchiveRoleAvatarButton
+        size="list"
+        avatarSrc={avatarSrc}
+        onPickClick={() => onAvatarPick(char.id, char.name)}
+      />
       <div className="flex-1 text-left min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-[16px] font-semibold truncate" style={{ color: 'var(--settings-title)' }}>{char.name}</span>
@@ -125,6 +178,7 @@ export default function TenantArchiveApp({
 }: {
   onClose: () => void;
 }) {
+  const avatarOverrides = usePhoneCharacterAvatarOverrides();
   const [characters, setCharacters] = useState<PhoneCharacterArchive[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -137,6 +191,44 @@ export default function TenantArchiveApp({
   const [intervalInput, setIntervalInput] = useState('20');
 
   const selected = characters.find(c => c.id === selectedId) ?? null;
+
+  const archiveAvatarPickRef = useRef<{ id: string; name: string } | null>(null);
+  const archiveAvatarFileRef = useRef<HTMLInputElement>(null);
+
+  const startArchiveAvatarPick = useCallback((id: string, name: string) => {
+    archiveAvatarPickRef.current = { id, name };
+    archiveAvatarFileRef.current?.click();
+  }, []);
+
+  const onArchiveAvatarFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const pending = archiveAvatarPickRef.current;
+    archiveAvatarPickRef.current = null;
+    if (!file?.type.startsWith('image/') || !pending) {
+      return;
+    }
+    try {
+      const dataUrl = await fileToAvatarDataUrl(file);
+      setCharacterAvatarOverride(pending.id, dataUrl, { displayName: pending.name });
+      setCharacters(prev =>
+        prev.map(c => (c.id === pending.id ? { ...c, avatarUrl: dataUrl } : c)),
+      );
+    } catch (err) {
+      console.warn('[TenantArchiveApp] 头像上传失败', err);
+    }
+  }, []);
+
+  const archiveAvatarFileInput = (
+    <input
+      ref={archiveAvatarFileRef}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      aria-hidden
+      onChange={onArchiveAvatarFileChange}
+    />
+  );
 
   // 从 localStorage 读取自动分析间隔
   useEffect(() => {
@@ -229,66 +321,89 @@ export default function TenantArchiveApp({
 
   if (loading) {
     return (
-      <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-        <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-          <button type="button" onClick={onClose} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
-            <ChevronLeft size={28} />
-          </button>
-          <span className="font-medium text-lg" style={{ color: 'var(--accent)' }}>角色档案</span>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <RefreshCw className="animate-spin" size={32} style={{ color: 'var(--accent)' }} />
-            <p className="text-[14px]" style={{ color: 'var(--settings-desc)' }}>加载中...</p>
+      <>
+        {archiveAvatarFileInput}
+        <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+          <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+            <button type="button" onClick={onClose} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
+              <ChevronLeft size={28} />
+            </button>
+            <span className="font-medium text-lg" style={{ color: 'var(--accent)' }}>角色档案</span>
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <RefreshCw className="animate-spin" size={32} style={{ color: 'var(--accent)' }} />
+              <p className="text-[14px]" style={{ color: 'var(--settings-desc)' }}>加载中...</p>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-        <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-          <button type="button" onClick={onClose} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
-            <ChevronLeft size={28} />
-          </button>
-          <span className="font-medium text-lg" style={{ color: 'var(--accent)' }}>角色档案</span>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-3 text-center px-8">
-            <AlertCircle size={40} style={{ color: '#e74c3c' }} />
-            <p className="text-[14px]" style={{ color: 'var(--settings-desc)' }}>{error}</p>
-            <button
-              type="button"
-              onClick={() => void load()}
-              className="px-6 py-2 rounded-full text-[14px] font-semibold text-white"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              重试
+      <>
+        {archiveAvatarFileInput}
+        <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+          <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+            <button type="button" onClick={onClose} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
+              <ChevronLeft size={28} />
             </button>
+            <span className="font-medium text-lg" style={{ color: 'var(--accent)' }}>角色档案</span>
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3 text-center px-8">
+              <AlertCircle size={40} style={{ color: '#e74c3c' }} />
+              <p className="text-[14px]" style={{ color: 'var(--settings-desc)' }}>{error}</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="px-6 py-2 rounded-full text-[14px] font-semibold text-white"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                重试
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (selected) {
+    const detailAvatarSrc = resolveCharacterAvatarFromBrowserOnly(
+      selected.id,
+      avatarOverrides,
+      selected.name,
+    );
     return (
-      <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-        {/* Header */}
-        <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0 z-10" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
-          <button type="button" onClick={() => setSelectedId(null)} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
-            <ChevronLeft size={28} />
-          </button>
-          <span className="font-medium text-lg truncate" style={{ color: 'var(--accent)' }}>{selected.name}</span>
-        </div>
+      <>
+        {archiveAvatarFileInput}
+        <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+          {/* Header */}
+          <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0 z-10" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+            <button type="button" onClick={() => setSelectedId(null)} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
+              <ChevronLeft size={28} />
+            </button>
+            <span className="font-medium text-lg truncate" style={{ color: 'var(--accent)' }}>{selected.name}</span>
+          </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-0 space-y-3">
-          {/* 基本信息卡片 */}
-          <DetailCard title="基本信息" icon={<User size={18} />}>
-            <div className="grid grid-cols-2 gap-3 text-[13px]">
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-0 space-y-3">
+            {/* 基本信息卡片 */}
+            <DetailCard title="基本信息" icon={<User size={18} />}>
+              <div className="grid grid-cols-2 gap-3 text-[13px]">
+                <div className="col-span-2 flex flex-col items-center pb-2 gap-1">
+                  <ArchiveRoleAvatarButton
+                    size="detail"
+                    avatarSrc={detailAvatarSrc}
+                    onPickClick={() => startArchiveAvatarPick(selected.id, selected.name)}
+                  />
+                  <p className="text-[11px]" style={{ color: 'var(--settings-desc)' }}>
+                    角色头像 · 点击更换（与微信共用）
+                  </p>
+                </div>
               <div>
                 <span style={{ color: 'var(--settings-desc)' }}>年龄</span>
                 <p style={{ color: 'var(--settings-title)' }}>{selected.body.age}岁</p>
@@ -455,12 +570,15 @@ export default function TenantArchiveApp({
           </button>
         </div>
       </div>
+      </>
     );
   }
 
   // List view
   return (
-    <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
+    <>
+      {archiveAvatarFileInput}
+      <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
       <div className="pt-12 pb-3 px-4 flex items-center gap-2 shrink-0" style={{ backgroundColor: 'var(--app-content-bg, #fff)' }}>
         <button type="button" onClick={onClose} className="p-1 -ml-1" style={{ color: 'var(--accent)' }}>
           <ChevronLeft size={28} />
@@ -548,7 +666,9 @@ export default function TenantArchiveApp({
               <CharacterCard
                 key={char.id}
                 char={char}
+                avatarOverrides={avatarOverrides}
                 onClick={() => setSelectedId(char.id)}
+                onAvatarPick={startArchiveAvatarPick}
               />
             ))}
             {/* 一键分析全部角色按钮 */}
@@ -573,5 +693,6 @@ export default function TenantArchiveApp({
         )}
       </div>
     </div>
+    </>
   );
 }

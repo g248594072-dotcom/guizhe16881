@@ -1,6 +1,6 @@
 /**
  * 将本地图片缩放并编码为较小体积的 Data URL（优先 WebP，其次 JPEG）。
- * 用于头像等需写入 MVU 变量的场景，避免 Base64 过大。
+ * 用于头像弹窗等需生成较小 Data URL 的场景（头像仅存本机时同样可用），避免 Base64 过大。
  */
 
 function estimateBytesFromDataUrl(dataUrl: string): number {

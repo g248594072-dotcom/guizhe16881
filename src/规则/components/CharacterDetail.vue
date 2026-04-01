@@ -24,7 +24,8 @@
         class="avatar-edit"
         @click="!isEditingBasic && $emit('openModal', 'edit_avatar', { characterId })"
       >
-        <i class="fa-solid fa-user"></i>
+        <img v-if="displayAvatarSrc" class="avatar-face" :src="displayAvatarSrc" alt="" />
+        <i v-else class="fa-solid fa-user"></i>
         <div class="edit-overlay">
           <i class="fa-solid fa-pen"></i>
         </div>
@@ -346,18 +347,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { CharacterData, RuleData } from '../types';
 import StatRow from './StatRow.vue';
 import StatBar from './StatBar.vue';
 import Badge from './Badge.vue';
 import { useCharacters, usePersonalRules } from '../store';
+import {
+  loadCharacterAvatarOverrides,
+  PHONE_CHARACTER_AVATARS_CHANGED,
+  resolveCharacterAvatarFromBrowserOnly,
+} from '../../shared/phoneCharacterAvatarStorage';
 import { submitArchivePersonalRule } from '../utils/dialogAndVariable';
 import { tagFieldToBadgeLines } from '../utils/tagMap';
 
 const props = defineProps<{
   characterId: string;
 }>();
+
+const avatarStorageRev = ref(0);
+function onBrowserAvatarStorageChange() {
+  avatarStorageRev.value += 1;
+}
 
 const defaultName = computed(() => '未知');
 
@@ -427,6 +438,17 @@ const savedForm = ref({
 watch(defaultName, (v) => { savedForm.value.name = v; }, { immediate: true });
 
 const name = computed(() => savedForm.value.name || defaultName.value);
+
+const displayAvatarSrc = computed(() => {
+  void avatarStorageRev.value;
+  void name.value;
+  return resolveCharacterAvatarFromBrowserOnly(
+    props.characterId,
+    loadCharacterAvatarOverrides(),
+    name.value,
+  );
+});
+
 const displayAge = computed(() => savedForm.value.age);
 const displayHeight = computed(() => savedForm.value.height);
 const displayWeight = computed(() => savedForm.value.weight);
@@ -492,6 +514,7 @@ function refreshAffectedPersonalRulesForCharacter(characterNameForMatch: string)
 }
 
 onMounted(() => {
+  window.addEventListener(PHONE_CHARACTER_AVATARS_CHANGED, onBrowserAvatarStorageChange);
   try {
     const characters = useCharacters();
 
@@ -544,6 +567,10 @@ onMounted(() => {
   } catch (e) {
     console.warn('加载角色数据失败', e);
   }
+});
+
+onUnmounted(() => {
+  window.removeEventListener(PHONE_CHARACTER_AVATARS_CHANGED, onBrowserAvatarStorageChange);
 });
 
 // 与个人规则管理一致：变量变更后刷新本角色受影响列表（编辑/归档后）
@@ -713,6 +740,12 @@ const emit = defineEmits<{
     cursor: pointer;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.02);
+
+    .avatar-face {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
 
     i {
       font-size: 48px;

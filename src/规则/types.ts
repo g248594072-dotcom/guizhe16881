@@ -60,9 +60,9 @@ export interface CharacterBasic {
 export interface CharacterData {
   id: string;
   name: string;
-  avatar?: string;
   /**
-   * 角色基础身体信息，用于展示与编辑
+   * 角色基础身体信息，用于展示与编辑。
+   * 展示头像由 `phoneCharacterAvatarStorage`（本机）管理，与 MVU 角色档案中的头像字段无关。
    */
   basic?: CharacterBasic;
   /**

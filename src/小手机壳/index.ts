@@ -36,6 +36,11 @@
  * 浏览器与 iframe 不会按 HTML 解析（表现为整页源码或黑屏）。壳脚本会 fetch 后检测该情况，将 ./assets 等改为绝对地址并
  * 以 blob:text/html 注入 iframe（仅对上述来源做探测，本地与其它站点仍直接设 src）。
  */
+import {
+  PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
+  PHONE_CHARACTER_AVATAR_SYNC_TYPE,
+} from '../shared/phoneCharacterAvatarStorage';
+
 const VERSION = '1.0.0';
 const PHONE_W = 375;
 const PHONE_H = 812;
@@ -166,6 +171,8 @@ function normalizeRoleArchiveEntry(roleId: string, raw: unknown): WeChatContactO
   let avatarUrl: string | undefined;
   if (typeof o.avatarUrl === 'string' && o.avatarUrl.trim()) {
     avatarUrl = o.avatarUrl.trim();
+  } else if (typeof o.头像链接 === 'string' && o.头像链接.trim()) {
+    avatarUrl = o.头像链接.trim();
   } else if (typeof o.头像 === 'string' && o.头像.trim()) {
     avatarUrl = o.头像.trim();
   }
@@ -481,6 +488,50 @@ async function enrichContactsWithStAvatars(contacts: WeChatContactOut[]): Promis
     }),
   );
   return out;
+}
+
+/**
+ * 档案 App 与微信共用 MVU「角色档案」：变量未写头像时，按 id / 酒馆角色名 与「角色管理」中书卡头像对齐（与 enrichContactsWithStAvatars 同源）。
+ */
+async function enrichRoleArchiveDictWithStAvatars(角色档案: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let clone: Record<string, unknown>;
+  try {
+    clone = JSON.parse(JSON.stringify(角色档案)) as Record<string, unknown>;
+  } catch {
+    return 角色档案;
+  }
+  const idToStName = buildContactIdToStCharacterNameMap();
+  await Promise.all(
+    Object.entries(clone).map(async ([roleId, raw]) => {
+      if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+        return;
+      }
+      const o = raw as Record<string, unknown>;
+      const existing =
+        (typeof o.头像链接 === 'string' && o.头像链接.trim()) ||
+        (typeof o.avatarUrl === 'string' && o.avatarUrl.trim()) ||
+        (typeof o.头像 === 'string' && o.头像.trim());
+      if (existing) {
+        return;
+      }
+      const stRaw = o.酒馆角色名 ?? o.stCharacterName ?? o.sillyTavernCharacterName;
+      const stFromField = typeof stRaw === 'string' && stRaw.trim() ? stRaw.trim() : undefined;
+      const stFromMap = idToStName.get(String(roleId).trim());
+      const stName = stFromField || stFromMap;
+      let url: string | null = null;
+      if (stName) {
+        try {
+          url = await resolveCharacterAvatarDataUrl(stName);
+        } catch {
+          /* */
+        }
+      }
+      if (url) {
+        o.头像链接 = url;
+      }
+    }),
+  );
+  return clone;
 }
 
 /** 合并多路径、多变量源，供「+ 手动添加」拉取全部可选角色（不返回单条 fallback） */
@@ -1576,6 +1627,8 @@ async function buildWeChatContext(): Promise<{
   personality: string;
   thought: string;
   contacts: WeChatContactOut[];
+  /** 酒馆当前角色卡头像（data URL），与角色管理一致；供微信「我」等在本地未自定义时回退 */
+  currentCharacterAvatarUrl?: string;
   recentStorySnippet: string;
   roleStorySummaries: Record<string, string>;
   openAiDefaults: { apiBaseUrl: string | null; model: string | null };
@@ -1607,7 +1660,10 @@ async function buildWeChatContext(): Promise<{
   const cardName = getCurrentCharacterName();
   const displayName = (nameField && nameField.trim()) || cardName || '未命名角色';
   const contactsRaw = buildWeChatContacts(displayName);
-  const contacts = await enrichContactsWithStAvatars(contactsRaw);
+  const [contacts, currentAv] = await Promise.all([
+    enrichContactsWithStAvatars(contactsRaw),
+    resolveCharacterAvatarDataUrl('current'),
+  ]);
   const rawBase = scriptVars.phone_openai_api_base;
   const rawModel = scriptVars.phone_openai_model;
   const apiBaseFromScript = typeof rawBase === 'string' && rawBase.trim() ? rawBase.trim() : null;
@@ -1619,6 +1675,7 @@ async function buildWeChatContext(): Promise<{
     personality: pickWeChatField(map, 'personality', charVars, msgVars),
     thought: pickWeChatField(map, 'thought', charVars, msgVars),
     contacts,
+    ...(currentAv ? { currentCharacterAvatarUrl: currentAv } : {}),
     recentStorySnippet: buildRecentStorySnippet(),
     roleStorySummaries: buildRoleStorySummaries(),
     openAiDefaults: { apiBaseUrl: apiBaseFromScript, model: modelFromScript },
@@ -1675,6 +1732,9 @@ $(() => {
   const PHONE_DRAG_NS = 'tavernPhoneDrag';
   /** 由 resolvePhoneUiSrc 创建的 blob: URL，须在更换 URL 或卸载 DOM 时 revoke */
   let phoneUiBlobUrl: string | null = null;
+  /** 壳内镜像：跨端口 iframe 无法共享 localStorage，由 postMessage 同步 */
+  const characterAvatarMirror: Record<string, string> = {};
+  let characterAvatarRelayHandler: ((e: MessageEvent) => void) | null = null;
 
   function revokePhoneUiBlob(): void {
     if (phoneUiBlobUrl) {
@@ -1781,6 +1841,30 @@ $(() => {
 
   function getShellWindow(): Window {
     return getShellDocument().defaultView ?? window;
+  }
+
+  function broadcastCharacterAvatarSyncExceptSource(
+    payload: { type: string; roleId: string; avatarUrl: string },
+    except: MessageEventSource | null,
+  ): void {
+    let doc: Document;
+    try {
+      doc = getShellDocument();
+    } catch {
+      return;
+    }
+    const iframes = doc.querySelectorAll('iframe');
+    for (let i = 0; i < iframes.length; i++) {
+      const w = iframes[i].contentWindow;
+      if (!w || w === except) {
+        continue;
+      }
+      try {
+        w.postMessage(payload, '*');
+      } catch {
+        /* */
+      }
+    }
   }
 
   function injectTextIntoTavernSendBox(text: string): void {
@@ -2091,6 +2175,16 @@ $(() => {
     $iframe.on('load', () => {
       postToPhone({ type: MSG.OPENED });
       postToPhone({ type: MSG.CHAT_SCOPE, chatScopeId: getChatScopeId() });
+      const w = getIframeEl()?.contentWindow;
+      if (w) {
+        for (const [roleId, avatarUrl] of Object.entries(characterAvatarMirror)) {
+          try {
+            w.postMessage({ type: PHONE_CHARACTER_AVATAR_SYNC_TYPE, roleId, avatarUrl }, '*');
+          } catch {
+            /* */
+          }
+        }
+      }
     });
 
     const layoutWin = getShellWindow();
@@ -2260,7 +2354,12 @@ $(() => {
       try {
         await waitGlobalInitialized('Mvu');
         const mvuData = (Mvu as Record<string, (...args: unknown[]) => unknown>).getMvuData({ type: 'message', message_id: 'latest' });
-        const 角色档案 = (mvuData as Record<string, unknown>)?.stat_data?.角色档案 || {};
+        const rawArchive = (mvuData as Record<string, unknown>)?.stat_data?.角色档案;
+        const 角色档案Plain =
+          rawArchive != null && typeof rawArchive === 'object' && !Array.isArray(rawArchive)
+            ? (rawArchive as Record<string, unknown>)
+            : {};
+        const 角色档案 = await enrichRoleArchiveDictWithStAvatars(角色档案Plain);
         source.postMessage(
           { type: MSG.CHARACTER_ARCHIVE_RESPONSE, requestId, payload: { 角色档案 } },
           '*',
@@ -2447,6 +2546,45 @@ $(() => {
       close();
     }
   };
+
+  characterAvatarRelayHandler = (e: MessageEvent) => {
+    const d = e.data as { type?: string; roleId?: string; avatarUrl?: string } | null;
+    if (!d || typeof d !== 'object') {
+      return;
+    }
+    if (d.type === PHONE_CHARACTER_AVATAR_SYNC_TYPE) {
+      const roleId = typeof d.roleId === 'string' ? d.roleId.trim() : '';
+      if (!roleId) {
+        return;
+      }
+      const avatarUrl = typeof d.avatarUrl === 'string' ? d.avatarUrl.trim() : '';
+      if (avatarUrl) {
+        characterAvatarMirror[roleId] = avatarUrl;
+      } else {
+        delete characterAvatarMirror[roleId];
+      }
+      broadcastCharacterAvatarSyncExceptSource(
+        { type: PHONE_CHARACTER_AVATAR_SYNC_TYPE, roleId, avatarUrl },
+        e.source,
+      );
+      return;
+    }
+    if (d.type === PHONE_CHARACTER_AVATAR_MIRROR_REQUEST) {
+      const src = e.source as Window | null;
+      if (!src?.postMessage) {
+        return;
+      }
+      for (const [roleId, avatarUrl] of Object.entries(characterAvatarMirror)) {
+        try {
+          src.postMessage({ type: PHONE_CHARACTER_AVATAR_SYNC_TYPE, roleId, avatarUrl }, '*');
+        } catch {
+          /* */
+        }
+      }
+    }
+  };
+
+  window.parent.addEventListener('message', characterAvatarRelayHandler);
   window.parent.addEventListener('message', messageHandler);
 
   function open() {
@@ -2746,6 +2884,10 @@ $(() => {
       autoAnalyzeListener.stop();
       autoAnalyzeListener = null;
     }
+    if (characterAvatarRelayHandler) {
+      window.parent.removeEventListener('message', characterAvatarRelayHandler);
+    }
+    characterAvatarRelayHandler = null;
     if (messageHandler) {
       window.parent.removeEventListener('message', messageHandler);
     }

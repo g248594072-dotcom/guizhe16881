@@ -8,6 +8,22 @@ import { getCharacterAnalyzer } from './characterArchive/characterAnalyzer';
 import { getAnalysisScheduler } from './characterArchive/analysisScheduler';
 import { getTavernPhoneApiConfig, applyOpenAiDefaultsFromParent } from './tavernPhoneApiConfig';
 import { normalizeApiBaseUrl } from './apiUrl';
+import { migrateLegacyPhoneCharacterAvatars } from './phoneCharacterAvatars';
+import {
+  PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
+  PHONE_CHARACTER_AVATAR_SYNC_TYPE,
+  applyCharacterAvatarOverrideLocal,
+} from '../../shared/phoneCharacterAvatarStorage';
+
+migrateLegacyPhoneCharacterAvatars();
+
+if (typeof window !== 'undefined' && window.parent !== window) {
+  try {
+    window.parent.postMessage({ type: PHONE_CHARACTER_AVATAR_MIRROR_REQUEST }, '*');
+  } catch {
+    /* */
+  }
+}
 
 const root = createRoot(document.getElementById('root')!);
 root.render(
@@ -20,6 +36,16 @@ window.parent.postMessage({ type: TAVERN_PHONE_MSG.READY }, '*');
 
 window.addEventListener('message', event => {
   if (event.source !== window.parent) {
+    return;
+  }
+  if (event.data?.type === PHONE_CHARACTER_AVATAR_SYNC_TYPE) {
+    const roleId = typeof event.data?.roleId === 'string' ? event.data.roleId.trim() : '';
+    if (roleId) {
+      applyCharacterAvatarOverrideLocal(
+        roleId,
+        typeof event.data?.avatarUrl === 'string' ? event.data.avatarUrl : '',
+      );
+    }
     return;
   }
   if (event.data?.type !== TAVERN_PHONE_MSG.REQUEST_EXPORT_THREADS_FOR_WB) {

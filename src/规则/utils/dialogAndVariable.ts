@@ -133,11 +133,6 @@ export function updateCharacterInVariables(characterId: string, updates: Partial
 
   if (updates.name != null) char.姓名 = updates.name;
   if (updates.description != null) char.描写 = updates.description;
-  if (updates.avatar != null) {
-    const u = String(updates.avatar).trim();
-    (char as Record<string, unknown>).头像链接 = u;
-    (char as Record<string, unknown>).avatar = u;
-  }
 
   if (updates.basic) {
     const b = updates.basic;
@@ -187,18 +182,26 @@ export async function submitEditCharacterBasic(
   return message;
 }
 
-/** 编辑角色头像（写入角色档案中的头像链接，供界面扩展使用；支持 http(s) 与本地 Data URL） */
-export async function submitEditCharacterAvatar(characterId: string, avatarUrl: string): Promise<string> {
+/** 编辑角色头像：独立子系统，仅写浏览器 localStorage + 父窗口转发；不读、不写 MVU 中的头像字段；不生成对话框文案 */
+export async function submitEditCharacterAvatar(
+  characterId: string,
+  avatarUrl: string,
+  displayName?: string | null,
+): Promise<string> {
+  const { setCharacterAvatarOverride } = await import('../../shared/phoneCharacterAvatarStorage');
   const u = String(avatarUrl ?? '').trim();
-  const linkSummary =
-    !u
-      ? '（清空）'
-      : u.startsWith('data:image/')
-        ? '（本地图片，已压缩编码并写入变量）'
-        : u;
-  const message = `[编辑角色头像]\n角色ID：${characterId}\n头像：${linkSummary}`;
-  updateCharacterInVariables(characterId, { avatar: u });
-  return message;
+  const dn = String(displayName ?? '').trim();
+  setCharacterAvatarOverride(characterId, u, dn ? { displayName: dn } : undefined);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = (globalThis as any).toastr;
+    if (t?.success) {
+      t.success(!u ? '已清除本机头像覆盖' : '头像已保存（本机并与小手机同步）');
+    }
+  } catch {
+    /* */
+  }
+  return '';
 }
 
 // ---------- 编辑角色心理/性癖/敏感部位 ----------

@@ -228,6 +228,7 @@ export interface GroupMember {
   displayName: string;
   personality?: string;
   thought?: string;
+  avatarUrl?: string;
 }
 
 export interface GroupChatContext extends TavernPhoneContextPayload {
