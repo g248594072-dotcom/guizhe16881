@@ -513,3 +513,32 @@ export function initExportThreadsListener(): () => void {
     w.__tavernPhoneExportListener = false;
   };
 }
+
+/** 当前聊天 Scope ID（由 CHAT_SCOPE 消息更新） */
+let currentChatScopeId: string | null = null;
+
+/** 初始化监听 chatScopeId 变化 */
+function initChatScopeListener(): void {
+  subscribeChatScopeChange((scopeId) => {
+    currentChatScopeId = scopeId;
+    console.log('[tavernPhoneBridge] chatScopeId 更新:', scopeId);
+  });
+}
+
+/**
+ * 获取当前聊天 Scope ID
+ * 首次调用会自动初始化监听
+ */
+export function getChatScopeId(): string {
+  if (!currentChatScopeId) {
+    initChatScopeListener();
+    // 如果还没有值，尝试从上下文获取一次
+    requestTavernPhoneContext().then((ctx) => {
+      if (ctx.chatScopeId) {
+        currentChatScopeId = ctx.chatScopeId;
+      }
+    });
+    return currentChatScopeId || 'local-offline';
+  }
+  return currentChatScopeId || 'local-offline';
+}

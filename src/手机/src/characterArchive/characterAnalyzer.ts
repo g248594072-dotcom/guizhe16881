@@ -5,7 +5,10 @@
  */
 
 import { getAnalysisScheduler, type AnalysisTask } from './analysisScheduler';
-import { requestCharacterArchiveFromShell, writeCharacterAnalysisResult, syncCharacterAnalysisToWorldbook } from './bridge';
+import { requestCharacterArchiveFromShell, syncCharacterAnalysisToWorldbook } from './bridge';
+import { loadWeChatThreadForScope } from '../weChatStorage';
+import { getChatScopeId } from '../tavernPhoneBridge';
+import { getTavernContextForAnalysis } from '../chatContext';
 
 /** 分析结果（写入 MVU 变量）- 完整角色档案 */
 export interface CharacterAnalysisResult {
@@ -89,8 +92,18 @@ class CharacterAnalyzer {
         return null;
       }
 
-      // 构建分析提示词
-      const prompt = this.buildAnalysisPrompt(characterName, profile);
+      // 读取该联系人的微信聊天记录作为上下文
+      const chatScopeId = getChatScopeId();
+      const chatHistory = await loadWeChatThreadForScope(chatScopeId, characterId);
+      const recentMessages = chatHistory.slice(-20); // 取最近20条
+      console.log(`[analyzer] 读取到 ${recentMessages.length} 条聊天记录用于分析`);
+
+      // 读取酒馆正文上下文（当前楼层+前2层）
+      const tavernContext = getTavernContextForAnalysis(2);
+      console.log(`[analyzer] 读取到 ${tavernContext.length} 层酒馆正文用于分析`);
+
+      // 构建分析提示词（包含聊天记录上下文）
+      const prompt = this.buildAnalysisPrompt(characterName, profile, recentMessages, tavernContext);
       const raw = await this.callApi(prompt, {
         apiBaseUrl: (window as unknown as Record<string, string>).__PHONE_API_BASE__ || '',
         apiKey: (window as unknown as Record<string, string>).__PHONE_API_KEY__ || '',
@@ -104,8 +117,38 @@ class CharacterAnalyzer {
         return null;
       }
 
-      // 写回 MVU 变量（通过壳脚本）
-      await this.writeBackToMvu(characterId, result);
+      // 直接同步到世界书（不写回 MVU 变量）
+      const updates: Record<string, unknown> = {
+        姓名: result.姓名 || characterName,
+        性别: result.性别,
+        年龄: result.年龄,
+        职业: result.职业,
+        外貌: result.外貌,
+        外貌细节: result.外貌细节,
+        性格: result.personality,
+        性癖: result.fetishes,
+        敏感部位: result.sensitiveParts,
+        背景故事: result.背景故事,
+        兴趣爱好: result.兴趣爱好,
+        生活习惯: result.生活习惯,
+        说话风格: result.说话风格,
+        日常对话示例: result.日常对话示例,
+        身份标签: result.identityTags,
+      };
+
+      // 移除 undefined 值
+      Object.keys(updates).forEach(key => {
+        if (updates[key] === undefined) {
+          delete updates[key];
+        }
+      });
+
+      const wbResult = await syncCharacterAnalysisToWorldbook(characterId, updates);
+      if (wbResult.ok) {
+        console.log('[analyzer] ✅ 角色档案已同步到世界书:', characterId, '是否新条目:', wbResult.isNew);
+      } else {
+        console.warn('[analyzer] ⚠️ 角色档案同步到世界书失败:', wbResult.error);
+      }
 
       console.log('[analyzer] 角色分析完成:', characterId, result);
       return result;
@@ -127,19 +170,51 @@ class CharacterAnalyzer {
     }
   }
 
-  /** 构建分析提示词 - 生成完整角色档案 */
-  private buildAnalysisPrompt(characterName: string, profile: Record<string, unknown>): string {
+  /** 构建分析提示词 - 生成完整角色档案（包含聊天记录上下文） */
+  private buildAnalysisPrompt(
+    characterName: string,
+    profile: Record<string, unknown>,
+    chatHistory: Array<{ role: string; content: string; time?: number }> = [],
+    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = []
+  ): string {
     const profileJson = JSON.stringify(profile, null, 2);
+
+    // 构建聊天记录上下文
+    const chatContext = chatHistory.length > 0
+      ? chatHistory.map(m => {
+          const role = m.role === 'user' ? '玩家' : characterName;
+          return `${role}: ${m.content}`;
+        }).join('\n')
+      : '（暂无聊天记录）';
+
+    // 构建酒馆正文上下文
+    const tavernContextStr = tavernContext.length > 0
+      ? tavernContext.map(m => {
+          const role = m.role === 'user' ? '玩家' : m.name || '角色';
+          return `${role}: ${m.content}`;
+        }).join('\n')
+      : '（暂无酒馆正文上下文）';
+
     return `你是一位专门分析虚拟角色心理与状态的 AI 助手。
-请根据以下角色档案和当前游戏上下文，生成角色的完整分析档案。
+请根据以下角色档案和微信聊天记录，生成角色的完整分析档案。
 
 ## 角色档案（JSON）
 \`\`\`json
 ${profileJson}
 \`\`\`
 
+## 近期微信聊天记录（私密对话）
+\`\`\`
+${chatContext}
+\`\`\`
+
+## 酒馆正文上下文（公开场景互动）
+\`\`\`
+${tavernContextStr}
+\`\`\`
+
 ## 任务
-分析该角色，输出符合以下 JSON 格式的完整角色档案。如果是首次分析，生成完整的档案内容；如果是后续分析，更新"当前状态"部分：
+请结合角色档案和聊天记录，分析该角色的完整画像。输出符合以下 JSON 格式的完整角色档案。如果是首次分析，生成完整的档案内容；如果是后续分析，更新"当前状态"部分：
 
 \`\`\`json
 {
@@ -204,45 +279,189 @@ ${profileJson}
   /** 解析分析结果 - 支持完整档案格式 */
   private parseAnalysisResult(raw: string, characterId: string): CharacterAnalysisResult | null {
     try {
+      // 打印原始内容用于调试
+      console.log('[analyzer] AI 返回的原始内容:', raw);
+
       // 尝试提取 JSON 代码块
-      const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/) || raw.match(/(\{[\s\S]*\})/);
-      if (!jsonMatch) return null;
-      const jsonStr = jsonMatch[1] || jsonMatch[0];
-      const parsed = JSON.parse(jsonStr.trim());
+      let jsonStr = '';
+      // 1) 完整 markdown 代码块
+      const codeBlockMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1];
+      } else {
+        // 2) 未闭合的 markdown 代码块（AI 输出被截断）
+        const openBlockMatch = raw.match(/```json\s*([\s\S]*)/);
+        if (openBlockMatch) {
+          jsonStr = openBlockMatch[1];
+        } else {
+          // 3) 花括号包裹的内容
+          const braceMatch = raw.match(/(\{[\s\S]*\})/);
+          if (braceMatch) {
+            jsonStr = braceMatch[1];
+          } else {
+            // 4) 花括号开头但未闭合（截断）
+            const openBraceMatch = raw.match(/(\{[\s\S]*)/);
+            if (openBraceMatch) {
+              jsonStr = openBraceMatch[1];
+            } else {
+              jsonStr = raw;
+            }
+          }
+        }
+      }
+
+      // 清理和修复 JSON 字符串
+      jsonStr = jsonStr.trim();
+
+      // 修复常见 JSON 错误
+      // 1. 修复尾随逗号（对象或数组最后一项后的逗号）
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+
+      // 2. 修复字符串内的真实换行符（将未转义的换行转为 \n）
+      // 使用更安全的处理方式，只处理字符串内部
+      let fixedJson = '';
+      let inString = false;
+      let escapeNext = false;
+      for (let i = 0; i < jsonStr.length; i++) {
+        const char = jsonStr[i];
+        const nextChar = jsonStr[i + 1] || '';
+
+        if (escapeNext) {
+          fixedJson += char;
+          escapeNext = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          fixedJson += char;
+          escapeNext = true;
+          continue;
+        }
+
+        if (char === '"' && !inString) {
+          inString = true;
+          fixedJson += char;
+          continue;
+        }
+
+        if (char === '"' && inString) {
+          inString = false;
+          fixedJson += char;
+          continue;
+        }
+
+        // 如果在字符串内部，将真实换行符转为转义形式
+        if (inString && (char === '\n' || char === '\r')) {
+          fixedJson += '\\n';
+          continue;
+        }
+
+        // 如果在字符串内部，处理未转义的制表符
+        if (inString && char === '\t') {
+          fixedJson += '\\t';
+          continue;
+        }
+
+        fixedJson += char;
+      }
+      jsonStr = fixedJson;
+
+      // 3. 尝试解析 JSON
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch (parseError) {
+        console.warn('[analyzer] 第一次解析失败，尝试清理后的再次解析:', parseError);
+
+        // 更激进的清理：移除控制字符
+        jsonStr = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
+          // 保留一些常见空白字符的转义形式
+          if (char === '\n') return '\\n';
+          if (char === '\r') return '\\r';
+          if (char === '\t') return '\\t';
+          return '';
+        });
+
+        // 再次尝试
+        try {
+          parsed = JSON.parse(jsonStr);
+        } catch (secondError) {
+          // 第三次：尝试修复被截断的 JSON（补全缺失的引号和括号）
+          console.warn('[analyzer] 第二次解析也失败，尝试修复截断的 JSON');
+          try {
+            let truncated = jsonStr;
+            // 删除最后一个不完整的键值对（从最后一个完整的逗号或属性值截断）
+            const lastComplete = Math.max(
+              truncated.lastIndexOf('",'),
+              truncated.lastIndexOf('"],'),
+              truncated.lastIndexOf('},'),
+              truncated.lastIndexOf('],'),
+            );
+            if (lastComplete > 0) {
+              truncated = truncated.substring(0, lastComplete + 1);
+            }
+            // 补全所有未闭合的括号
+            let openBraces = 0;
+            let openBrackets = 0;
+            let inStr = false;
+            let esc = false;
+            for (const ch of truncated) {
+              if (esc) { esc = false; continue; }
+              if (ch === '\\') { esc = true; continue; }
+              if (ch === '"') { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (ch === '{') openBraces++;
+              if (ch === '}') openBraces--;
+              if (ch === '[') openBrackets++;
+              if (ch === ']') openBrackets--;
+            }
+            // 移除尾随逗号
+            truncated = truncated.replace(/,\s*$/, '');
+            for (let i = 0; i < openBrackets; i++) truncated += ']';
+            for (let i = 0; i < openBraces; i++) truncated += '}';
+            parsed = JSON.parse(truncated);
+            console.info('[analyzer] ✅ 截断 JSON 修复成功');
+          } catch (thirdError) {
+            console.error('[analyzer] 第三次解析也失败，原始内容:', raw);
+            return null;
+          }
+        }
+      }
 
       // 构建完整分析结果
       const result: CharacterAnalysisResult = {
         characterId,
         // 基础信息
-        姓名: parsed.姓名 || parsed.characterId || characterId,
-        性别: parsed.性别,
-        年龄: parsed.年龄,
-        职业: parsed.职业,
-        外貌: parsed.外貌,
-        外貌细节: parsed.外貌细节,
+        姓名: (parsed.姓名 as string) || parsed.characterId || characterId,
+        性别: parsed.性别 as string,
+        年龄: parsed.年龄 as number,
+        职业: parsed.职业 as string,
+        外貌: parsed.外貌 as string,
+        外貌细节: parsed.外貌细节 as string,
         // 性格
-        personality: parsed.性格 || parsed.personality,
+        personality: (parsed.性格 || parsed.personality) as Record<string, string>,
         // 性癖和敏感部位
-        fetishes: parsed.性癖 || parsed.fetishes,
-        sensitiveParts: parsed.敏感部位 || parsed.sensitiveParts,
+        fetishes: (parsed.性癖 || parsed.fetishes) as Record<string, { 等级: number; 细节描述: string; 自我合理化: string }>,
+        sensitiveParts: (parsed.敏感部位 || parsed.sensitiveParts) as Record<string, { 敏感等级: number; 生理反应: string; 开发细节: string }>,
         // 背景故事
-        背景故事: parsed.背景故事,
+        背景故事: parsed.背景故事 as string,
         // 兴趣爱好
-        兴趣爱好: parsed.兴趣爱好,
+        兴趣爱好: parsed.兴趣爱好 as string[],
         // 生活习惯
-        生活习惯: parsed.生活习惯,
+        生活习惯: parsed.生活习惯 as string[],
         // 说话风格
-        说话风格: parsed.说话风格,
-        日常对话示例: parsed.日常对话示例,
+        说话风格: parsed.说话风格 as string,
+        日常对话示例: parsed.日常对话示例 as string[],
         // 当前状态
-        currentThought: parsed.当前内心想法 || parsed.currentThought,
-        currentPhysiologicalDescription: parsed.当前综合生理描述 || parsed.currentPhysiologicalDescription,
+        currentThought: (parsed.当前内心想法 || parsed.currentThought) as string,
+        currentPhysiologicalDescription: (parsed.当前综合生理描述 || parsed.currentPhysiologicalDescription) as string,
         // 数值
-        stats: parsed.数值 || parsed.stats,
+        stats: (parsed.数值 || parsed.stats) as { 好感度?: number; 发情值?: number; 性癖开发值?: number },
         // 身份标签
-        identityTags: parsed.身份标签 || parsed.identityTags,
+        identityTags: (parsed.身份标签 || parsed.identityTags) as Record<string, string>,
       };
 
+      console.log('[analyzer] 成功解析分析结果:', result);
       return result;
     } catch (e) {
       console.warn('[analyzer] 解析 JSON 失败:', e);
@@ -250,83 +469,6 @@ ${profileJson}
     }
   }
 
-  /** 写回 MVU 变量（通过壳脚本的 REQUEST_WRITE_CHARACTER_ANALYSIS 接口） */
-  private async writeBackToMvu(characterId: string, result: CharacterAnalysisResult): Promise<void> {
-    try {
-      const updates: Parameters<typeof writeCharacterAnalysisResult>[1] = {};
-
-      // 基础信息
-      if (result.姓名) updates['姓名'] = result.姓名;
-      if (result.性别) updates['性别'] = result.性别;
-      if (result.年龄 !== undefined) updates['年龄'] = result.年龄;
-      if (result.职业) updates['职业'] = result.职业;
-      if (result.外貌) updates['外貌'] = result.外貌;
-      if (result.外貌细节) updates['外貌细节'] = result.外貌细节;
-
-      // 性格
-      if (result.personality) {
-        updates['性格'] = result.personality;
-      }
-
-      // 性癖和敏感部位
-      if (result.fetishes) {
-        updates['性癖'] = result.fetishes;
-      }
-      if (result.sensitiveParts) {
-        updates['敏感部位'] = result.sensitiveParts;
-      }
-
-      // 背景故事
-      if (result.背景故事) updates['背景故事'] = result.背景故事;
-
-      // 兴趣爱好
-      if (result.兴趣爱好) updates['兴趣爱好'] = result.兴趣爱好;
-
-      // 生活习惯
-      if (result.生活习惯) updates['生活习惯'] = result.生活习惯;
-
-      // 说话风格
-      if (result.说话风格) updates['说话风格'] = result.说话风格;
-      if (result.日常对话示例) updates['日常对话示例'] = result.日常对话示例;
-
-      // 当前状态
-      if (result.currentThought) {
-        updates['当前内心想法'] = result.currentThought;
-      }
-      if (result.currentPhysiologicalDescription) {
-        updates['当前综合生理描述'] = result.currentPhysiologicalDescription;
-      }
-
-      // 数值
-      if (result.stats) {
-        updates['数值'] = result.stats;
-      }
-
-      // 身份标签
-      if (result.identityTags) {
-        updates['身份标签'] = result.identityTags;
-      }
-
-      const writeResult = await writeCharacterAnalysisResult(characterId, updates);
-      if (writeResult.ok) {
-        console.log('[analyzer] ✅ 角色分析结果已成功写回 MVU:', characterId);
-        // 同步到世界书
-        const wbResult = await syncCharacterAnalysisToWorldbook(characterId, {
-          ...updates,
-          姓名: result.姓名 || result.characterId,
-        });
-        if (wbResult.ok) {
-          console.log('[analyzer] ✅ 角色分析结果已同步到世界书:', characterId, '是否新条目:', wbResult.isNew);
-        } else {
-          console.warn('[analyzer] ⚠️ 角色分析结果同步到世界书失败:', wbResult.error);
-        }
-      } else {
-        console.warn('[analyzer] ⚠️ 角色分析结果写回失败:', writeResult.error);
-      }
-    } catch (e) {
-      console.error('[analyzer] ❌ 写回 MVU 变量异常:', e);
-    }
-  }
 }
 
 /** 全局单例 */

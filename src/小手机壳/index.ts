@@ -962,223 +962,6 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
   );
 }
 
-/**
- * 将角色分析结果同步到世界书
- * 创建/更新名为「【角色名】角色档案」的世界书条目
- * 首次创建新条目，后续更新已有条目
- */
-async function syncCharacterAnalysisToWorldbook(
-  characterId: string,
-  updates: Record<string, unknown>,
-): Promise<{ ok: boolean; error?: string; isNew?: boolean }> {
-  try {
-    const charName = (updates['姓名'] as string) || characterId;
-    const entryName = `【${charName}】角色档案`;
-
-    // 构建完整角色档案内容
-    const sections: string[] = [];
-    
-    // 更新时间
-    sections.push(`更新时间: ${new Date().toLocaleString('zh-CN')}`);
-    sections.push('');
-
-    // 基本信息
-    const basicInfo: string[] = [];
-    if (updates['姓名']) basicInfo.push(`姓名: ${updates['姓名']}`);
-    if (updates['性别']) basicInfo.push(`性别: ${updates['性别']}`);
-    if (updates['年龄']) basicInfo.push(`年龄: ${updates['年龄']}`);
-    if (updates['职业']) basicInfo.push(`职业: ${updates['职业']}`);
-    if (updates['外貌']) basicInfo.push(`外貌: ${updates['外貌']}`);
-    if (updates['外貌细节']) basicInfo.push(`外貌细节: ${updates['外貌细节']}`);
-    if (basicInfo.length > 0) {
-      sections.push('基本信息:');
-      sections.push(...basicInfo.map(s => `  ${s}`));
-      sections.push('');
-    }
-
-    // 性格特点
-    if (updates['性格']) {
-      const 性格 = updates['性格'] as Record<string, string>;
-      sections.push('性格特点:');
-      for (const [k, v] of Object.entries(性格)) {
-        sections.push(`  - ${k}: ${v}`);
-      }
-      sections.push('');
-    }
-
-    // 性癖 & 玩法
-    if (updates['性癖'] || updates['敏感部位']) {
-      sections.push('性癖 & 玩法:');
-      if (updates['性癖']) {
-        const 性癖 = updates['性癖'] as Record<string, { 等级?: number; 细节描述?: string; 自我合理化?: string }>;
-        for (const [k, v] of Object.entries(性癖)) {
-          sections.push(`  - ${k} Lv.${v.等级 || 1}:`);
-          if (v.细节描述) sections.push(`    ${v.细节描述}`);
-        }
-      }
-      if (updates['敏感部位']) {
-        const 敏感 = updates['敏感部位'] as Record<string, { 敏感等级?: number; 生理反应?: string; 开发细节?: string }>;
-        sections.push('  敏感部位:');
-        for (const [k, v] of Object.entries(敏感)) {
-          sections.push(`    - ${k} Lv.${v.敏感等级 || 1}: ${v.生理反应 || ''}`);
-        }
-      }
-      sections.push('');
-    }
-
-    // 背景故事
-    if (updates['背景故事']) {
-      sections.push('背景故事:');
-      sections.push(`  ${updates['背景故事']}`);
-      sections.push('');
-    }
-
-    // 兴趣爱好
-    if (updates['兴趣爱好']) {
-      sections.push('兴趣爱好:');
-      const 爱好 = updates['兴趣爱好'] as string[] | string;
-      if (Array.isArray(爱好)) {
-        爱好.forEach(h => sections.push(`  - ${h}`));
-      } else {
-        sections.push(`  ${爱好}`);
-      }
-      sections.push('');
-    }
-
-    // 生活习惯
-    if (updates['生活习惯']) {
-      sections.push('生活习惯:');
-      const 习惯 = updates['生活习惯'] as string[] | string;
-      if (Array.isArray(习惯)) {
-        习惯.forEach(h => sections.push(`  - ${h}`));
-      } else {
-        sections.push(`  ${习惯}`);
-      }
-      sections.push('');
-    }
-
-    // 说话风格
-    if (updates['说话风格'] || updates['日常对话示例']) {
-      sections.push('说话风格:');
-      if (updates['说话风格']) {
-        sections.push(`  ${updates['说话风格']}`);
-      }
-      if (updates['日常对话示例']) {
-        sections.push('  日常对话示例:');
-        const 示例 = updates['日常对话示例'] as string[];
-        示例.forEach(ex => {
-          sections.push(`    - ${ex}`);
-        });
-      }
-      sections.push('');
-    }
-
-    // 当前状态（动态更新部分）
-    if (updates['当前内心想法'] || updates['当前综合生理描述'] || updates['数值']) {
-      sections.push('当前状态:');
-      if (updates['当前内心想法']) {
-        sections.push(`  当前想法: ${updates['当前内心想法']}`);
-      }
-      if (updates['当前综合生理描述']) {
-        sections.push(`  生理状态: ${updates['当前综合生理描述']}`);
-      }
-      if (updates['数值']) {
-        const 数值 = updates['数值'] as Record<string, number>;
-        sections.push('  数值状态:');
-        for (const [k, v] of Object.entries(数值)) {
-          sections.push(`    - ${k}: ${v}`);
-        }
-      }
-      sections.push('');
-    }
-
-    // 身份标签
-    if (updates['身份标签']) {
-      const 标签 = updates['身份标签'] as Record<string, string>;
-      sections.push('身份标签:');
-      for (const [k, v] of Object.entries(标签)) {
-        sections.push(`  - ${k}: ${v}`);
-      }
-      sections.push('');
-    }
-
-    const content = sections.join('\n');
-
-    // 获取世界书名称（优先使用聊天作用域 chatScopeId，与角色卡聊天文件名一致）
-    let worldbookName: string | null = null;
-    const chatScopeId = getChatScopeId();
-    if (chatScopeId) {
-      worldbookName = chatScopeId;
-    }
-    if (!worldbookName) {
-      // 兜底：使用当前角色卡的主世界书名
-      try {
-        const w = getCharWorldbookNames('current');
-        worldbookName = w?.primary?.trim() || (Array.isArray(w?.additional) ? w.additional[0]?.trim() : null) || null;
-      } catch {
-        /* */
-      }
-    }
-    if (!worldbookName) {
-      return { ok: false, error: '无法确定世界书名称' };
-    }
-
-    // 确保世界书存在并激活为全局
-    const wbResult = await ensureWorldbookForSync(worldbookName);
-    if (!wbResult) {
-      return { ok: false, error: `无法确保世界书「${worldbookName}」存在` };
-    }
-
-    let isNewEntry = false;
-
-    await updateWorldbookWith(
-      worldbookName,
-      entries => {
-        const idx = entries.findIndex(e => e.name === entryName);
-        if (idx < 0) {
-          // 首次分析：创建新条目（绿灯，启用）
-          isNewEntry = true;
-          const neu: PartialDeep<WorldbookEntry> = {
-            name: entryName,
-            content,
-            enabled: true,
-            position: 'normal',
-            probability: 100,
-            strategy: {
-              type: 'selective',
-              keys: [charName, ...Object.values(updates['身份标签'] || {}).filter(Boolean) as string[]],
-              keys_secondary: { logic: 'and_any', keys: [] },
-              scan_depth: 'same_as_global',
-            },
-            recursion: { prevent_incoming: true, prevent_outgoing: true, delay_until: null },
-          };
-          return [...entries, neu as WorldbookEntry];
-        } else {
-          // 后续分析：更新已有条目内容
-          isNewEntry = false;
-          const e = entries[idx];
-          return [
-            ...entries.slice(0, idx),
-            { ...e, content },
-            ...entries.slice(idx + 1),
-          ];
-        }
-      },
-      { render: 'debounced' },
-    );
-
-    if (isNewEntry) {
-      console.info('[tavern-phone] ✅ 已创建新角色档案条目:', entryName);
-    } else {
-      console.info('[tavern-phone] ✅ 已更新角色档案条目:', entryName);
-    }
-    return { ok: true, isNew: isNewEntry };
-  } catch (err) {
-    console.error('[tavern-phone] 同步角色分析到世界书失败:', err);
-    return { ok: false, error: String(err) };
-  }
-}
-
 type WbExportedMsg = { id: string; role: 'user' | 'assistant'; content: string; time: number };
 type WbExportedThread = { roleId: string; conversationId: string; messages: WbExportedMsg[] };
 
@@ -1565,6 +1348,225 @@ function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]):
 function sanitizeWorldbookEntryName(s: string): string {
   const t = s.replace(/[\r\n]+/g, ' ').trim();
   return t.length > 180 ? `${t.slice(0, 177)}…` : t;
+}
+
+/** 将角色分析 updates 格式化为世界书正文（与手动条目风格一致） */
+function formatCharacterAnalysisWorldbookContent(updates: Record<string, unknown>): string {
+  const lines: string[] = [];
+  lines.push('基本信息：');
+  if (updates['姓名'] != null) lines.push(`姓名：${String(updates['姓名'])}`);
+  if (updates['性别'] != null) lines.push(`性别：${String(updates['性别'])}`);
+  if (updates['年龄'] != null) lines.push(`年龄：${String(updates['年龄'])}`);
+  if (updates['职业'] != null) lines.push(`职业：${String(updates['职业'])}`);
+  if (updates['外貌'] != null) lines.push(`外貌：${String(updates['外貌'])}`);
+  if (updates['外貌细节'] != null) lines.push(`外貌细节：${String(updates['外貌细节'])}`);
+
+  const 性格 = updates['性格'];
+  if (性格 && typeof 性格 === 'object' && !Array.isArray(性格)) {
+    const p = 性格 as Record<string, string>;
+    lines.push('');
+    lines.push('性格特点：');
+    if (p['表面性格']) lines.push(`表面：${p['表面性格']}`);
+    if (p['内在性格']) lines.push(`内在：${p['内在性格']}`);
+    if (p['特殊性格标签']) lines.push(`标签：${p['特殊性格标签']}`);
+  }
+
+  const 性癖 = updates['性癖'];
+  if (性癖 && typeof 性癖 === 'object' && !Array.isArray(性癖)) {
+    lines.push('');
+    lines.push('性癖：');
+    for (const [name, raw] of Object.entries(性癖 as Record<string, Record<string, unknown>>)) {
+      lines.push(`「${name}」`);
+      if (raw && typeof raw === 'object') {
+        if (raw['等级'] != null) lines.push(`  等级：${String(raw['等级'])}`);
+        if (raw['细节描述'] != null) lines.push(`  细节：${String(raw['细节描述'])}`);
+        if (raw['自我合理化'] != null) lines.push(`  自我合理化：${String(raw['自我合理化'])}`);
+      }
+    }
+  }
+
+  const 敏感部位 = updates['敏感部位'];
+  if (敏感部位 && typeof 敏感部位 === 'object' && !Array.isArray(敏感部位)) {
+    lines.push('');
+    lines.push('敏感部位：');
+    for (const [name, raw] of Object.entries(敏感部位 as Record<string, Record<string, unknown>>)) {
+      lines.push(`「${name}」`);
+      if (raw && typeof raw === 'object') {
+        if (raw['敏感等级'] != null) lines.push(`  敏感等级：${String(raw['敏感等级'])}`);
+        if (raw['生理反应'] != null) lines.push(`  生理反应：${String(raw['生理反应'])}`);
+        if (raw['开发细节'] != null) lines.push(`  开发细节：${String(raw['开发细节'])}`);
+      }
+    }
+  }
+
+  if (updates['背景故事'] != null) {
+    lines.push('');
+    lines.push(`背景故事：${String(updates['背景故事'])}`);
+  }
+
+  const 兴趣爱好 = updates['兴趣爱好'];
+  if (Array.isArray(兴趣爱好) && 兴趣爱好.length > 0) {
+    lines.push('');
+    lines.push(`兴趣爱好：${兴趣爱好.map(x => String(x)).join('、')}`);
+  }
+  const 生活习惯 = updates['生活习惯'];
+  if (Array.isArray(生活习惯) && 生活习惯.length > 0) {
+    lines.push(`生活习惯：${生活习惯.map(x => String(x)).join('、')}`);
+  }
+
+  if (updates['说话风格'] != null) {
+    lines.push('');
+    lines.push(`说话风格：${String(updates['说话风格'])}`);
+  }
+
+  const 日常 = updates['日常对话示例'];
+  if (Array.isArray(日常) && 日常.length > 0) {
+    lines.push('');
+    lines.push('日常对话示例：');
+    日常.forEach((ex, i) => lines.push(`${i + 1}. ${String(ex)}`));
+  }
+
+  // 不写世界书：当前内心想法 / 当前综合生理描述 / 数值（与 MVU 实时状态重复，易干扰长档案）
+
+  const 身份标签 = updates['身份标签'];
+  if (身份标签 && typeof 身份标签 === 'object' && !Array.isArray(身份标签)) {
+    lines.push('');
+    lines.push('身份标签：');
+    for (const [k, v] of Object.entries(身份标签 as Record<string, string>)) {
+      lines.push(`  ${k}：${String(v)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 将角色分析结果写入与微信同步相同规则的世界书（phone_wechat_wb_sync / chatScopeId）
+ */
+async function syncCharacterAnalysisToWorldbook(
+  characterId: string,
+  updates: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const chatScopeId = getChatScopeId() ?? 'local-offline';
+    const scopeTrim = chatScopeId.trim() || 'local-offline';
+    const cfg = getWbSyncScriptCfg();
+    let worldbookName: string | null = null;
+    if (cfg) {
+      worldbookName = resolveWorldbookNameForWbSync(cfg, scopeTrim);
+    } else {
+      if (scopeTrim && scopeTrim !== 'local-offline') {
+        worldbookName = scopeTrim;
+      } else {
+        try {
+          const w = getCharWorldbookNames('current');
+          worldbookName = w?.primary?.trim() || w?.additional?.[0]?.trim() || null;
+        } catch {
+          worldbookName = null;
+        }
+      }
+    }
+    if (!worldbookName) {
+      return {
+        ok: false,
+        error: '无法确定世界书名：请启用 phone_wechat_wb_sync 或保证 chatScopeId / 角色卡主世界书可用',
+      };
+    }
+
+    const wbResult = await ensureWorldbookForSync(worldbookName);
+    if (!wbResult) {
+      return { ok: false, error: '创建或读取世界书失败' };
+    }
+    const { template } = wbResult;
+    const characterName =
+      typeof updates['姓名'] === 'string' && updates['姓名'].trim() ? updates['姓名'].trim() : characterId;
+    const entryName = sanitizeWorldbookEntryName(`【${characterName}】角色档案`);
+    const content = formatCharacterAnalysisWorldbookContent(updates);
+
+    const selectiveKeys: (string | RegExp)[] = [];
+    if (characterName) selectiveKeys.push(characterName);
+    if (characterId && characterId !== characterName) selectiveKeys.push(characterId);
+
+    const strat: WorldbookEntry['strategy'] = {
+      type: 'selective',
+      keys: selectiveKeys.length > 0 ? selectiveKeys : ['角色档案'],
+      keys_secondary: template.strategy.keys_secondary ?? { logic: 'and_any', keys: [] },
+      scan_depth: 'same_as_global',
+    };
+
+    const position: WorldbookEntry['position'] = {
+      type: 'before_character_definition',
+      role: 'system',
+      depth: 4,
+      order: 100,
+    };
+
+    const rec = wbSyncRecursionClosed();
+
+    // 先读取当前世界书，检查是否已有该角色条目
+    let existingEntries: WorldbookEntry[] = [];
+    try {
+      existingEntries = await getWorldbook(worldbookName);
+    } catch {
+      existingEntries = [];
+    }
+
+    const existingIdx = existingEntries.findIndex(
+      e =>
+        e.name === entryName ||
+        ((e.extra as Record<string, unknown> | undefined)?.tavernPhoneCharacterId === characterId),
+    );
+
+    const baseExtra = { tavernPhoneCharacterId: characterId };
+
+    if (existingIdx >= 0) {
+      // 更新现有条目
+      const existingEntry = existingEntries[existingIdx];
+      await updateWorldbookWith(
+        worldbookName,
+        entries => {
+          const next = [...entries];
+          const idx = next.findIndex(e => e.uid === existingEntry.uid);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              name: entryName,
+              content,
+              enabled: true,
+              strategy: strat,
+              position,
+              probability: next[idx].probability ?? 100,
+              recursion: rec,
+              effect: next[idx].effect ?? template.effect,
+              extra: { ...((next[idx].extra as Record<string, unknown>) || {}), ...baseExtra },
+            };
+          }
+          return next;
+        },
+        { render: 'immediate' },
+      );
+    } else {
+      // 添加新条目（使用 createWorldbookEntries 避免覆盖其他条目）
+      const newEntry: PartialDeep<WorldbookEntry> = {
+        name: entryName,
+        content,
+        enabled: true,
+        strategy: strat,
+        position,
+        probability: 100,
+        recursion: rec,
+        effect: template.effect,
+        extra: baseExtra,
+      };
+      await createWorldbookEntries(worldbookName, [newEntry], { render: 'immediate' });
+    }
+
+    console.info('[tavern-phone] ✅ 角色分析已写入世界书', worldbookName, entryName);
+    return { ok: true };
+  } catch (err) {
+    console.warn('[tavern-phone] syncCharacterAnalysisToWorldbook 失败:', err);
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 async function buildWeChatContext(): Promise<{
@@ -2299,29 +2301,83 @@ $(() => {
         }
 
         const charData = 角色档案[characterId];
-        if (updates['当前内心想法'] !== undefined) {
-          charData['当前内心想法'] = updates['当前内心想法'];
+
+        // 基础信息
+        if (updates['姓名'] !== undefined) {
+          charData['姓名'] = updates['姓名'];
         }
+        if (updates['性别'] !== undefined) {
+          charData['性别'] = updates['性别'];
+        }
+        if (updates['年龄'] !== undefined) {
+          charData['年龄'] = updates['年龄'];
+        }
+        if (updates['职业'] !== undefined) {
+          charData['职业'] = updates['职业'];
+        }
+        if (updates['外貌'] !== undefined) {
+          charData['外貌'] = updates['外貌'];
+        }
+        if (updates['外貌细节'] !== undefined) {
+          charData['外貌细节'] = updates['外貌细节'];
+        }
+
+        // 性格
         if (updates['性格'] !== undefined) {
           charData['性格'] = updates['性格'];
         }
+
+        // 性癖和敏感部位
         if (updates['性癖'] !== undefined) {
           charData['性癖'] = updates['性癖'];
         }
         if (updates['敏感部位'] !== undefined) {
           charData['敏感部位'] = updates['敏感部位'];
         }
-        if (updates['身份标签'] !== undefined) {
-          charData['身份标签'] = updates['身份标签'];
+
+        // 背景故事
+        if (updates['背景故事'] !== undefined) {
+          charData['背景故事'] = updates['背景故事'];
         }
-        if (updates['数值'] !== undefined) {
-          charData['数值'] = { ...(charData['数值'] as Record<string, unknown>), ...(updates['数值'] as Record<string, unknown>) };
+
+        // 兴趣爱好
+        if (updates['兴趣爱好'] !== undefined) {
+          charData['兴趣爱好'] = updates['兴趣爱好'];
+        }
+
+        // 生活习惯
+        if (updates['生活习惯'] !== undefined) {
+          charData['生活习惯'] = updates['生活习惯'];
+        }
+
+        // 说话风格
+        if (updates['说话风格'] !== undefined) {
+          charData['说话风格'] = updates['说话风格'];
+        }
+        if (updates['日常对话示例'] !== undefined) {
+          charData['日常对话示例'] = updates['日常对话示例'];
+        }
+
+        // 当前状态
+        if (updates['当前内心想法'] !== undefined) {
+          charData['当前内心想法'] = updates['当前内心想法'];
         }
         if (updates['当前综合生理描述'] !== undefined) {
           charData['当前综合生理描述'] = updates['当前综合生理描述'];
         }
 
-        (Mvu as Record<string, (...args: unknown[]) => unknown>).setMvuData({ type: 'message', message_id: 'latest' }, mvuData);
+        // 数值
+        if (updates['数值'] !== undefined) {
+          charData['数值'] = { ...(charData['数值'] as Record<string, unknown>), ...(updates['数值'] as Record<string, unknown>) };
+        }
+
+        // 身份标签
+        if (updates['身份标签'] !== undefined) {
+          charData['身份标签'] = updates['身份标签'];
+        }
+
+        // 使用 replaceMvuData 替换整个数据（异步操作）
+        await Mvu.replaceMvuData(mvuData as Mvu.MvuData, { type: 'message', message_id: 'latest' });
 
         console.info('[tavern-phone] ✅ 角色分析结果已写回 MVU:', characterId);
         source?.postMessage(
@@ -2350,11 +2406,23 @@ $(() => {
         return;
       }
       void (async () => {
-        const result = await syncCharacterAnalysisToWorldbook(characterId, updates);
-        source?.postMessage(
-          { type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT, requestId, ...result },
-          '*',
-        );
+        try {
+          const result = await syncCharacterAnalysisToWorldbook(characterId, updates);
+          source?.postMessage(
+            { type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT, requestId, ...result },
+            '*',
+          );
+        } catch (err) {
+          source?.postMessage(
+            {
+              type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT,
+              requestId,
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            '*',
+          );
+        }
       })();
       return;
     }

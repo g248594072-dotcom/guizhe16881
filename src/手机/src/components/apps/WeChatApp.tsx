@@ -38,10 +38,8 @@ import {
 import {
   addPinnedContact,
   loadPinnedContacts,
-  mergeContactLists,
 } from '../../weChatPinnedContacts';
 import { fileToAvatarDataUrl } from '../../weChatAvatarFile';
-import { getCharacterAnalyzer } from '../../characterArchive/characterAnalyzer';
 import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
 import { loadCharacterArchiveById } from '../../characterArchive/bridge';
 
@@ -868,23 +866,10 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     }
   }, []);
 
-  const serverContacts = useMemo(() => {
-    const raw = ctx?.contacts;
-    if (raw && raw.length > 0) {
-      return raw;
-    }
-    if (ctx) {
-      return [{ id: 'default', displayName: ctx.displayName }];
-    }
-    return [];
-  }, [ctx]);
-
+  /** 会话列表仅显示用户通过「+」手动添加的联系人，变量中的角色只在加号面板里可选 */
   const pinnedContacts = useMemo(() => loadPinnedContacts(chatScopeId), [chatScopeId, pinnedRev]);
 
-  const contacts = useMemo(
-    () => mergeContactLists(serverContacts, pinnedContacts),
-    [serverContacts, pinnedContacts],
-  );
+  const contacts = pinnedContacts;
 
   const debugSystemPromptPreview = useMemo(() => {
     if (!ctx || !meDraft.showInjectDebug) {
@@ -928,53 +913,31 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   const addedIds = useMemo(() => new Set(contacts.map(c => c.id)), [contacts]);
 
-  // 新联系人自动检测与分析
-  const analyzedContactIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!ctx || contacts.length === 0) return;
-
-    // 找出未分析过的新联系人
-    const newContacts = contacts.filter(c => !analyzedContactIdsRef.current.has(c.id));
-    if (newContacts.length === 0) return;
-
-    // 延迟执行，避免阻塞初始化
-    const timer = setTimeout(() => {
-      const scheduler = getAnalysisScheduler();
-      const analyzer = getCharacterAnalyzer();
-
-      newContacts.forEach(contact => {
-        // 标记为已分析
-        analyzedContactIdsRef.current.add(contact.id);
-
-        // 从角色档案加载该联系人的完整数据
-        void (async () => {
-          try {
-            const archive = await loadCharacterArchiveById(contact.id);
-            if (archive) {
-              // 有完整档案，添加低优先级分析任务
-              scheduler.addTask({
-                type: 'ANALYZE_CHARACTER',
-                priority: 'NORMAL',
-                characterId: contact.id,
-                characterName: contact.displayName,
-              });
-              console.log('[WeChatApp] 自动为新联系人添加分析任务:', contact.displayName);
-            }
-          } catch (e) {
-            console.warn('[WeChatApp] 自动分析新联系人失败:', e);
-          }
-        })();
-      });
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [contacts, ctx]);
-
+  // 只有在用户手动添加新联系人时才触发分析（不在组件加载或弹窗打开时触发）
   const handleAddContact = (c: TavernPhoneWeChatContact) => {
     addPinnedContact(chatScopeId, c);
     setPinnedRev(r => r + 1);
     setListTick(t => t + 1);
     setAddModalOpen(false);
+
+    // 为用户新添加的联系人触发分析
+    void (async () => {
+      try {
+        const archive = await loadCharacterArchiveById(c.id);
+        if (archive) {
+          const scheduler = getAnalysisScheduler();
+          scheduler.addTask({
+            type: 'ANALYZE_CHARACTER',
+            priority: 'NORMAL',
+            characterId: c.id,
+            characterName: c.displayName,
+          });
+          console.log('[WeChatApp] 为新添加的联系人触发分析:', c.displayName);
+        }
+      } catch (e) {
+        console.warn('[WeChatApp] 新联系人分析失败:', e);
+      }
+    })();
   };
   const showOffline = ctx?.offline;
   const meAvatarUrl = resolveMeAvatarDisplay(meProfile);
@@ -1170,6 +1133,13 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center justify-center py-20 text-gray-400 text-[15px]">
                     <Loader2 className="animate-spin mr-2" size={20} />
                     加载会话…
+                  </div>
+                ) : contacts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-6 text-center text-gray-400 text-[14px]">
+                    <p>暂无会话</p>
+                    <p className="mt-2 text-[13px] leading-relaxed">
+                      点击右上角「+」从变量中选择并添加到微信
+                    </p>
                   </div>
                 ) : (
                   contacts.map(c => {

@@ -9,6 +9,8 @@ const MSG = {
   CHARACTER_ARCHIVE_RESPONSE: 'tavern-phone:character-archive-response',
   REQUEST_WRITE_CHARACTER_ANALYSIS: 'tavern-phone:request-write-character-analysis',
   WRITE_CHARACTER_ANALYSIS_RESULT: 'tavern-phone:write-character-analysis-result',
+  REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
+  SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
 } as const;
 
 /** 监听器是否已初始化 */

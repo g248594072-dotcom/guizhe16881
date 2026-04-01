@@ -69,7 +69,7 @@ async function initCharacterAnalyzer(): Promise<void> {
       model: opts.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      max_tokens: 2048,
+      max_tokens: 4096,
     };
     const res = await fetch(url, {
       method: 'POST',
