@@ -1,5 +1,6 @@
 import { StoreDefinition } from 'pinia';
 
+<<<<<<< HEAD
 function normalizeMessageVariableOption(option: VariableOption): VariableOption {
   const o = _.cloneDeep(option);
   if (
@@ -92,14 +93,41 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       const statData = getStatData(rawVariables);
       const data = ref(
         schema.parse(statData, { reportInput: true }),
+=======
+export function defineMvuDataStore<T extends z.ZodObject>(
+  schema: T,
+  variable_option: VariableOption,
+  additional_setup?: (data: Ref<z.infer<T>>) => void,
+): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
+  if (
+    variable_option.type === 'message' &&
+    (variable_option.message_id === undefined || variable_option.message_id === 'latest')
+  ) {
+    variable_option.message_id = -1;
+  }
+
+  return defineStore(
+    `mvu_data.${_(variable_option)
+      .entries()
+      .sortBy(entry => entry[0])
+      .map(entry => entry[1])
+      .join('.')}`,
+    errorCatched(() => {
+      const data = ref(
+        schema.parse(_.get(getVariables(variable_option), 'stat_data', {}), { reportInput: true }),
+>>>>>>> 9dbfce4f3a8e36fe5fb6a7eb6d355d67cbde74aa
       ) as Ref<z.infer<T>>;
       if (additional_setup) {
         additional_setup(data);
       }
 
       useIntervalFn(() => {
+<<<<<<< HEAD
         const variables = getVariables(resolvedOption);
         const stat_data = getStatData(variables);
+=======
+        const stat_data = _.get(getVariables(variable_option), 'stat_data', {});
+>>>>>>> 9dbfce4f3a8e36fe5fb6a7eb6d355d67cbde74aa
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;
@@ -109,7 +137,11 @@ export function defineMvuDataStore<T extends z.ZodObject>(
             data.value = result.data;
           });
           if (!_.isEqual(stat_data, result.data)) {
+<<<<<<< HEAD
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+=======
+            updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+>>>>>>> 9dbfce4f3a8e36fe5fb6a7eb6d355d67cbde74aa
           }
         }
       }, 2000);
@@ -126,7 +158,11 @@ export function defineMvuDataStore<T extends z.ZodObject>(
               data.value = result.data;
             });
           }
+<<<<<<< HEAD
           updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+=======
+          updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+>>>>>>> 9dbfce4f3a8e36fe5fb6a7eb6d355d67cbde74aa
         },
         { deep: true },
       );
