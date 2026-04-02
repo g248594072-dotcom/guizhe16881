@@ -40,6 +40,10 @@ import {
   PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
   PHONE_CHARACTER_AVATAR_SYNC_TYPE,
 } from '../shared/phoneCharacterAvatarStorage';
+import {
+  activateMatchingRuleWorldbook,
+  shouldEnableWorldbookMatcher,
+} from './utils/worldbookMatcher';
 
 const VERSION = '1.0.0';
 const PHONE_W = 375;
@@ -1725,6 +1729,7 @@ $(() => {
   let visualViewportRef: VisualViewport | null = null;
   let chatScopeListener: EventOnReturn | null = null;
   let wbSyncListener: EventOnReturn | null = null;
+  let worldbookMatchListener: EventOnReturn | null = null;
   /** 拖动手机相对屏幕中心的偏移（px） */
   let phoneDragOffsetX = 0;
   let phoneDragOffsetY = 0;
@@ -2859,6 +2864,22 @@ $(() => {
     setupAutoAnalyzeListener();
   });
 
+  // 初始化世界书自动匹配（如果启用）
+  if (shouldEnableWorldbookMatcher()) {
+    if (worldbookMatchListener) {
+      worldbookMatchListener.stop();
+    }
+    worldbookMatchListener = eventOn(tavern_events.CHAT_CHANGED, (chat_file_name: string) => {
+      void activateMatchingRuleWorldbook(chat_file_name);
+    });
+
+    // 初始执行一次（使用当前聊天文件名）
+    const currentChatId = getChatScopeId();
+    if (currentChatId) {
+      void activateMatchingRuleWorldbook(currentChatId);
+    }
+  }
+
   wbSyncListener = eventOn(tavern_events.GENERATE_BEFORE_COMBINE_PROMPTS, () => {
     console.info('[tavern-phone][wb-sync] 📡 收到 GENERATE_BEFORE_COMBINE_PROMPTS，开始同步…');
     void runWeChatWorldbookSyncOnGenerate().catch(e => {
@@ -2879,6 +2900,10 @@ $(() => {
     if (chatScopeListener) {
       chatScopeListener.stop();
       chatScopeListener = null;
+    }
+    if (worldbookMatchListener) {
+      worldbookMatchListener.stop();
+      worldbookMatchListener = null;
     }
     if (autoAnalyzeListener) {
       autoAnalyzeListener.stop();
