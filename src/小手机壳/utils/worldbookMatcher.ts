@@ -4,7 +4,8 @@
  * 只影响以 "规则模拟器" 开头、以 "ms" 结尾的世界书
  */
 
-import { getWorldbook, rebindGlobalWorldbooks } from '@types/function/worldbook';
+import { getWorldbook, rebindGlobalWorldbooks, createWorldbookEntries } from '@types/function/worldbook';
+import type { WorldbookEntry } from '@types/function/worldbook';
 
 const MODULE_NAME = '[worldbookMatcher]';
 
@@ -86,8 +87,203 @@ export async function activateMatchingRuleWorldbook(chatScopeId: string): Promis
     console.log(MODULE_NAME, '当前全局世界书:', uniqueGlobals);
     toastr.success(`已激活世界书: ${targetName}`);
 
+    // 自动创建角色档案条目
+    await createCharacterArchiveEntry(targetName);
+
   } catch (error) {
     console.error(MODULE_NAME, '激活世界书失败:', error);
+  }
+}
+
+/**
+ * 创建角色一览条目（仅在第一个角色出现时创建）
+ * 插入位置：角色定义前，顺序4
+ */
+async function createCharacterOverviewEntry(worldbookName: string): Promise<void> {
+  const ENTRY_NAME = '【角色一览】';
+
+  try {
+    // 检查是否已存在
+    const existing = await getWorldbook(worldbookName);
+    const hasEntry = existing.some(e => e.name === ENTRY_NAME);
+    if (hasEntry) {
+      console.log(MODULE_NAME, '角色一览条目已存在:', worldbookName);
+      return;
+    }
+
+    // 角色一览关键词（用于触发显示）
+    const overviewKeywords = ['角色一览', '人物一览', '登场角色', '出场人物', '有哪些人', '都有谁'];
+
+    const newEntry: Partial<WorldbookEntry> = {
+      name: ENTRY_NAME,
+      enabled: true,
+      content: '', // 初始为空，后续添加角色简介
+      comment: '规则模拟器角色一览（自动创建），包含所有角色的一句话简介',
+      strategy: {
+        type: 'selective', // 绿灯
+        keys: overviewKeywords,
+        keys_secondary: { logic: 'and_any', keys: [] },
+        scan_depth: 4, // 浅层扫描即可
+      },
+      position: {
+        type: 'before_character_definition', // 角色定义之前
+        role: 'system',
+        depth: 0,
+        order: 4, // 顺序4
+      },
+      probability: 100,
+      recursion: {
+        prevent_incoming: true,
+        prevent_outgoing: true,
+        delay_until: null,
+      },
+      effect: {
+        sticky: null,
+        cooldown: null,
+        delay: null,
+      },
+    };
+
+    await createWorldbookEntries(worldbookName, [newEntry as WorldbookEntry], { render: 'immediate' });
+    console.log(MODULE_NAME, '已创建角色一览条目:', worldbookName);
+    toastr.success(`已创建角色一览条目: ${ENTRY_NAME}`);
+
+  } catch (error) {
+    console.error(MODULE_NAME, '创建角色一览条目失败:', error);
+  }
+}
+
+/**
+ * 更新角色一览条目（添加新角色简介）
+ */
+async function updateCharacterOverviewEntry(
+  worldbookName: string,
+  characterName: string,
+  briefIntro: string,
+): Promise<void> {
+  const ENTRY_NAME = '【角色一览】';
+
+  try {
+    const existing = await getWorldbook(worldbookName);
+    const overviewEntry = existing.find(e => e.name === ENTRY_NAME);
+
+    if (!overviewEntry) {
+      console.log(MODULE_NAME, '角色一览条目不存在，跳过更新:', worldbookName);
+      return;
+    }
+
+    // 构建新角色简介行
+    const newLine = `- ${characterName}: ${briefIntro}`;
+
+    // 追加到现有内容
+    const updatedContent = overviewEntry.content
+      ? `${overviewEntry.content}\n${newLine}`
+      : newLine;
+
+    // 更新条目内容（使用 replaceWorldbook 或直接修改）
+    // 这里我们创建一个新条目替换旧的
+    const updatedEntry: Partial<WorldbookEntry> = {
+      ...overviewEntry,
+      content: updatedContent,
+      comment: `${overviewEntry.comment} | 已添加: ${characterName}`,
+    };
+
+    await createWorldbookEntries(worldbookName, [updatedEntry as WorldbookEntry], { render: 'immediate' });
+    console.log(MODULE_NAME, `已更新角色一览，添加: ${characterName}`);
+
+  } catch (error) {
+    console.error(MODULE_NAME, '更新角色一览条目失败:', error);
+  }
+}
+
+/**
+ * 创建角色档案条目
+ * 特性：绿灯、角色定义后、禁止双递归、深度90起递增、概率100%
+ * 同时管理角色一览条目的创建和更新
+ */
+export async function createCharacterArchiveEntry(
+  worldbookName: string,
+  characterInfo?: { name: string; briefIntro: string },
+): Promise<void> {
+  if (!worldbookName || !worldbookName.trim()) {
+    console.log(MODULE_NAME, '世界书名称为空，跳过创建角色档案');
+    return;
+  }
+
+  const ENTRY_NAME_PREFIX = '【角色档案】';
+
+  try {
+    // 获取世界书现有条目，计算已有角色档案数量
+    const existing = await getWorldbook(worldbookName);
+    const archiveEntries = existing.filter(e => e.name?.startsWith(ENTRY_NAME_PREFIX));
+    const archiveCount = archiveEntries.length;
+
+    // 如果是第一个角色，先创建角色一览
+    if (archiveCount === 0) {
+      await createCharacterOverviewEntry(worldbookName);
+    }
+
+    // 深度从90开始，每个往后移1
+    const depth = 90 + archiveCount;
+
+    // 生成新条目名称（带序号）
+    const entryNumber = archiveCount + 1;
+    const ENTRY_NAME = entryNumber === 1 ? ENTRY_NAME_PREFIX : `${ENTRY_NAME_PREFIX}${entryNumber}`;
+
+    // 构建角色称呼关键词（精简版，去掉容易重复的通用词）
+    const roleKeywords = [
+      // 特定称呼（不易重复）
+      '本名', '真名', '爱称', '小名', '乳名',
+      '诨名', '花名', '代号',
+      '头衔', '职称', '官职',
+      '化名称', '曾用名', '旧名',
+      '尊称', '敬称', '称谓', '叫法',
+      // 特定场景
+      '立场', '阵营', '登场', '出场',
+    ].join(',');
+
+    // 创建角色档案条目
+    const newEntry: Partial<WorldbookEntry> = {
+      name: ENTRY_NAME,
+      enabled: true,
+      content: '', // 空内容，等待后续填充
+      comment: `规则模拟器角色档案条目（自动创建）| 关键词: ${roleKeywords}`,
+      strategy: {
+        type: 'selective', // 绿灯
+        keys: roleKeywords.split(',').map(k => k.trim()).filter(k => k),
+        keys_secondary: { logic: 'and_any', keys: [] },
+        scan_depth: depth, // 深度从90开始递增
+      },
+      position: {
+        type: 'after_character_definition', // 角色定义之后
+        role: 'system',
+        depth: 0,
+        order: 0,
+      },
+      probability: 100, // 激活概率100%
+      recursion: {
+        prevent_incoming: true, // 禁止递归激活本条目
+        prevent_outgoing: true, // 禁止本条目递归激活其他条目
+        delay_until: null,
+      },
+      effect: {
+        sticky: null,
+        cooldown: null,
+        delay: null,
+      },
+    };
+
+    await createWorldbookEntries(worldbookName, [newEntry as WorldbookEntry], { render: 'immediate' });
+    console.log(MODULE_NAME, '已创建角色档案条目:', worldbookName);
+    toastr.success(`已创建角色档案条目: ${ENTRY_NAME}`);
+
+    // 如果有角色信息，更新角色一览
+    if (characterInfo?.name && characterInfo?.briefIntro) {
+      await updateCharacterOverviewEntry(worldbookName, characterInfo.name, characterInfo.briefIntro);
+    }
+
+  } catch (error) {
+    console.error(MODULE_NAME, '创建角色档案条目失败:', error);
   }
 }
 

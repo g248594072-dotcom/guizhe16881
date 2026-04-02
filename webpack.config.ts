@@ -606,6 +606,13 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       if (request in global) {
         return callback(null, 'var ' + global[request as keyof typeof global]);
       }
+
+      // 处理 @types/ 开头的类型定义模块
+      // 这些是 TypeScript 类型声明，运行时不需要，返回空对象即可
+      if (request.startsWith('@types/') || request.startsWith('@types\\')) {
+        return callback(null, 'var {}');
+      }
+
       const cdn = {
         sass: 'https://jspm.dev/sass',
       };
