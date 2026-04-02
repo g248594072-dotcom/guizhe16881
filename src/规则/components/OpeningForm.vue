@@ -588,11 +588,17 @@
       </div>
     </div>
 
-    <!-- 清除编年史（左下角） -->
-    <button type="button" class="chronicle-clear-btn" @click="clearChronicleDialogOpen = true">
-      <i class="fa-solid fa-eraser"></i>
-      <span>清除编年史</span>
-    </button>
+    <!-- 左下角：清理缓存、清除编年史 -->
+    <div class="opening-bottom-left-stack">
+      <button type="button" class="chronicle-clear-btn" @click="clearCacheDialogOpen = true">
+        <i class="fa-solid fa-broom"></i>
+        <span>清理缓存</span>
+      </button>
+      <button type="button" class="chronicle-clear-btn" @click="clearChronicleDialogOpen = true">
+        <i class="fa-solid fa-eraser"></i>
+        <span>清除编年史</span>
+      </button>
+    </div>
 
     <!-- 系统设置（与主界面一致，可切换单/双 API） -->
     <button
@@ -609,6 +615,37 @@
     <button class="theme-toggle" @click="isDarkMode = !isDarkMode">
       <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
     </button>
+
+    <!-- 清理缓存确认 -->
+    <div
+      v-if="clearCacheDialogOpen"
+      class="chronicle-dialog-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-cache-dialog-title"
+      @click.self="clearCacheDialogOpen = false"
+    >
+      <div class="chronicle-dialog-panel">
+        <h3 id="clear-cache-dialog-title" class="chronicle-dialog-title">清理缓存</h3>
+        <p class="chronicle-dialog-desc">
+          将清除本界面保存在浏览器中的缓存数据，不影响聊天记录与酒馆变量。此操作不可撤销。
+        </p>
+        <div class="chronicle-dialog-actions">
+          <button type="button" class="chronicle-dialog-btn cancel" @click="clearCacheDialogOpen = false">
+            取消
+          </button>
+          <button
+            type="button"
+            class="chronicle-dialog-btn danger"
+            :disabled="clearCacheLoading"
+            @click="onConfirmClearCache"
+          >
+            <i v-if="clearCacheLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+            <span v-else>确认清理</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 清除编年史确认 -->
     <div
@@ -841,6 +878,7 @@ import MagneticButton from './MagneticButton.vue';
 import ScrambleText from './ScrambleText.vue';
 import BlockProgress from './BlockProgress.vue';
 import { clearChronicle } from '../utils/chronicleUpdater';
+import { clearOpeningUiCache } from '../utils/clearUiCache';
 import {
   type RuleSnippet,
   type CharacterSnippet,
@@ -923,6 +961,9 @@ const isSubmitting = ref(false);
 
 const clearChronicleDialogOpen = ref(false);
 const clearChronicleLoading = ref(false);
+
+const clearCacheDialogOpen = ref(false);
+const clearCacheLoading = ref(false);
 
 // —— localStorage：规则库 / 角色库 / 场景库 / 开局场景库 / 开场预设 ——
 const ruleSnippets = ref<RuleSnippet[]>([]);
@@ -1280,6 +1321,21 @@ async function onConfirmClearChronicle() {
     toastr.error('清除失败：' + String(e));
   } finally {
     clearChronicleLoading.value = false;
+  }
+}
+
+function onConfirmClearCache() {
+  if (clearCacheLoading.value) return;
+  clearCacheLoading.value = true;
+  try {
+    clearOpeningUiCache();
+    toastr.success('缓存已清理');
+    clearCacheDialogOpen.value = false;
+  } catch (e) {
+    console.error('[OpeningForm] clearCache:', e);
+    toastr.error('清理失败：' + String(e));
+  } finally {
+    clearCacheLoading.value = false;
   }
 }
 
@@ -3493,11 +3549,18 @@ defineExpose({
   font-size: 12px;
 }
 
-.chronicle-clear-btn {
+.opening-bottom-left-stack {
   position: fixed;
   left: 20px;
   bottom: 20px;
   z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.chronicle-clear-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -4010,8 +4073,8 @@ defineExpose({
 @media (max-width: 480px) {
   .opening-form {
     padding: 8px;
-    // 为右下角主题/设置与左下角清除编年史留出空间，避免与封面底栏重叠
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    // 为右下角主题/设置与左下角按钮栈留出空间，避免与封面底栏重叠
+    padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px));
   }
 
   .book-container {
@@ -4204,7 +4267,7 @@ defineExpose({
   }
 
   // 底部按钮调整
-  .chronicle-clear-btn,
+  .opening-bottom-left-stack .chronicle-clear-btn,
   .theme-toggle {
     height: 40px;
     padding: 0 12px;
@@ -4488,9 +4551,13 @@ defineExpose({
     border-radius: 12px;
   }
 
-  .chronicle-clear-btn {
+  .opening-bottom-left-stack {
     left: 12px;
     bottom: 12px;
+    gap: 8px;
+  }
+
+  .opening-bottom-left-stack .chronicle-clear-btn {
     padding: 0 12px;
     height: 40px;
     font-size: 12px;
