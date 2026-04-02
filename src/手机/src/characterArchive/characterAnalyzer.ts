@@ -47,6 +47,22 @@ export interface CharacterAnalysisResult {
   identityTags?: Record<string, string>;
 }
 
+/** 角色动态分析结果 - 近期动态变化 */
+export interface CharacterDynamicsResult {
+  characterId: string;
+  characterName: string;
+  // 行为变化
+  behaviorChange?: string;
+  // 性格微调
+  personalityTweak?: string;
+  // 语言风格
+  languageStyle?: string;
+  // 个人目标
+  personalGoal?: string;
+  // 生成时间
+  generatedAt: string;
+}
+
 type CallAPIOptions = {
   apiBaseUrl: string;
   apiKey: string;
@@ -74,6 +90,8 @@ class CharacterAnalyzer {
     scheduler.setProcessor(async (task: AnalysisTask) => {
       if (task.type === 'ANALYZE_CHARACTER') {
         await this.analyzeCharacter(task.characterId, task.characterName);
+      } else if (task.type === 'ANALYZE_DYNAMICS') {
+        await this.analyzeDynamics(task.characterId, task.characterName);
       }
     });
   }
@@ -143,19 +161,361 @@ class CharacterAnalyzer {
         }
       });
 
-      const wbResult = await syncCharacterAnalysisToWorldbook(characterId, updates);
+      // 提取关键词（结合 base profile 和 AI 分析结果）
+      const keywords = profile
+        ? this.extractCharacterKeywords(profile, characterName, updates)
+        : characterName;
+
+      const wbResult = await syncCharacterAnalysisToWorldbook(
+        characterId,
+        updates,
+        {
+          keywords: keywords, // 英文逗号分隔的关键词
+          preventRecursion: true, // 禁止双递归
+        },
+      );
       if (wbResult.ok) {
-        console.log('[analyzer] ✅ 角色档案已同步到世界书:', characterId, '是否新条目:', wbResult.isNew);
+        console.log('[analyzer] ✅ 角色档案已同步到世界书:', characterId);
       } else {
         console.warn('[analyzer] ⚠️ 角色档案同步到世界书失败:', wbResult.error);
       }
 
       console.log('[analyzer] 角色分析完成:', characterId, result);
+
+      // 角色档案分析完成后自动触发角色动态分析
+      console.log('[analyzer] 开始自动触发角色动态分析...');
+      try {
+        await this.analyzeDynamics(characterId, characterName);
+      } catch (dynErr) {
+        console.warn('[analyzer] 自动角色动态分析失败，不影响角色档案结果:', dynErr);
+      }
+
       return result;
     } catch (e) {
       console.error('[analyzer] 角色分析异常:', e);
       return null;
     }
+  }
+
+  /** 执行角色动态分析 - 生成近期动态报告 */
+  async analyzeDynamics(characterId: string, characterName: string): Promise<CharacterDynamicsResult | null> {
+    try {
+      console.log(`[analyzer] 开始角色动态分析: ${characterId} (${characterName})`);
+
+      const profile = await this.getBaseProfile(characterId);
+      if (!profile) {
+        console.warn('[analyzer] 未找到角色档案:', characterId);
+        return null;
+      }
+
+      if (!this.callApi) {
+        console.warn('[analyzer] 未配置 API 调用函数');
+        return null;
+      }
+
+      // 读取该联系人的微信聊天记录作为上下文
+      const chatScopeId = getChatScopeId();
+      console.log(`[analyzer] 获取聊天记录 - chatScopeId: ${chatScopeId}, characterId: ${characterId}`);
+      const chatHistory = await loadWeChatThreadForScope(chatScopeId, characterId);
+      const recentMessages = chatHistory.slice(-30); // 取最近30条
+      console.log(`[analyzer] 读取到 ${recentMessages.length} 条聊天记录用于动态分析`);
+
+      // 读取酒馆正文上下文（当前楼层+前3层）
+      const tavernContext = getTavernContextForAnalysis(3);
+      console.log(`[analyzer] 读取到 ${tavernContext.length} 层酒馆正文用于动态分析`);
+
+      // 获取所有关键词（名字、昵称、外号、职务、别称等）
+      const keywords = this.extractCharacterKeywords(profile, characterName);
+      console.log(`[analyzer] 提取到关键词: ${keywords}`);
+
+      // 构建动态分析提示词
+      const prompt = this.buildDynamicsPrompt(characterName, profile, recentMessages, tavernContext);
+      console.log('[analyzer] 动态分析提示词长度:', prompt.length);
+      console.log('[analyzer] 动态分析提示词前200字符:', prompt.substring(0, 200));
+
+      console.log('[analyzer] 开始调用API进行动态分析...');
+      const raw = await this.callApi(prompt, {
+        apiBaseUrl: (window as unknown as Record<string, string>).__PHONE_API_BASE__ || '',
+        apiKey: (window as unknown as Record<string, string>).__PHONE_API_KEY__ || '',
+        model: (window as unknown as Record<string, string>).__PHONE_API_MODEL__ || 'gpt-4o',
+      });
+      console.log('[analyzer] API返回动态分析结果长度:', raw.length);
+      console.log('[analyzer] API返回动态分析结果前500字符:', raw.substring(0, 500));
+
+      // 解析结果
+      const result = this.parseDynamicsResult(raw, characterId, characterName);
+      if (!result) {
+        console.warn('[analyzer] 解析动态分析结果失败');
+        return null;
+      }
+      console.log('[analyzer] 动态分析结果解析成功:', result);
+
+      // 同步到世界书 - 动态报告
+      const dynamicsContent = this.formatDynamicsForWorldbook(result);
+      const wbResult = await syncCharacterAnalysisToWorldbook(
+        `${characterId}_dynamics`,
+        {
+          姓名: `${characterName}的近期动态`,
+          当前内心想法: dynamicsContent,
+          身份标签: { 类型: '动态报告' },
+        },
+        {
+          position: 'afterCharDef', // 角色定义后
+          priority: 100 + Math.floor(Math.random() * 51), // 100-150 随机优先级
+          keywords: keywords, // 英文逗号分隔的关键词
+          preventRecursion: true, // 禁止双递归
+        },
+      );
+      if (wbResult.ok) {
+        console.log('[analyzer] ✅ 角色动态已同步到世界书:', characterId);
+      } else {
+        console.warn('[analyzer] ⚠️ 角色动态同步到世界书失败:', wbResult.error);
+      }
+
+      console.log('[analyzer] 角色动态分析完成:', characterId, result);
+      return result;
+    } catch (e) {
+      console.error('[analyzer] 角色动态分析异常:', e);
+      return null;
+    }
+  }
+
+  /** 提取角色的所有关键词（名字、昵称、外号、职务、别称等） */
+  private extractCharacterKeywords(
+    profile: Record<string, unknown>,
+    defaultName: string,
+    aiResult?: Record<string, unknown>,
+  ): string {
+    const keywords = new Set<string>();
+
+    const name = (profile.姓名 as string) || defaultName;
+    keywords.add(name);
+    if (defaultName && defaultName !== name) keywords.add(defaultName);
+
+    // 从 profile 和 AI 结果中提取更多数据
+    const sources = [profile, aiResult].filter(Boolean) as Record<string, unknown>[];
+    for (const src of sources) {
+      // 身份标签
+      const tags = src['身份标签'] as Record<string, string> | undefined;
+      if (tags && typeof tags === 'object') {
+        Object.values(tags).forEach(tag => {
+          if (tag && typeof tag === 'string' && tag.length <= 20) {
+            keywords.add(tag);
+          }
+        });
+      }
+
+      // 职业
+      if (typeof src['职业'] === 'string' && src['职业']) {
+        keywords.add(src['职业'] as string);
+      }
+
+      // 性格中的短标签（如"猫系少女"）
+      const personality = src['性格'] as Record<string, string> | undefined;
+      if (personality && typeof personality === 'object') {
+        const specialTags = personality['特殊性格标签'];
+        if (specialTags && typeof specialTags === 'string') {
+          specialTags.split(/[、,，]/).forEach(t => {
+            const trimmed = t.trim();
+            if (trimmed && trimmed.length <= 10) keywords.add(trimmed);
+          });
+        }
+      }
+    }
+
+    // 生成姓名的常见变体（仅用实际姓名，不用标签值）
+    const nameChars = name.replace(/\s/g, '');
+    if (nameChars.length >= 2) {
+      const surname = nameChars[0];
+      const givenName = nameChars.slice(1);
+
+      // 姓 + 常见称呼后缀
+      const suffixes = ['小姐', '同学', '女士', '先生', '老师', '姐', '哥', '妹', '弟'];
+      suffixes.forEach(s => keywords.add(`${surname}${s}`));
+
+      // 小 + 名
+      keywords.add(`小${surname}`);
+      if (givenName.length >= 1) {
+        keywords.add(`小${givenName}`);
+        keywords.add(givenName);
+        // 叠字昵称：如 梦梦
+        if (givenName.length === 2 && givenName[0] === givenName[1]) {
+          keywords.add(givenName);
+        } else if (givenName.length >= 1) {
+          keywords.add(`${givenName[givenName.length - 1]}${givenName[givenName.length - 1]}`);
+        }
+      }
+
+      // 全名 + 后缀
+      keywords.add(`${name}同学`);
+      keywords.add(`${name}小姐`);
+      keywords.add(`${name}女士`);
+      keywords.add(`${name}先生`);
+    }
+
+    return Array.from(keywords).join(',');
+  }
+
+  /** 构建动态分析提示词 */
+  private buildDynamicsPrompt(
+    characterName: string,
+    profile: Record<string, unknown>,
+    chatHistory: Array<{ role: string; content: string; time?: number }> = [],
+    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = []
+  ): string {
+    const profileJson = JSON.stringify(profile, null, 2);
+
+    // 构建聊天记录上下文
+    const chatContext = chatHistory.length > 0
+      ? chatHistory.map(m => {
+          const role = m.role === 'user' ? '玩家' : characterName;
+          return `${role}: ${m.content}`;
+        }).join('\n')
+      : '（暂无聊天记录）';
+
+    // 构建酒馆正文上下文
+    const tavernContextStr = tavernContext.length > 0
+      ? tavernContext.map(m => {
+          const role = m.role === 'user' ? '玩家' : m.name || '角色';
+          return `${role}: ${m.content}`;
+        }).join('\n')
+      : '（暂无酒馆正文上下文）';
+
+    return `你是一位专门分析虚拟角色心理与行为变化的 AI 助手。
+请根据以下角色档案和近期互动记录，生成角色的【近期动态】分析报告。
+
+## 角色档案（JSON）
+\`\`\`json
+${profileJson}
+\`\`\`
+
+## 近期微信聊天记录（私密对话）
+\`\`\`
+${chatContext}
+\`\`\`
+
+## 酒馆正文上下文（公开场景互动）
+\`\`\`
+${tavernContextStr}
+\`\`\`
+
+## 任务
+请结合角色档案和近期互动记录，分析该角色在最近一段时间内的动态变化。输出符合以下 JSON 格式的动态分析报告：
+
+\`\`\`json
+{
+  "characterId": "${characterName}的ID",
+  "characterName": "${characterName}",
+  "behaviorChange": "行为变化：描述角色近期在行为模式上的变化，如对新环境、新人物的适应方式，日常行为的改变等",
+  "personalityTweak": "性格微调：描述角色性格上的细微变化，如由于事件影响导致的性格转变、新的心理防御机制等",
+  "languageStyle": "语言风格：描述角色近期说话风格的特点，语气变化、用词习惯、与其他角色互动时的语言模式",
+  "personalGoal": "个人目标：描述角色当前的目标和动机，想要达成什么、在为什么而努力、对现状的态度"
+}
+\`\`\`
+
+注意：
+- 只输出 JSON，不要有其他内容
+- 分析要具体、有细节，不要泛泛而谈
+- 要结合聊天记录和酒馆正文中发生的具体事件
+- 体现角色的成长、变化或心理转折
+- 语言风格要符合角色的性格设定`;
+  }
+
+  /** 解析动态分析结果 */
+  private parseDynamicsResult(raw: string, characterId: string, characterName: string): CharacterDynamicsResult | null {
+    try {
+      console.log('[analyzer] AI 返回的动态分析原始内容:', raw);
+
+      // 尝试提取 JSON 代码块
+      let jsonStr = '';
+      const codeBlockMatch = raw.match(/\`\`\`json\s*([\s\S]*?)\s*\`\`\`/);
+      if (codeBlockMatch) {
+        jsonStr = codeBlockMatch[1];
+      } else {
+        const braceMatch = raw.match(/(\{[\s\S]*\})/);
+        if (braceMatch) {
+          jsonStr = braceMatch[1];
+        } else {
+          jsonStr = raw;
+        }
+      }
+
+      // 清理 JSON
+      jsonStr = jsonStr.trim();
+      jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+
+      // 修复字符串内的换行
+      let fixedJson = '';
+      let inString = false;
+      let escapeNext = false;
+      for (let i = 0; i < jsonStr.length; i++) {
+        const char = jsonStr[i];
+        if (escapeNext) {
+          fixedJson += char;
+          escapeNext = false;
+          continue;
+        }
+        if (char === '\\') {
+          fixedJson += char;
+          escapeNext = true;
+          continue;
+        }
+        if (char === '"' && !inString) {
+          inString = true;
+          fixedJson += char;
+          continue;
+        }
+        if (char === '"' && inString) {
+          inString = false;
+          fixedJson += char;
+          continue;
+        }
+        if (inString && (char === '\n' || char === '\r')) {
+          fixedJson += '\\n';
+          continue;
+        }
+        fixedJson += char;
+      }
+      jsonStr = fixedJson;
+
+      const parsed = JSON.parse(jsonStr);
+
+      const result: CharacterDynamicsResult = {
+        characterId,
+        characterName: parsed.characterName || characterName,
+        behaviorChange: parsed.behaviorChange || parsed.behavior || parsed.行为变化,
+        personalityTweak: parsed.personalityTweak || parsed.personality || parsed.性格微调,
+        languageStyle: parsed.languageStyle || parsed.language || parsed.语言风格,
+        personalGoal: parsed.personalGoal || parsed.goal || parsed.个人目标,
+        generatedAt: new Date().toISOString(),
+      };
+
+      console.log('[analyzer] 成功解析动态分析结果:', result);
+      return result;
+    } catch (e) {
+      console.warn('[analyzer] 解析动态分析 JSON 失败:', e);
+      return null;
+    }
+  }
+
+  /** 格式化动态报告为世界书内容 */
+  private formatDynamicsForWorldbook(result: CharacterDynamicsResult): string {
+    return `【${result.characterName}的近期动态】
+
+行为变化：
+${result.behaviorChange || '（暂无变化记录）'}
+
+性格微调：
+${result.personalityTweak || '（暂无变化记录）'}
+
+语言风格：
+${result.languageStyle || '（暂无变化记录）'}
+
+个人目标：
+${result.personalGoal || '（暂无目标记录）'}
+
+---
+生成时间：${new Date(result.generatedAt).toLocaleString('zh-CN')}`;
   }
 
   /** 获取角色基础档案 */

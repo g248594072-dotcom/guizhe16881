@@ -1501,6 +1501,12 @@ function formatCharacterAnalysisWorldbookContent(updates: Record<string, unknown
 async function syncCharacterAnalysisToWorldbook(
   characterId: string,
   updates: Record<string, unknown>,
+  options?: {
+    position?: string;
+    priority?: number;
+    keywords?: string;
+    preventRecursion?: boolean;
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const chatScopeId = getChatScopeId() ?? 'local-offline';
@@ -1535,12 +1541,30 @@ async function syncCharacterAnalysisToWorldbook(
     const { template } = wbResult;
     const characterName =
       typeof updates['姓名'] === 'string' && updates['姓名'].trim() ? updates['姓名'].trim() : characterId;
-    const entryName = sanitizeWorldbookEntryName(`【${characterName}】角色档案`);
-    const content = formatCharacterAnalysisWorldbookContent(updates);
 
+    const isDynamicsReport =
+      typeof updates['身份标签'] === 'object' &&
+      updates['身份标签'] !== null &&
+      (updates['身份标签'] as Record<string, string>)['类型'] === '动态报告';
+
+    const entryName = isDynamicsReport
+      ? sanitizeWorldbookEntryName(`【${characterName}】动态报告`)
+      : sanitizeWorldbookEntryName(`【${characterName}】角色档案`);
+
+    const content = isDynamicsReport && typeof updates['当前内心想法'] === 'string'
+      ? updates['当前内心想法']
+      : formatCharacterAnalysisWorldbookContent(updates);
+
+    // 构建关键词：优先使用 options.keywords
     const selectiveKeys: (string | RegExp)[] = [];
-    if (characterName) selectiveKeys.push(characterName);
-    if (characterId && characterId !== characterName) selectiveKeys.push(characterId);
+    if (options?.keywords) {
+      const kwList = options.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
+      kwList.forEach(k => selectiveKeys.push(k));
+    }
+    if (selectiveKeys.length === 0) {
+      if (characterName) selectiveKeys.push(characterName);
+      if (characterId && characterId !== characterName) selectiveKeys.push(characterId);
+    }
 
     const strat: WorldbookEntry['strategy'] = {
       type: 'selective',
@@ -1549,14 +1573,20 @@ async function syncCharacterAnalysisToWorldbook(
       scan_depth: 'same_as_global',
     };
 
+    // 位置：根据 options.position 决定
+    const posType: WorldbookEntry['position']['type'] = options?.position === 'afterCharDef'
+      ? 'after_character_definition'
+      : 'before_character_definition';
     const position: WorldbookEntry['position'] = {
-      type: 'before_character_definition',
+      type: posType,
       role: 'system',
       depth: 4,
-      order: 100,
+      order: options?.priority ?? 100,
     };
 
-    const rec = wbSyncRecursionClosed();
+    const rec = options?.preventRecursion !== false
+      ? wbSyncRecursionClosed()
+      : (template.recursion ?? wbSyncRecursionClosed());
 
     // 先读取当前世界书，检查是否已有该角色条目
     let existingEntries: WorldbookEntry[] = [];
@@ -1575,7 +1605,6 @@ async function syncCharacterAnalysisToWorldbook(
     const baseExtra = { tavernPhoneCharacterId: characterId };
 
     if (existingIdx >= 0) {
-      // 更新现有条目
       const existingEntry = existingEntries[existingIdx];
       await updateWorldbookWith(
         worldbookName,
@@ -1601,7 +1630,6 @@ async function syncCharacterAnalysisToWorldbook(
         { render: 'immediate' },
       );
     } else {
-      // 添加新条目（使用 createWorldbookEntries 避免覆盖其他条目）
       const newEntry: PartialDeep<WorldbookEntry> = {
         name: entryName,
         content,
@@ -2499,8 +2527,13 @@ $(() => {
     }
     if (t === MSG.REQUEST_SYNC_CHARACTER_TO_WORLDBOOK) {
       console.info('[tavern-phone] 📡 收到角色分析结果同步到世界书请求（REQUEST_SYNC_CHARACTER_TO_WORLDBOOK）');
-      const reqData = e.data as { requestId?: string; characterId?: string; updates?: Record<string, unknown> };
-      const { requestId, characterId, updates } = reqData;
+      const reqData = e.data as {
+        requestId?: string;
+        characterId?: string;
+        updates?: Record<string, unknown>;
+        options?: { position?: string; priority?: number; keywords?: string; preventRecursion?: boolean };
+      };
+      const { requestId, characterId, updates, options } = reqData;
       const source = e.source as Window | null;
       if (!requestId || !characterId || !updates) {
         source?.postMessage(
@@ -2511,7 +2544,7 @@ $(() => {
       }
       void (async () => {
         try {
-          const result = await syncCharacterAnalysisToWorldbook(characterId, updates);
+          const result = await syncCharacterAnalysisToWorldbook(characterId, updates, options);
           source?.postMessage(
             { type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT, requestId, ...result },
             '*',

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
 import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
+import { getCharacterAnalyzer } from '../../characterArchive/characterAnalyzer';
 import { saveAutoAnalyzeInterval, subscribeAutoAnalyzeAll } from '../../tavernPhoneBridge';
 import {
   resolveCharacterAvatarFromBrowserOnly,
@@ -286,6 +287,19 @@ export default function TenantArchiveApp({
     const scheduler = getAnalysisScheduler();
     scheduler.addTask({
       type: 'ANALYZE_CHARACTER',
+      priority: 'HIGH',
+      characterId: selected.id,
+      characterName: selected.name,
+    });
+  }, [selected]);
+
+  /** 分析角色动态 */
+  const handleAnalyzeDynamics = useCallback(() => {
+    if (!selected) return;
+    setAnalyzing(true);
+    const scheduler = getAnalysisScheduler();
+    scheduler.addTask({
+      type: 'ANALYZE_DYNAMICS',
       priority: 'HIGH',
       characterId: selected.id,
       characterName: selected.name,
@@ -567,6 +581,25 @@ export default function TenantArchiveApp({
               <Sparkles size={18} />
             )}
             {analyzing ? '分析中...' : '触发角色分析'}
+          </button>
+
+          {/* 角色动态分析按钮 */}
+          <button
+            type="button"
+            disabled={analyzing}
+            onClick={() => void handleAnalyzeDynamics()}
+            className="w-full py-3 rounded-2xl text-[15px] font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-2"
+            style={{
+              background: 'linear-gradient(135deg, #00c853, #00a344)',
+              boxShadow: '0 4px 15px rgba(0,200,83,0.3)',
+            }}
+          >
+            {analyzing ? (
+              <RefreshCw className="animate-spin" size={18} />
+            ) : (
+              <Brain size={18} />
+            )}
+            {analyzing ? '分析中...' : '分析角色动态'}
           </button>
         </div>
       </div>

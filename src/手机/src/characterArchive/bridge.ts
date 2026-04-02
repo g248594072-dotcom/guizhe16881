@@ -281,6 +281,12 @@ export async function syncCharacterAnalysisToWorldbook(
     身份标签?: Record<string, string>;
     当前综合生理描述?: string;
   },
+  options?: {
+    position?: string;
+    priority?: number;
+    keywords?: string;
+    preventRecursion?: boolean;
+  },
 ): Promise<{ ok: boolean; error?: string }> {
   const requestId = crypto.randomUUID();
   return new Promise(resolve => {
@@ -304,6 +310,7 @@ export async function syncCharacterAnalysisToWorldbook(
           requestId,
           characterId,
           updates,
+          options: options || {},
         },
         '*',
       );

@@ -4,7 +4,7 @@
  */
 
 export type TaskPriority = 'HIGH' | 'NORMAL';
-export type TaskType = 'ANALYZE_CHARACTER';
+export type TaskType = 'ANALYZE_CHARACTER' | 'ANALYZE_DYNAMICS';
 
 export interface AnalysisTask {
   id: string;

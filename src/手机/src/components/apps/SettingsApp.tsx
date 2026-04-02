@@ -238,65 +238,7 @@ export default function SettingsApp({
               />
             </label>
 
-            <label className="flex items-center justify-between gap-3 py-1">
-              <span className="text-[15px] text-black">注入主剧情与档案摘要</span>
-              <input
-                type="checkbox"
-                className="h-5 w-5 accent-[#007AFF]"
-                checked={cfg.injectMainStory}
-                onChange={e => setField('injectMainStory', e.target.checked)}
-              />
-            </label>
-            <p className="text-[12px] text-[#8E8E93] -mt-2 leading-relaxed">
-              <strong className="text-[#636366] font-medium">开：</strong>
-              发微信时会把「主界面最近剧情的一小段」和「角色卡里该角色的剧情摘要」塞进系统提示，对方回复更容易接上你在酒馆里正在演的主线。
-              <br />
-              <strong className="text-[#636366] font-medium">关：</strong>
-              只用当前人设、心理活动、变量等小手机自带的上下文，不读主界面楼层和档案摘要（更省 token，主剧情也不会被大量引用）。
-            </p>
-
-            <label className="flex items-center justify-between gap-3 py-1">
-              <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>注入主剧情与档案摘要</span>
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                style={{ accentColor: 'var(--accent)' }}
-                checked={cfg.injectMainStory}
-                onChange={e => setField('injectMainStory', e.target.checked)}
-              />
-            </label>
-            <p className="text-[12px] leading-relaxed -mt-1" style={{ color: 'var(--settings-desc)' }}>
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>开：</strong>
-              发微信时会把「主界面最近剧情的一小段」和「角色卡里该角色的剧情摘要」塞进系统提示，对方回复更容易接上你在酒馆里正在演的主线。
-              <br />
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>关：</strong>
-              只用当前人设、心理活动、变量等小手机自带的上下文，不读主界面楼层和档案摘要（更省 token，主剧情也不会被大量引用）。
-            </p>
-            <label className="flex items-center justify-between gap-3 py-1">
-              <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>回合摘要写入聊天变量</span>
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                style={{ accentColor: 'var(--accent)' }}
-                checked={cfg.phoneMemoryWrite}
-                onChange={e => setField('phoneMemoryWrite', e.target.checked)}
-              />
-            </label>
-            <p className="text-[12px] leading-relaxed -mt-1" style={{ color: 'var(--settings-desc)' }}>
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>开：</strong>
-              每在微信里聊完一轮，会生成一小段「刚才聊了什么」的摘要，通过<strong className="font-medium" style={{ color: 'var(--settings-title)' }}>小手机壳脚本</strong>写进<strong className="font-medium" style={{ color: 'var(--settings-title)' }}>聊天变量</strong>（路径由壳脚本里的{' '}
-              <code className="text-[11px] px-1 rounded" style={{ backgroundColor: 'var(--input-bg)', color: 'var(--settings-title)' }}>phone_wechat_memory_path</code> 决定，默认{' '}
-              <code className="text-[11px] px-1 rounded" style={{ backgroundColor: 'var(--input-bg)', color: 'var(--settings-title)' }}>stat_data.手机微信记忆</code>
-              ），主界面剧情或别的脚本可以读这份记忆。
-              <br />
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>关：</strong>
-              不写聊天变量，主界面不会自动记住微信里单独聊过什么。
-              <br />
-              可选：在壳脚本里配置{' '}
-              <code className="text-[11px] px-1 rounded" style={{ backgroundColor: 'var(--input-bg)', color: 'var(--settings-title)' }}>phone_wechat_worldbook_mirror</code>
-              ，把同一段摘要再追加到指定世界书条目末尾，方便用世界书喂给模型。
-            </p>
-
+            {/* 连接测试按钮移到重试下面 */}
             <div className="flex flex-col gap-2 pt-1">
               <div className="flex gap-2">
                 <button
@@ -331,6 +273,47 @@ export default function SettingsApp({
               {modelOptions.length > 0 && !modelsError && (
                 <p className="text-[12px] text-[#8E8E93] px-1">已载入 {modelOptions.length} 个模型，可在上方输入框中从列表选择</p>
               )}
+            </div>
+
+            {/* 绿色长条保存按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                saveTavernPhoneApiConfig(cfg);
+                setTestMessage('设置已保存');
+                setTestState('success');
+                setTimeout(() => setTestState('idle'), 2000);
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[15px] font-semibold text-white active:opacity-90 bg-green-500 hover:bg-green-600 transition-colors"
+            >
+              保存设置
+            </button>
+
+            {/* 开关区域 - 简化版，不显示详细解释 */}
+            <div className="border-t pt-3 mt-2" style={{ borderColor: 'var(--card-border)' }}>
+              <p className="text-[13px] font-medium uppercase tracking-wide mb-3" style={{ color: 'var(--settings-desc)' }}>功能开关</p>
+
+              <label className="flex items-center justify-between gap-3 py-2">
+                <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>注入主剧情与档案摘要</span>
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  style={{ accentColor: 'var(--accent)' }}
+                  checked={cfg.injectMainStory}
+                  onChange={e => setField('injectMainStory', e.target.checked)}
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 py-2">
+                <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>回合摘要写入聊天变量</span>
+                <input
+                  type="checkbox"
+                  className="h-5 w-5"
+                  style={{ accentColor: 'var(--accent)' }}
+                  checked={cfg.phoneMemoryWrite}
+                  onChange={e => setField('phoneMemoryWrite', e.target.checked)}
+                />
+              </label>
             </div>
           </div>
         </div>
