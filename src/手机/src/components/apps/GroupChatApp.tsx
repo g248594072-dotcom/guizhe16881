@@ -6,16 +6,26 @@ import {
   RefreshCw,
   Send,
   Users,
+  Plus,
+  Settings,
+  X,
+  Check,
+  UserPlus,
+  Trash2,
+  Edit3,
+  MoreVertical,
 } from 'lucide-react';
 import {
   requestTavernPhoneContext,
   subscribeChatScopeChange,
   TAVERN_PHONE_MSG,
   type TavernPhoneContextPayload,
+  type TavernPhoneWeChatContact,
 } from '../../tavernPhoneBridge';
 import {
   initWeChatStorage,
   loadWeChatThreadForScope,
+  saveWeChatThreadForScope,
 } from '../../weChatStorage';
 import { LOCAL_OFFLINE_SCOPE, resolveChatScopeId } from '../../weChatScope';
 import {
@@ -28,7 +38,16 @@ import {
   generateGroupChatReplies,
   regenerateMemberReply,
   setCurrentGroupChatSession,
+  createGroupChat,
+  updateGroupChat,
+  deleteGroupChat,
+  getAllGroupChats,
+  getGroupChat,
+  addMembersToGroupChat,
+  removeMembersFromGroupChat,
+  convertContactsToMembers,
   type GroupChatMessage,
+  type GroupChatSession,
 } from '../../groupChat';
 import {
   type GroupMember,
@@ -37,7 +56,7 @@ import {
 
 // ==================== 类型定义 ====================
 
-type GroupChatView = 'list' | 'chat';
+type GroupChatView = 'list' | 'chat' | 'create' | 'edit' | 'manage-members';
 
 interface GroupSessionInfo {
   id: string;
@@ -45,6 +64,11 @@ interface GroupSessionInfo {
   memberCount: number;
   lastActivity: string;
   lastPreview: string;
+  members: GroupMember[];
+}
+
+interface AvailableContact extends TavernPhoneWeChatContact {
+  selected: boolean;
 }
 
 // ==================== 工具函数 ====================
@@ -119,6 +143,14 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
   const [showMemberList, setShowMemberList] = useState(false);
   const [listTick, setListTick] = useState(0);
 
+  // 多群聊管理状态
+  const [allGroupChats, setAllGroupChats] = useState<GroupChatSession[]>([]);
+  const [availableContacts, setAvailableContacts] = useState<AvailableContact[]>([]);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [editingGroup, setEditingGroup] = useState<GroupChatSession | null>(null);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [showGroupOptions, setShowGroupOptions] = useState<string | null>(null);
+
   const bottomRef = useRef<HTMLDivElement>(null);
   const contextFetchGenRef = useRef(0);
 
@@ -127,7 +159,7 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
     void initWeChatStorage();
   }, []);
 
-  // 加载上下文
+  // 加载上下文和所有群聊
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -144,15 +176,29 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
         });
 
-        // 构建群聊成员
-        const members: GroupMember[] = c.contacts.map(contact => ({
-          id: contact.id,
-          displayName: contact.displayName,
-          personality: contact.personality,
-          thought: contact.thought,
-          avatarUrl: contact.avatarUrl,
+        // 构建所有可用联系人（用于邀请）
+        const contacts: AvailableContact[] = c.contacts.map(contact => ({
+          ...contact,
+          selected: false,
         }));
-        setGroupMembers(members);
+        setAvailableContacts(contacts);
+
+        // 加载所有群聊
+        const scopeId = resolveChatScopeId(c.chatScopeId);
+        const groups = getAllGroupChats(scopeId);
+        setAllGroupChats(groups);
+
+        // 如果没有群聊，使用默认逻辑创建
+        if (groups.length === 0) {
+          const members: GroupMember[] = c.contacts.map(contact => ({
+            id: contact.id,
+            displayName: contact.displayName,
+            personality: contact.personality,
+            thought: contact.thought,
+            avatarUrl: contact.avatarUrl,
+          }));
+          setGroupMembers(members);
+        }
       } finally {
         if (!cancelled) setCtxLoading(false);
       }
@@ -169,35 +215,63 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
     });
   }, []);
 
-  // 加载会话信息
+  // 加载所有群聊列表信息（仅刷新列表，不更新当前会话）
+  const refreshGroupChatList = useCallback(() => {
+    if (!ctx) return;
+    const scopeId = resolveChatScopeId(ctx.chatScopeId);
+    const groups = getAllGroupChats(scopeId);
+    setAllGroupChats(groups);
+  }, [ctx]);
+
+  // 初始加载群聊列表
+  useEffect(() => {
+    refreshGroupChatList();
+  }, [refreshGroupChatList]);
+
+  // listTick 变化时刷新列表（从聊天界面返回列表时）
+  useEffect(() => {
+    if (listTick > 0) {
+      refreshGroupChatList();
+    }
+  }, [listTick]);
+
+  // 兼容旧逻辑：如果没有群聊，创建一个默认群聊（只执行一次）
   useEffect(() => {
     if (!ctx || groupMembers.length === 0) return;
-    let cancelled = false;
 
-    (async () => {
+    // 使用 ref 确保只执行一次，避免循环依赖
+    const checkAndCreateDefault = () => {
+      const groups = getAllGroupChats(chatScopeId);
+      if (groups.length > 0) return; // 已有群聊，不创建
+
       const session = getOrCreateGroupChatSession(chatScopeId, groupMembers);
       const displayInfo = getGroupChatDisplayInfo(session);
 
-      const msgs = await loadWeChatThreadForScope(chatScopeId, session.id);
-      const msgsAsGroup = msgs as GroupChatMessage[];
-      const lastMsg = msgsAsGroup[msgsAsGroup.length - 1];
-      const preview = lastMsg
-        ? `${(lastMsg as GroupChatMessage).senderName || '我'}: ${lastMsg.content.substring(0, 20)}...`
-        : '群聊暂无消息';
+      // 加载预览消息
+      void loadWeChatThreadForScope(chatScopeId, session.id).then(msgs => {
+        const msgsAsGroup = msgs as GroupChatMessage[];
+        const lastMsg = msgsAsGroup[msgsAsGroup.length - 1];
+        const preview = lastMsg
+          ? `${(lastMsg as GroupChatMessage).senderName || '我'}: ${lastMsg.content.substring(0, 20)}...`
+          : '群聊暂无消息';
 
-      if (!cancelled) {
         setSessionInfo({
           id: session.id,
-          name: displayInfo.memberNames,
+          name: session.name,
           memberCount: displayInfo.memberCount,
           lastActivity: displayInfo.lastActivityTime,
           lastPreview: preview,
+          members: session.members,
         });
-      }
-    })();
 
-    return () => { cancelled = true; };
-  }, [ctx, chatScopeId, groupMembers, listTick]);
+        // 刷新列表（使用函数式更新避免依赖循环）
+        setAllGroupChats(getAllGroupChats(chatScopeId));
+      });
+    };
+
+    checkAndCreateDefault();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctx, chatScopeId, groupMembers.length]); // 使用 groupMembers.length 而不是 groupMembers 对象
 
   // 加载消息
   useEffect(() => {
@@ -324,6 +398,123 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
     }
   };
 
+  // ==================== 群聊管理功能 ====================
+
+  // 创建新群聊
+  const handleCreateGroup = useCallback(() => {
+    const selectedContacts = availableContacts.filter(c => c.selected);
+    if (selectedContacts.length === 0) {
+      setSendError('请至少选择一个成员');
+      return;
+    }
+
+    const name = newGroupName.trim() || `${selectedContacts[0].displayName}的群聊`;
+    const members = convertContactsToMembers(selectedContacts);
+
+    const newGroup = createGroupChat(chatScopeId, { name, members });
+
+    // 重置状态
+    setNewGroupName('');
+    setAvailableContacts(prev => prev.map(c => ({ ...c, selected: false })));
+    setView('list');
+
+    // 刷新列表并进入新群聊
+    const groups = getAllGroupChats(chatScopeId);
+    setAllGroupChats(groups);
+    setSessionInfo({
+      id: newGroup.id,
+      name: newGroup.name,
+      memberCount: newGroup.members.length,
+      lastActivity: '刚刚',
+      lastPreview: '群聊创建成功',
+      members: newGroup.members,
+    });
+    setGroupMembers(newGroup.members);
+    setCurrentGroupChatSession(newGroup.id);
+    setView('chat');
+  }, [availableContacts, newGroupName, chatScopeId]);
+
+  // 更新群聊名称
+  const handleUpdateGroupName = useCallback(() => {
+    if (!editingGroup) return;
+
+    const name = editGroupName.trim();
+    if (!name) {
+      setSendError('群聊名称不能为空');
+      return;
+    }
+
+    const updated = updateGroupChat(editingGroup.id, { name });
+    if (updated) {
+      // 刷新列表
+      const groups = getAllGroupChats(chatScopeId);
+      setAllGroupChats(groups);
+
+      // 如果正在编辑当前会话，更新显示
+      if (sessionInfo?.id === editingGroup.id) {
+        setSessionInfo({ ...sessionInfo, name });
+      }
+    }
+
+    setEditingGroup(null);
+    setEditGroupName('');
+    setView('list');
+  }, [editingGroup, editGroupName, chatScopeId, sessionInfo]);
+
+  // 删除群聊
+  const handleDeleteGroup = useCallback((groupId: string) => {
+    if (confirm('确定要删除这个群聊吗？聊天记录将无法恢复。')) {
+      deleteGroupChat(groupId);
+
+      // 刷新列表
+      const groups = getAllGroupChats(chatScopeId);
+      setAllGroupChats(groups);
+
+      // 如果删除的是当前会话，清空当前会话
+      if (sessionInfo?.id === groupId) {
+        setSessionInfo(null);
+        setMessages([]);
+        setGroupMembers([]);
+        setCurrentGroupChatSession(null);
+      }
+
+      setShowGroupOptions(null);
+    }
+  }, [chatScopeId, sessionInfo]);
+
+  // 切换联系人选择状态
+  const toggleContactSelection = useCallback((contactId: string) => {
+    setAvailableContacts(prev =>
+      prev.map(c => c.id === contactId ? { ...c, selected: !c.selected } : c)
+    );
+  }, []);
+
+  // 打开群聊进入聊天界面
+  const openGroupChatById = useCallback((groupId: string) => {
+    const group = getGroupChat(groupId);
+    if (!group) return;
+
+    setCurrentGroupChatSession(groupId);
+    setSessionInfo({
+      id: group.id,
+      name: group.name,
+      memberCount: group.members.length,
+      lastActivity: new Date(group.lastActivity).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      lastPreview: '进入群聊...',
+      members: group.members,
+    });
+    setGroupMembers(group.members);
+    setView('chat');
+  }, []);
+
+  // 编辑群聊
+  const startEditGroup = useCallback((group: GroupChatSession) => {
+    setEditingGroup(group);
+    setEditGroupName(group.name);
+    setView('edit');
+    setShowGroupOptions(null);
+  }, []);
+
   // ==================== 渲染 ====================
 
   if (ctxLoading) {
@@ -354,18 +545,19 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           <div className="w-1/3 flex justify-end">
             <button
               type="button"
-              onClick={() => setShowMemberList(!showMemberList)}
+              onClick={() => setView('create')}
               className="p-1 -mr-1 text-gray-900"
-              title="查看成员"
+              title="创建新群聊"
             >
-              <Users size={24} />
+              <Plus size={24} />
             </button>
           </div>
         </div>
 
-        {/* 群聊入口 */}
-        <div className="flex-1 overflow-hidden bg-white">
-          {sessionInfo ? (
+        {/* 群聊列表 */}
+        <div className="flex-1 overflow-y-auto bg-white">
+          {allGroupChats.length === 0 && sessionInfo ? (
+            // 兼容旧版本：显示默认群聊
             <div
               role="button"
               tabIndex={0}
@@ -386,10 +578,93 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 <p className="text-[14px] text-gray-500 truncate pr-4">{sessionInfo.lastPreview}</p>
               </div>
             </div>
-          ) : (
-            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-              加载群聊信息...
+          ) : allGroupChats.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+              <Users size={48} className="mb-4 opacity-30" />
+              <p className="text-sm mb-4">还没有群聊</p>
+              <button
+                type="button"
+                onClick={() => setView('create')}
+                className="px-4 py-2 bg-[#07C160] text-white rounded-lg text-sm"
+              >
+                创建群聊
+              </button>
             </div>
+          ) : (
+            allGroupChats.map((group, index) => (
+              <div
+                key={group.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openGroupChatById(group.id)}
+                onKeyDown={e => { if (e.key === 'Enter') openGroupChatById(group.id); }}
+                className={`w-full flex items-center px-4 py-4 active:bg-gray-100 transition-colors cursor-pointer ${index !== allGroupChats.length - 1 ? 'border-b border-gray-100' : ''}`}
+              >
+                <div className="shrink-0 mr-3">
+                  <div className="h-12 w-12 rounded-lg bg-[#07C160] flex items-center justify-center">
+                    <Users size={24} color="white" />
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-1">
+                    <h3 className="text-[16px] font-medium text-gray-900 truncate">{group.name}</h3>
+                    <span className="text-xs text-gray-400 whitespace-nowrap ml-2">
+                      {new Date(group.lastActivity).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <p className="text-[14px] text-gray-500 truncate pr-4">{group.members.length} 位成员</p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowGroupOptions(showGroupOptions === group.id ? null : group.id);
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 群聊选项菜单 */}
+                {showGroupOptions === group.id && (
+                  <div className="absolute right-4 mt-16 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-20">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startEditGroup(group);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                    >
+                      <Edit3 size={14} />
+                      修改名称
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteGroup(group.id);
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                    >
+                      <Trash2 size={14} />
+                      删除群聊
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+
+          {/* 点击空白处关闭菜单 */}
+          {showGroupOptions && (
+            <button
+              type="button"
+              className="fixed inset-0 z-10 bg-transparent"
+              onClick={() => setShowGroupOptions(null)}
+            />
           )}
         </div>
 
@@ -438,6 +713,148 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
+        )}
+      </div>
+    );
+  }
+
+  // 创建群聊视图
+  if (view === 'create') {
+    const selectedCount = availableContacts.filter(c => c.selected).length;
+
+    return (
+      <div className="relative flex flex-col h-full bg-[#EDEDED]">
+        {/* 头部 */}
+        <div className="bg-[#EDEDED] pt-12 pb-3 px-4 flex items-center justify-between shrink-0 z-10">
+          <div className="flex items-center gap-2 w-1/3">
+            <button type="button" onClick={() => setView('list')} className="p-1 -ml-1 text-gray-900">
+              <ChevronLeft size={28} />
+            </button>
+          </div>
+          <div className="w-1/3 text-center">
+            <h1 className="text-[17px] font-semibold text-gray-900">新建群聊</h1>
+          </div>
+          <div className="w-1/3 flex justify-end">
+            <button
+              type="button"
+              onClick={handleCreateGroup}
+              disabled={selectedCount === 0}
+              className="px-3 py-1 bg-[#07C160] text-white rounded-lg text-sm disabled:opacity-40"
+            >
+              创建 ({selectedCount})
+            </button>
+          </div>
+        </div>
+
+        {/* 群聊名称输入 */}
+        <div className="bg-white px-4 py-3 border-b border-gray-200">
+          <label className="block text-sm text-gray-500 mb-2">群聊名称</label>
+          <input
+            type="text"
+            className="w-full px-3 py-2 bg-gray-50 rounded-lg text-[15px] text-gray-900 outline-none border border-gray-200 focus:border-[#07C160]"
+            placeholder="输入群聊名称（可选）"
+            value={newGroupName}
+            onChange={e => setNewGroupName(e.target.value)}
+          />
+        </div>
+
+        {/* 选择成员 */}
+        <div className="flex-1 overflow-y-auto bg-white">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-sm text-gray-500">选择成员加入群聊</p>
+          </div>
+          {availableContacts.length === 0 ? (
+            <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
+              暂无可用联系人
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {availableContacts.map(contact => (
+                <li
+                  key={contact.id}
+                  className="flex items-center gap-3 px-4 py-3 active:bg-gray-50 cursor-pointer"
+                  onClick={() => toggleContactSelection(contact.id)}
+                >
+                  <div className={`h-6 w-6 rounded-full border-2 flex items-center justify-center ${contact.selected ? 'border-[#07C160] bg-[#07C160]' : 'border-gray-300'}`}>
+                    {contact.selected && <Check size={14} color="white" />}
+                  </div>
+                  <GroupMemberAvatar
+                    member={{
+                      id: contact.id,
+                      displayName: contact.displayName,
+                      personality: contact.personality,
+                      thought: contact.thought,
+                      avatarUrl: contact.avatarUrl,
+                    }}
+                    avatarSrc={resolveRoleAvatarDisplay(
+                      contact.id,
+                      contact.avatarUrl,
+                      avatarOverrides,
+                      contact.displayName,
+                    )}
+                    size="list"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-medium text-gray-900 truncate">{contact.displayName}</p>
+                    {contact.personality && (
+                      <p className="text-[11px] text-gray-400 truncate">{contact.personality}</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* 错误提示 */}
+        {sendError && (
+          <div className="px-4 py-2 text-[12px] text-red-600 bg-red-50">{sendError}</div>
+        )}
+      </div>
+    );
+  }
+
+  // 编辑群聊名称视图
+  if (view === 'edit' && editingGroup) {
+    return (
+      <div className="relative flex flex-col h-full bg-[#EDEDED]">
+        {/* 头部 */}
+        <div className="bg-[#EDEDED] pt-12 pb-3 px-4 flex items-center justify-between shrink-0 z-10">
+          <div className="flex items-center gap-2 w-1/3">
+            <button type="button" onClick={() => setView('list')} className="p-1 -ml-1 text-gray-900">
+              <ChevronLeft size={28} />
+            </button>
+          </div>
+          <div className="w-1/3 text-center">
+            <h1 className="text-[17px] font-semibold text-gray-900">修改群名</h1>
+          </div>
+          <div className="w-1/3 flex justify-end">
+            <button
+              type="button"
+              onClick={handleUpdateGroupName}
+              disabled={!editGroupName.trim()}
+              className="px-3 py-1 bg-[#07C160] text-white rounded-lg text-sm disabled:opacity-40"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+
+        {/* 群聊名称输入 */}
+        <div className="bg-white px-4 py-3 mt-2">
+          <label className="block text-sm text-gray-500 mb-2">群聊名称</label>
+          <input
+            type="text"
+            className="w-full px-3 py-2 bg-gray-50 rounded-lg text-[15px] text-gray-900 outline-none border border-gray-200 focus:border-[#07C160]"
+            placeholder="输入群聊名称"
+            value={editGroupName}
+            onChange={e => setEditGroupName(e.target.value)}
+          />
+        </div>
+
+        {/* 错误提示 */}
+        {sendError && (
+          <div className="px-4 py-2 text-[12px] text-red-600 bg-red-50">{sendError}</div>
         )}
       </div>
     );
