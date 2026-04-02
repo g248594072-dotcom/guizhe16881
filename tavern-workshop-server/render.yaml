@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: tavern-workshop
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: workshop-db
+          property: connectionString
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: ADMIN_DISCORD_ID
+        sync: false
+      - key: CORS_ORIGIN
+        value: "*"
+
+databases:
+  - name: workshop-db
+    databaseName: workshop
+    user: workshop
+    plan: free

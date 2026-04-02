@@ -71,10 +71,20 @@ type CallAPIOptions = {
 
 type CallAPI = (prompt: string, opts: CallAPIOptions) => Promise<string>;
 
+/** 角色列表条目信息 */
+interface CharacterListItem {
+  characterId: string;
+  characterName: string;
+  oneLiner: string;
+  updatedAt: string;
+}
+
 /** 角色分析器单例 */
 class CharacterAnalyzer {
   private callApi: CallAPI | null = null;
   private initialized = false;
+  /** 已分析角色列表（用于生成角色列表世界书条目） */
+  private analyzedCharacters = new Map<string, CharacterListItem>();
 
   /** 注入 API 调用函数 */
   setApiCaller(fn: CallAPI): void {
@@ -185,9 +195,17 @@ class CharacterAnalyzer {
       // 角色档案分析完成后自动触发角色动态分析
       console.log('[analyzer] 开始自动触发角色动态分析...');
       try {
-        await this.analyzeDynamics(characterId, characterName);
+        // 传递已计算好的关键词，确保动态报告使用与角色档案相同的关键词
+        await this.analyzeDynamics(characterId, characterName, keywords);
       } catch (dynErr) {
         console.warn('[analyzer] 自动角色动态分析失败，不影响角色档案结果:', dynErr);
+      }
+
+      // 更新角色列表并同步到世界书
+      try {
+        await this.updateCharacterList(characterId, characterName, result);
+      } catch (listErr) {
+        console.warn('[analyzer] 更新角色列表失败:', listErr);
       }
 
       return result;
@@ -198,7 +216,11 @@ class CharacterAnalyzer {
   }
 
   /** 执行角色动态分析 - 生成近期动态报告 */
-  async analyzeDynamics(characterId: string, characterName: string): Promise<CharacterDynamicsResult | null> {
+  async analyzeDynamics(
+    characterId: string,
+    characterName: string,
+    precomputedKeywords?: string,
+  ): Promise<CharacterDynamicsResult | null> {
     try {
       console.log(`[analyzer] 开始角色动态分析: ${characterId} (${characterName})`);
 
@@ -224,9 +246,9 @@ class CharacterAnalyzer {
       const tavernContext = getTavernContextForAnalysis(3);
       console.log(`[analyzer] 读取到 ${tavernContext.length} 层酒馆正文用于动态分析`);
 
-      // 获取所有关键词（名字、昵称、外号、职务、别称等）
-      const keywords = this.extractCharacterKeywords(profile, characterName);
-      console.log(`[analyzer] 提取到关键词: ${keywords}`);
+      // 使用预计算的关键词（从角色档案分析传入），如果没有则自行提取
+      const keywords = precomputedKeywords ?? this.extractCharacterKeywords(profile, characterName);
+      console.log(`[analyzer] 使用关键词: ${keywords}`);
 
       // 构建动态分析提示词
       const prompt = this.buildDynamicsPrompt(characterName, profile, recentMessages, tavernContext);
@@ -294,33 +316,60 @@ class CharacterAnalyzer {
 
     // 从 profile 和 AI 结果中提取更多数据
     const sources = [profile, aiResult].filter(Boolean) as Record<string, unknown>[];
+
+    // 获取性别
+    let gender: 'male' | 'female' | 'unknown' = 'unknown';
     for (const src of sources) {
-      // 身份标签
+      const g = (src['性别'] as string)?.toLowerCase();
+      if (g === '女' || g === 'female' || g === 'f') gender = 'female';
+      if (g === '男' || g === 'male' || g === 'm') gender = 'male';
+    }
+
+    for (const src of sources) {
+      // 身份标签 - 只提取关系（如"前后桌/同学"）
       const tags = src['身份标签'] as Record<string, string> | undefined;
       if (tags && typeof tags === 'object') {
-        Object.values(tags).forEach(tag => {
-          if (tag && typeof tag === 'string' && tag.length <= 20) {
-            keywords.add(tag);
-          }
-        });
+        // 关系：如"前后桌/同学" -> 提取"同学"
+        const relation = tags['关系'];
+        if (relation && typeof relation === 'string') {
+          // 提取斜杠后的称呼或整个关系
+          const parts = relation.split(/[\/\\]/);
+          parts.forEach(p => {
+            const trimmed = p.trim();
+            if (trimmed && trimmed.length >= 2 && trimmed.length <= 6) keywords.add(trimmed);
+          });
+        }
+        // 注意：不提取地位和"其他标签"，避免产生描述性短语关键词
       }
 
-      // 职业
-      if (typeof src['职业'] === 'string' && src['职业']) {
-        keywords.add(src['职业'] as string);
+      // 职业 + 职业称呼组合
+      const occupation = src['职业'] as string | undefined;
+      if (occupation && typeof occupation === 'string') {
+        keywords.add(occupation);
+        // 职业+称呼：如"白医生"
+        if (name.length >= 2) {
+          const surname = name[0];
+          keywords.add(`${surname}${occupation}`);
+        }
       }
 
-      // 性格中的短标签（如"猫系少女"）
+      // 性格中的特殊标签（如"S女/M女"等）- 只提取非常短且明确的标签
       const personality = src['性格'] as Record<string, string> | undefined;
       if (personality && typeof personality === 'object') {
         const specialTags = personality['特殊性格标签'];
         if (specialTags && typeof specialTags === 'string') {
           specialTags.split(/[、,，]/).forEach(t => {
             const trimmed = t.trim();
-            if (trimmed && trimmed.length <= 10) keywords.add(trimmed);
+            // 限制为3-5个字的明确标签，过滤描述性短语
+            if (trimmed && trimmed.length >= 2 && trimmed.length <= 5) {
+              keywords.add(trimmed);
+            }
           });
         }
+        // 注意：不提取"表面性格"和"内在性格"中的描述，避免产生"活泼外向"等不适合的关键词
       }
+
+      // 注意：不提取兴趣爱好，避免"各种口味的水果糖"等不适合作为触发词的内容
     }
 
     // 生成姓名的常见变体（仅用实际姓名，不用标签值）
@@ -329,31 +378,55 @@ class CharacterAnalyzer {
       const surname = nameChars[0];
       const givenName = nameChars.slice(1);
 
-      // 姓 + 常见称呼后缀
-      const suffixes = ['小姐', '同学', '女士', '先生', '老师', '姐', '哥', '妹', '弟'];
+      // 根据性别确定合适的称呼后缀
+      const suffixes: string[] = [];
+      if (gender === 'female') {
+        suffixes.push('小姐', '同学', '女士', '老师', '姐', '妹', '姐姐', '妹妹', '宝贝', '宝宝');
+      } else if (gender === 'male') {
+        suffixes.push('先生', '同学', '老师', '哥', '弟', '哥哥', '弟弟', '兄');
+      } else {
+        suffixes.push('同学', '老师');
+      }
       suffixes.forEach(s => keywords.add(`${surname}${s}`));
 
-      // 小 + 名
+      // 小+姓/名
       keywords.add(`小${surname}`);
       if (givenName.length >= 1) {
         keywords.add(`小${givenName}`);
         keywords.add(givenName);
-        // 叠字昵称：如 梦梦
-        if (givenName.length === 2 && givenName[0] === givenName[1]) {
-          keywords.add(givenName);
-        } else if (givenName.length >= 1) {
-          keywords.add(`${givenName[givenName.length - 1]}${givenName[givenName.length - 1]}`);
+
+        // 叠字昵称：如"梦梦"
+        if (givenName.length >= 1) {
+          const lastChar = givenName[givenName.length - 1];
+          keywords.add(`${lastChar}${lastChar}`);
+        }
+        // 名+儿（如"梦儿"）
+        if (givenName.length === 1) {
+          keywords.add(`${givenName}儿`);
         }
       }
 
-      // 全名 + 后缀
+      // 全名 + 性别特定后缀
       keywords.add(`${name}同学`);
-      keywords.add(`${name}小姐`);
-      keywords.add(`${name}女士`);
-      keywords.add(`${name}先生`);
+      if (gender === 'female') {
+        keywords.add(`${name}小姐`);
+        keywords.add(`${name}女士`);
+        keywords.add(`${name}宝贝`);
+      } else if (gender === 'male') {
+        keywords.add(`${name}先生`);
+      }
+
+      // 昵称：姓+名首字（如"白梦"）
+      if (givenName.length >= 1) {
+        keywords.add(`${surname}${givenName[0]}`);
+      }
     }
 
-    return Array.from(keywords).join(',');
+    // 清理关键词：去除空格，过滤空值，去重
+    const cleanKeywords = Array.from(keywords)
+      .map(k => k.trim().replace(/\s+/g, ''))
+      .filter(k => k.length > 0);
+    return cleanKeywords.join(',');
   }
 
   /** 构建动态分析提示词 */
@@ -826,6 +899,101 @@ ${tavernContextStr}
     } catch (e) {
       console.warn('[analyzer] 解析 JSON 失败:', e);
       return null;
+    }
+  }
+
+  /** 更新角色列表并同步到世界书 */
+  private async updateCharacterList(
+    characterId: string,
+    characterName: string,
+    result: CharacterAnalysisResult,
+  ): Promise<void> {
+    // 生成一句话介绍
+    const oneLiner = this.generateCharacterOneLiner(result);
+
+    // 更新内存中的角色列表
+    this.analyzedCharacters.set(characterId, {
+      characterId,
+      characterName,
+      oneLiner,
+      updatedAt: new Date().toISOString(),
+    });
+
+    console.log(`[analyzer] 更新角色列表: ${characterName} - ${oneLiner}`);
+
+    // 同步角色列表到世界书
+    await this.syncCharacterListToWorldbook();
+  }
+
+  /** 生成角色的一句话介绍 */
+  private generateCharacterOneLiner(result: CharacterAnalysisResult): string {
+    const parts: string[] = [];
+
+    // 基础信息：职业 + 外貌特点
+    if (result.职业) parts.push(result.职业);
+    if (result.外貌) {
+      const brief = result.外貌.split('。')[0]; // 取第一句话
+      if (brief && brief.length > 5) parts.push(brief);
+    }
+
+    // 性格标签
+    const personalityTags = result.personality?.['特殊性格标签'];
+    if (personalityTags) parts.push(`性格：${personalityTags}`);
+
+    // 如果有身份信息
+    const relation = result.identityTags?.['关系'];
+    if (relation) parts.push(`身份：${relation}`);
+
+    // 组合成一句话（限制长度）
+    let summary = parts.join('，');
+    if (summary.length > 80) {
+      summary = summary.substring(0, 77) + '...';
+    }
+
+    return summary || '暂无简介';
+  }
+
+  /** 同步角色列表到世界书（蓝灯，角色定义前，深度4，禁止双递归） */
+  private async syncCharacterListToWorldbook(): Promise<void> {
+    const characters = Array.from(this.analyzedCharacters.values());
+    if (characters.length === 0) return;
+
+    // 按角色名排序
+    characters.sort((a, b) => a.characterName.localeCompare(b.characterName, 'zh-CN'));
+
+    // 构建内容
+    const lines: string[] = ['【角色列表】', ''];
+    characters.forEach((char, index) => {
+      lines.push(`${index + 1}. ${char.characterName}：${char.oneLiner}`);
+    });
+    lines.push('');
+    lines.push(`更新时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`共 ${characters.length} 位角色`);
+
+    const content = lines.join('\n');
+
+    console.log('[analyzer] 同步角色列表到世界书:', { characterCount: characters.length });
+
+    // 同步到世界书（蓝灯配置：角色定义前，深度4，禁止双递归，无关键词）
+    const wbResult = await syncCharacterAnalysisToWorldbook(
+      '__character_list__', // 特殊ID标识角色列表
+      {
+        姓名: '角色列表',
+        当前内心想法: content,
+        身份标签: { 类型: '角色列表' },
+      },
+      {
+        position: 'beforeCharDef', // 角色定义前（蓝灯位置）
+        priority: 4, // 深度/顺序 4
+        // 蓝灯不需要关键词
+        preventRecursion: true, // 禁止双递归
+      },
+    );
+
+    if (wbResult.ok) {
+      console.log('[analyzer] ✅ 角色列表已同步到世界书');
+    } else {
+      console.warn('[analyzer] ⚠️ 角色列表同步失败:', wbResult.error);
     }
   }
 

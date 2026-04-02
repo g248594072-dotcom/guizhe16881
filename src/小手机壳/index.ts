@@ -1542,39 +1542,56 @@ async function syncCharacterAnalysisToWorldbook(
     const characterName =
       typeof updates['姓名'] === 'string' && updates['姓名'].trim() ? updates['姓名'].trim() : characterId;
 
-    const isDynamicsReport =
-      typeof updates['身份标签'] === 'object' &&
-      updates['身份标签'] !== null &&
-      (updates['身份标签'] as Record<string, string>)['类型'] === '动态报告';
+    const identityType = (updates['身份标签'] as Record<string, string> | undefined)?.['类型'];
+    const isDynamicsReport = identityType === '动态报告';
+    const isCharacterList = identityType === '角色列表';
 
-    const entryName = isDynamicsReport
-      ? sanitizeWorldbookEntryName(`【${characterName}】动态报告`)
-      : sanitizeWorldbookEntryName(`【${characterName}】角色档案`);
+    let entryName: string;
+    let content: string;
 
-    const content = isDynamicsReport && typeof updates['当前内心想法'] === 'string'
-      ? updates['当前内心想法']
-      : formatCharacterAnalysisWorldbookContent(updates);
-
-    // 构建关键词：优先使用 options.keywords
-    const selectiveKeys: (string | RegExp)[] = [];
-    if (options?.keywords) {
-      const kwList = options.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
-      kwList.forEach(k => selectiveKeys.push(k));
-    }
-    if (selectiveKeys.length === 0) {
-      if (characterName) selectiveKeys.push(characterName);
-      if (characterId && characterId !== characterName) selectiveKeys.push(characterId);
+    if (isCharacterList) {
+      entryName = '【角色列表】';
+      content = typeof updates['当前内心想法'] === 'string' ? updates['当前内心想法'] : '';
+    } else if (isDynamicsReport) {
+      entryName = sanitizeWorldbookEntryName(`【${characterName}】动态报告`);
+      content = typeof updates['当前内心想法'] === 'string' ? updates['当前内心想法'] : '';
+    } else {
+      entryName = sanitizeWorldbookEntryName(`【${characterName}】角色档案`);
+      content = formatCharacterAnalysisWorldbookContent(updates);
     }
 
-    const strat: WorldbookEntry['strategy'] = {
-      type: 'selective',
-      keys: selectiveKeys.length > 0 ? selectiveKeys : ['角色档案'],
-      keys_secondary: template.strategy.keys_secondary ?? { logic: 'and_any', keys: [] },
-      scan_depth: 'same_as_global',
-    };
+    // 角色列表使用蓝灯（constant，无关键词），其他使用 selective
+    let strat: WorldbookEntry['strategy'];
+    if (isCharacterList) {
+      // 蓝灯：constant 类型，无关键词，恒定插入
+      strat = {
+        type: 'constant',
+        keys: [],
+        keys_secondary: template.strategy.keys_secondary ?? { logic: 'and_any', keys: [] },
+        scan_depth: 'same_as_global',
+      };
+    } else {
+      // 绿灯：selective 类型，有关键词
+      const selectiveKeys: (string | RegExp)[] = [];
+      if (options?.keywords) {
+        const kwList = options.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0);
+        kwList.forEach(k => selectiveKeys.push(k));
+      }
+      if (selectiveKeys.length === 0) {
+        if (characterName) selectiveKeys.push(characterName);
+        if (characterId && characterId !== characterName) selectiveKeys.push(characterId);
+      }
+      strat = {
+        type: 'selective',
+        keys: selectiveKeys.length > 0 ? selectiveKeys : ['角色档案'],
+        keys_secondary: template.strategy.keys_secondary ?? { logic: 'and_any', keys: [] },
+        scan_depth: 'same_as_global',
+      };
+    }
 
-    // 位置：根据 options.position 决定
-    const posType: WorldbookEntry['position']['type'] = options?.position === 'afterCharDef'
+    // 位置：角色列表和角色档案都是角色定义前（蓝灯位置）
+    // 只有动态报告是角色定义后（绿灯）
+    const posType: WorldbookEntry['position']['type'] = isDynamicsReport
       ? 'after_character_definition'
       : 'before_character_definition';
     const position: WorldbookEntry['position'] = {
@@ -1596,13 +1613,18 @@ async function syncCharacterAnalysisToWorldbook(
       existingEntries = [];
     }
 
-    const existingIdx = existingEntries.findIndex(
-      e =>
-        e.name === entryName ||
-        ((e.extra as Record<string, unknown> | undefined)?.tavernPhoneCharacterId === characterId),
-    );
+    // 角色列表使用固定 entryName 查找，其他使用 characterId extra 字段查找
+    const existingIdx = isCharacterList
+      ? existingEntries.findIndex(e => e.name === entryName)
+      : existingEntries.findIndex(
+          e =>
+            e.name === entryName ||
+            ((e.extra as Record<string, unknown> | undefined)?.tavernPhoneCharacterId === characterId),
+        );
 
-    const baseExtra = { tavernPhoneCharacterId: characterId };
+    const baseExtra = isCharacterList
+      ? { tavernPhoneCharacterList: true }
+      : { tavernPhoneCharacterId: characterId };
 
     if (existingIdx >= 0) {
       const existingEntry = existingEntries[existingIdx];
