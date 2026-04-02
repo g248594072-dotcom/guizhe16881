@@ -269,10 +269,6 @@
               <i class="fa-solid fa-bookmark"></i>
               将当前描述加入场景库
             </button>
-            <button type="button" class="library-toolbar-btn workshop-btn" @click="uploadSceneToWorkshop">
-              <i class="fa-solid fa-cloud-arrow-up"></i>
-              上传创意工坊
-            </button>
           </div>
 
           <div class="custom-scene">
@@ -339,10 +335,6 @@
               <button type="button" class="library-toolbar-btn" @click="saveNewRuleToLibrary">
                 <i class="fa-solid fa-bookmark"></i>
                 将表单加入规则库
-              </button>
-              <button type="button" class="library-toolbar-btn workshop-btn" @click="uploadRuleToWorkshop">
-                <i class="fa-solid fa-cloud-arrow-up"></i>
-                上传创意工坊
               </button>
             </div>
             <div class="custom-rule-input">
@@ -415,10 +407,6 @@
             <button type="button" class="library-toolbar-btn" @click="saveNewCharToLibrary">
               <i class="fa-solid fa-bookmark"></i>
               将表单加入角色库
-            </button>
-            <button type="button" class="library-toolbar-btn workshop-btn" @click="uploadCharToWorkshop">
-              <i class="fa-solid fa-cloud-arrow-up"></i>
-              上传创意工坊
             </button>
           </div>
 
@@ -516,10 +504,6 @@
               <i class="fa-solid fa-bookmark"></i>
               将当前描述加入开局场景库
             </button>
-            <button type="button" class="library-toolbar-btn workshop-btn" @click="uploadOpeningSceneToWorkshop">
-              <i class="fa-solid fa-cloud-arrow-up"></i>
-              上传创意工坊
-            </button>
           </div>
 
           <div class="custom-scene">
@@ -575,10 +559,6 @@
               <button type="button" class="preset-action-btn cyber-preset-btn" @click="presetPickerOpen = true">
                 <i class="fa-solid fa-folder-open"></i>
                 <span>读取开场预设</span>
-              </button>
-              <button type="button" class="preset-action-btn cyber-preset-btn workshop-btn" @click="workshopModalOpen = true">
-                <i class="fa-solid fa-shop"></i>
-                <span>创意工坊</span>
               </button>
             </div>
             <div class="confirm-actions">
@@ -728,7 +708,6 @@
             </div>
             <div class="opening-dialog-list-actions">
               <button type="button" class="chronicle-dialog-btn" @click="applyOpeningPreset(p)">应用</button>
-              <button type="button" class="chronicle-dialog-btn workshop" @click="uploadPresetToWorkshop(p)">上传工坊</button>
               <button type="button" class="chronicle-dialog-btn danger" @click="removePreset(p.id)">删除</button>
             </div>
           </li>
@@ -884,8 +863,6 @@
       </div>
     </div>
 
-    <!-- 创意工坊弹窗 -->
-    <WorkshopModal v-if="workshopModalOpen" @close="workshopModalOpen = false" />
   </div>
 </template>
 
@@ -901,10 +878,8 @@ import ShatteredGlassEffect from './ShatteredGlassEffect.vue';
 import MagneticButton from './MagneticButton.vue';
 import ScrambleText from './ScrambleText.vue';
 import BlockProgress from './BlockProgress.vue';
-import WorkshopModal from './WorkshopModal.vue';
 import { clearChronicle } from '../utils/chronicleUpdater';
 import { clearOpeningUiCache } from '../utils/clearUiCache';
-import { workshopUpload, type WorkshopItemType } from '../utils/workshopApi';
 import {
   type RuleSnippet,
   type CharacterSnippet,
@@ -935,13 +910,10 @@ const eventLogs = [
 ];
 
 // 底部工具按钮
-const workshopModalOpen = ref(false);
-
 const bottomTools = [
   { action: 'preset', label: '读取开场预设', icon: 'fa-solid fa-database', handler: () => presetPickerOpen.value = true },
   { action: 'export', label: '导出 JSON', icon: 'fa-solid fa-upload', handler: onExportJson },
   { action: 'import', label: '导入 JSON', icon: 'fa-solid fa-download', handler: onPickImportJson },
-  { action: 'workshop', label: '创意工坊', icon: 'fa-solid fa-shop', handler: () => workshopModalOpen.value = true },
 ];
 
 // 随机高度（数据条动画）
@@ -1253,91 +1225,6 @@ function addOpeningSceneFromLibrary(s: OpeningSceneSnippet) {
 function removeOpeningSceneSnippet(id: string) {
   openingSceneSnippets.value = openingSceneSnippets.value.filter(x => x.id !== id);
   toastr.success('已从开局场景库删除');
-}
-
-// ===== 创意工坊上传函数 =====
-
-function findSceneSnippet(): SceneSnippet | null {
-  const body = customSceneDesc.value.trim();
-  if (!body) {
-    toastr.warning('请先在「或创建自定义场景」中填写描述');
-    return null;
-  }
-  return sceneSnippets.value.find(s => s.desc.trim() === body) || {
-    id: createStorageId(),
-    name: autoSnippetTitle(body),
-    desc: body,
-  };
-}
-
-function findRuleSnippet(): RuleSnippet | null {
-  const name = newRuleName.value.trim();
-  const desc = newRuleDesc.value.trim();
-  if (!name || !desc) {
-    toastr.warning('请先在表单中填写完整的规则名称和描述');
-    return null;
-  }
-  return {
-    id: createStorageId(),
-    name,
-    desc,
-  };
-}
-
-function findCharSnippet(): CharacterSnippet | null {
-  const name = newCharName.value.trim();
-  const desc = newCharDesc.value.trim();
-  if (!name || !desc) {
-    toastr.warning('请先在表单中填写完整的角色信息');
-    return null;
-  }
-  return {
-    id: createStorageId(),
-    name,
-    gender: newCharGender.value,
-    desc,
-  };
-}
-
-function findOpeningSceneSnippet(): OpeningSceneSnippet | null {
-  const body = openingSceneDetail.value.trim();
-  if (!body) {
-    toastr.warning('请先填写开局场景描述');
-    return null;
-  }
-  return openingSceneSnippets.value.find(s => s.desc.trim() === body) || {
-    id: createStorageId(),
-    name: autoSnippetTitle(body),
-    desc: body,
-  };
-}
-
-async function uploadSceneToWorkshop() {
-  const snippet = findSceneSnippet();
-  if (!snippet) return;
-  await workshopUpload('scene', snippet);
-}
-
-async function uploadRuleToWorkshop() {
-  const snippet = findRuleSnippet();
-  if (!snippet) return;
-  await workshopUpload('rule', snippet);
-}
-
-async function uploadCharToWorkshop() {
-  const snippet = findCharSnippet();
-  if (!snippet) return;
-  await workshopUpload('character', snippet);
-}
-
-async function uploadOpeningSceneToWorkshop() {
-  const snippet = findOpeningSceneSnippet();
-  if (!snippet) return;
-  await workshopUpload('openingScene', snippet);
-}
-
-async function uploadPresetToWorkshop(preset: OpeningPreset) {
-  await workshopUpload('preset', preset);
 }
 
 function confirmSavePreset() {
@@ -2575,37 +2462,6 @@ defineExpose({
     font-size: 14px;
   }
 
-  &.workshop-btn {
-    border-color: rgba(102, 126, 234, 0.4);
-    background: rgba(102, 126, 234, 0.1);
-    color: rgba(165, 180, 252, 0.95);
-    animation: toolbar-btn-pulse-workshop 3s ease-in-out infinite;
-
-    &::before {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.25), rgba(118, 75, 162, 0.25));
-    }
-
-    &:hover {
-      color: #fff;
-      border-color: rgba(102, 126, 234, 0.6);
-      box-shadow:
-        0 8px 20px rgba(102, 126, 234, 0.25),
-        0 0 15px rgba(118, 75, 162, 0.25);
-    }
-  }
-}
-
-@keyframes toolbar-btn-pulse-workshop {
-  0%, 100% {
-    box-shadow:
-      0 0 5px rgba(102, 126, 234, 0.2),
-      inset 0 0 10px rgba(102, 126, 234, 0.05);
-  }
-  50% {
-    box-shadow:
-      0 0 12px rgba(102, 126, 234, 0.35),
-      inset 0 0 15px rgba(118, 75, 162, 0.1);
-  }
 }
 
 @keyframes toolbar-btn-pulse {
@@ -3803,17 +3659,6 @@ defineExpose({
     }
   }
 
-  &.workshop {
-    border-color: rgba(102, 126, 234, 0.45);
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
-    color: #a5b4fc;
-
-    &:hover:not(:disabled) {
-      background: linear-gradient(135deg, rgba(102, 126, 234, 0.3), rgba(118, 75, 162, 0.3));
-      transform: translateY(-1px);
-    }
-  }
-
   &:disabled {
     opacity: 0.55;
     cursor: not-allowed;
@@ -3823,11 +3668,6 @@ defineExpose({
 .opening-form.light .chronicle-dialog-btn.danger {
   border-color: rgba(220, 60, 60, 0.35);
   background: rgba(220, 60, 60, 0.12);
-}
-
-.opening-form.light .chronicle-dialog-btn.workshop {
-  border-color: rgba(102, 126, 234, 0.35);
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.12));
 }
 
 .opening-settings-btn {
