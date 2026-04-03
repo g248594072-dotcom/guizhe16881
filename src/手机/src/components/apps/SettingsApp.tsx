@@ -61,6 +61,16 @@ export default function SettingsApp({
     setTestState('loading');
     setTestMessage('');
     const resolved = getTavernPhoneApiConfig();
+
+    // 使用酒馆代理连接
+    if (resolved.source === 'tavern') {
+      const r = await testOpenAiCompatibleConnection('', '', true);
+      setTestMessage(r.message);
+      setTestState(r.ok ? 'success' : 'error');
+      return;
+    }
+
+    // 本地配置连接
     if (!resolved.apiBaseUrl.trim()) {
       setTestMessage('请先填写 API URL（或开启「使用酒馆插头 API 设置」）');
       setTestState('error');
@@ -71,8 +81,8 @@ export default function SettingsApp({
       setTestState('error');
       return;
     }
-    const r = await testOpenAiCompatibleConnection(resolved.apiBaseUrl, resolved.apiKey);
-    setTestMessage(r.message + (resolved.source === 'tavern' ? ' (来自酒馆)' : ''));
+    const r = await testOpenAiCompatibleConnection(resolved.apiBaseUrl, resolved.apiKey, false);
+    setTestMessage(r.message);
     setTestState(r.ok ? 'success' : 'error');
   };
 
@@ -82,13 +92,25 @@ export default function SettingsApp({
     setModelOptions([]);
     try {
       const resolved = getTavernPhoneApiConfig();
+
+      // 使用酒馆代理获取模型
+      if (resolved.source === 'tavern') {
+        const ids = await fetchOpenAiCompatibleModelIds('', '', true);
+        setModelOptions(ids);
+        if (ids.length === 0) {
+          setModelsError('列表为空（接口返回 0 个模型）');
+        }
+        return;
+      }
+
+      // 本地配置获取模型
       if (!resolved.apiBaseUrl.trim()) {
         throw new Error('请先填写 API URL（或开启「使用酒馆插头 API 设置」）');
       }
       if (!resolved.apiKey.trim()) {
         throw new Error('请先填写 API Key（或开启「使用酒馆插头 API 设置」）');
       }
-      const ids = await fetchOpenAiCompatibleModelIds(resolved.apiBaseUrl, resolved.apiKey);
+      const ids = await fetchOpenAiCompatibleModelIds(resolved.apiBaseUrl, resolved.apiKey, false);
       setModelOptions(ids);
       if (ids.length === 0) {
         setModelsError('列表为空（接口返回 0 个模型）');
@@ -124,7 +146,7 @@ export default function SettingsApp({
           </div>
           <div className="px-3 pb-3 space-y-3 border-t pt-3" style={{ borderColor: 'var(--card-border)' }}>
             <label className="flex items-center justify-between gap-3 py-1">
-              <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>使用酒馆插头 API 设置</span>
+              <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>使用酒馆当前 API 连接</span>
               <input
                 type="checkbox"
                 className="h-5 w-5"
@@ -135,14 +157,14 @@ export default function SettingsApp({
             </label>
             <p className="text-[12px] leading-relaxed" style={{ color: 'var(--settings-desc)' }}>
               <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>开：</strong>
-              使用酒馆插头中的 API 地址和模型（由小手机壳脚本提供），无需手动填写。<br />
+              自动使用酒馆当前的 API 地址、模型和密钥（通过壳脚本代理请求，无CORS问题，Key更安全）。<br />
               <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>关：</strong>
-              使用下方手动填写的 API 配置。
+              手动填写下方 API 配置（可能遇到CORS错误，Key存储在本地）。
             </p>
 
             {cfg.useTavernApiSettings && resolvedCfg.source === 'tavern' && (
               <div className="mt-2 p-3 rounded-lg bg-green-50 border border-green-200">
-                <p className="text-[12px] text-green-700 font-medium mb-1">当前使用酒馆插头配置：</p>
+                <p className="text-[12px] text-green-700 font-medium mb-1">✅ 已连接酒馆 API（壳脚本代理）</p>
                 <p className="text-[11px] text-green-600">
                   <span className="font-medium">API：</span>
                   {resolvedCfg.apiBaseUrl || '（未获取到）'}
@@ -151,6 +173,7 @@ export default function SettingsApp({
                   <span className="font-medium">模型：</span>
                   {resolvedCfg.model || '（未获取到）'}
                 </p>
+                <p className="text-[10px] text-green-500 mt-1">🔒 API Key 不会传递到前端，由壳脚本安全代理</p>
               </div>
             )}
 

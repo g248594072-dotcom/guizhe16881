@@ -91,6 +91,14 @@ const MSG = {
   SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
   /** 壳脚本 → 小手机前端：通知自动触发分析全部角色 */
   TRIGGER_AUTO_ANALYZE_ALL: 'tavern-phone:trigger-auto-analyze-all',
+  /** 前端 → 壳脚本：请求代调用 chat/completions */
+  REQUEST_CHAT_COMPLETION: 'tavern-phone:request-chat-completion',
+  /** 壳脚本 → 前端：返回补全结果 */
+  CHAT_COMPLETION_RESULT: 'tavern-phone:chat-completion-result',
+  /** 前端 → 壳脚本：获取可用模型列表 */
+  REQUEST_MODELS: 'tavern-phone:request-models',
+  /** 壳脚本 → 前端：返回模型列表 */
+  MODELS_RESULT: 'tavern-phone:models-result',
 } as const;
 
 function getByPath(obj: unknown, path: string): unknown {
@@ -2602,6 +2610,151 @@ $(() => {
       }
       return;
     }
+
+    // ===== API 代理请求处理 =====
+    // 前端请求调用 chat/completions
+    if (t === MSG.REQUEST_CHAT_COMPLETION) {
+      const requestId = e.data?.requestId;
+      const request = e.data?.request;
+      if (typeof requestId !== 'string' || !request || typeof request !== 'object') {
+        return;
+      }
+      void (async () => {
+        try {
+          // 获取酒馆当前的 API 配置
+          const settings = SillyTavern?.chatCompletionSettings;
+          const apiUrl = settings?.api_url || settings?.api_base;
+          const apiKey = settings?.api_key;
+          const model = request.model || settings?.model;
+
+          if (!apiUrl || !apiKey) {
+            getIframeEl()?.contentWindow?.postMessage(
+              {
+                type: MSG.CHAT_COMPLETION_RESULT,
+                requestId,
+                error: '酒馆未配置 API URL 或 API Key，请在酒馆设置中配置',
+              },
+              '*',
+            );
+            return;
+          }
+
+          // 调用 API
+          const url = `${apiUrl.replace(/\/$/, '')}/v1/chat/completions`;
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model,
+              messages: request.messages,
+              temperature: request.temperature ?? 0.85,
+              max_tokens: request.max_tokens ?? 768,
+            }),
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
+          }
+
+          const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+
+          getIframeEl()?.contentWindow?.postMessage(
+            {
+              type: MSG.CHAT_COMPLETION_RESULT,
+              requestId,
+              response: data,
+            },
+            '*',
+          );
+        } catch (err) {
+          console.error('[tavern-phone] API 代理请求失败:', err);
+          getIframeEl()?.contentWindow?.postMessage(
+            {
+              type: MSG.CHAT_COMPLETION_RESULT,
+              requestId,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            '*',
+          );
+        }
+      })();
+      return;
+    }
+
+    // 前端请求获取模型列表
+    if (t === MSG.REQUEST_MODELS) {
+      const requestId = e.data?.requestId;
+      if (typeof requestId !== 'string') {
+        return;
+      }
+      void (async () => {
+        try {
+          // 获取酒馆当前的 API 配置
+          const settings = SillyTavern?.chatCompletionSettings;
+          const apiUrl = settings?.api_url || settings?.api_base;
+          const apiKey = settings?.api_key;
+
+          if (!apiUrl || !apiKey) {
+            getIframeEl()?.contentWindow?.postMessage(
+              {
+                type: MSG.MODELS_RESULT,
+                requestId,
+                error: '酒馆未配置 API URL 或 API Key',
+              },
+              '*',
+            );
+            return;
+          }
+
+          // 调用 API 获取模型列表
+          const url = `${apiUrl.replace(/\/$/, '')}/v1/models`;
+          const res = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(text ? `${res.status}: ${text.slice(0, 200)}` : `HTTP ${res.status}`);
+          }
+
+          const data = await res.json() as { data?: Array<{ id?: string }> };
+          const list = data?.data || [];
+          const models = list
+            .map((m: { id?: string }) => (typeof m?.id === 'string' ? m.id : ''))
+            .filter(Boolean);
+
+          getIframeEl()?.contentWindow?.postMessage(
+            {
+              type: MSG.MODELS_RESULT,
+              requestId,
+              models,
+            },
+            '*',
+          );
+        } catch (err) {
+          console.error('[tavern-phone] 获取模型列表失败:', err);
+          getIframeEl()?.contentWindow?.postMessage(
+            {
+              type: MSG.MODELS_RESULT,
+              requestId,
+              error: err instanceof Error ? err.message : String(err),
+              models: [],
+            },
+            '*',
+          );
+        }
+      })();
+      return;
+    }
+
     if (t === MSG.REQUEST_CLOSE) {
       close();
     }

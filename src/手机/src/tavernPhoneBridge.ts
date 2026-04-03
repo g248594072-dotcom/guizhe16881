@@ -43,6 +43,14 @@ export const TAVERN_PHONE_MSG = {
   SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
   /** 壳脚本 → 前端：通知自动触发分析全部角色 */
   TRIGGER_AUTO_ANALYZE_ALL: 'tavern-phone:trigger-auto-analyze-all',
+  /** 前端 → 壳脚本：请求代调用 chat/completions */
+  REQUEST_CHAT_COMPLETION: 'tavern-phone:request-chat-completion',
+  /** 壳脚本 → 前端：返回补全结果 */
+  CHAT_COMPLETION_RESULT: 'tavern-phone:chat-completion-result',
+  /** 前端 → 壳脚本：获取可用模型列表 */
+  REQUEST_MODELS: 'tavern-phone:request-models',
+  /** 壳脚本 → 前端：返回模型列表 */
+  MODELS_RESULT: 'tavern-phone:models-result',
 } as const;
 
 /** 微信会话列表中的联系人（可与人物属性编辑器等数据源对齐） */
@@ -548,4 +556,170 @@ export function getChatScopeId(): string {
     return currentChatScopeId || 'local-offline';
   }
   return currentChatScopeId || 'local-offline';
+}
+
+// ==================== API 代理请求（通过壳脚本）====================
+
+export type ChatCompletionRequest = {
+  model: string;
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  temperature?: number;
+  max_tokens?: number;
+  stream?: boolean;
+};
+
+export type ChatCompletionResponse = {
+  choices: Array<{
+    message: {
+      content: string;
+    };
+  }>;
+};
+
+type PendingChatCompletion = {
+  resolve: (v: ChatCompletionResponse) => void;
+  reject: (e: Error) => void;
+  timeout: number;
+};
+
+const pendingChatCompletions = new Map<string, PendingChatCompletion>();
+
+type PendingModels = {
+  resolve: (v: string[]) => void;
+  reject: (e: Error) => void;
+  timeout: number;
+};
+
+const pendingModels = new Map<string, PendingModels>();
+
+const CHAT_COMPLETION_TIMEOUT_MS = 120000; // 2分钟
+const MODELS_TIMEOUT_MS = 30000; // 30秒
+
+/**
+ * 初始化 API 代理响应监听器
+ */
+function ensureApiProxyListener(): void {
+  const w = window as Window & { __tavernPhoneApiProxyListener?: boolean };
+  if (w.__tavernPhoneApiProxyListener) {
+    return;
+  }
+  w.__tavernPhoneApiProxyListener = true;
+
+  window.addEventListener('message', (e: MessageEvent) => {
+    const d = e.data as {
+      type?: string;
+      requestId?: string;
+      response?: ChatCompletionResponse;
+      models?: string[];
+      error?: string;
+    };
+
+    // 处理 chat completion 响应
+    if (d?.type === TAVERN_PHONE_MSG.CHAT_COMPLETION_RESULT && typeof d.requestId === 'string') {
+      const p = pendingChatCompletions.get(d.requestId);
+      if (!p) {
+        return;
+      }
+      clearTimeout(p.timeout);
+      pendingChatCompletions.delete(d.requestId);
+
+      if (d.error) {
+        p.reject(new Error(d.error));
+        return;
+      }
+      if (d.response && typeof d.response === 'object') {
+        p.resolve(d.response);
+      } else {
+        p.reject(new Error('壳脚本返回的响应格式无效'));
+      }
+      return;
+    }
+
+    // 处理 models 响应
+    if (d?.type === TAVERN_PHONE_MSG.MODELS_RESULT && typeof d.requestId === 'string') {
+      const p = pendingModels.get(d.requestId);
+      if (!p) {
+        return;
+      }
+      clearTimeout(p.timeout);
+      pendingModels.delete(d.requestId);
+
+      if (d.error) {
+        p.reject(new Error(d.error));
+        return;
+      }
+      if (Array.isArray(d.models)) {
+        p.resolve(d.models);
+      } else {
+        p.resolve([]);
+      }
+      return;
+    }
+  });
+}
+
+/**
+ * 通过壳脚本代理调用 chat/completions
+ * 这避免了前端的 CORS 问题，且 API Key 不会暴露给前端
+ */
+export function requestChatCompletionViaShell(
+  request: ChatCompletionRequest,
+): Promise<ChatCompletionResponse> {
+  ensureApiProxyListener();
+  const requestId = crypto.randomUUID();
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      pendingChatCompletions.delete(requestId);
+      reject(new Error('壳脚本 API 请求超时'));
+    }, CHAT_COMPLETION_TIMEOUT_MS);
+
+    pendingChatCompletions.set(requestId, { resolve, reject, timeout });
+
+    try {
+      window.parent.postMessage(
+        {
+          type: TAVERN_PHONE_MSG.REQUEST_CHAT_COMPLETION,
+          requestId,
+          request,
+        },
+        '*',
+      );
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingChatCompletions.delete(requestId);
+      reject(new Error('向壳脚本发送请求失败'));
+    }
+  });
+}
+
+/**
+ * 通过壳脚本代理获取可用模型列表
+ */
+export function fetchModelsViaShell(): Promise<string[]> {
+  ensureApiProxyListener();
+  const requestId = crypto.randomUUID();
+
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      pendingModels.delete(requestId);
+      reject(new Error('获取模型列表超时'));
+    }, MODELS_TIMEOUT_MS);
+
+    pendingModels.set(requestId, { resolve, reject, timeout });
+
+    try {
+      window.parent.postMessage(
+        {
+          type: TAVERN_PHONE_MSG.REQUEST_MODELS,
+          requestId,
+        },
+        '*',
+      );
+    } catch (err) {
+      clearTimeout(timeout);
+      pendingModels.delete(requestId);
+      reject(new Error('向壳脚本发送请求失败'));
+    }
+  });
 }
