@@ -105,6 +105,8 @@ export interface TavernPhoneContextPayload {
   currentCharacterAvatarUrl?: string;
   /** 当前酒馆聊天中最后一条消息的 last_id（用于判断开场白）；开场白为 1 */
   lastChatMessageId?: number;
+  /** 当前用户名称（{{user}}） */
+  userName?: string;
 }
 
 /** 请求关闭整个小手机浮层（由壳脚本处理） */
@@ -494,30 +496,36 @@ export function initExportThreadsListener(): () => void {
     if (d?.type === TAVERN_PHONE_MSG.REQUEST_EXPORT_THREADS_FOR_WB && typeof d.requestId === 'string') {
       console.info('[tavernPhoneBridge] 📤 收到导出线程请求:', d.chatScopeId);
       try {
-        const idbExportThreadsForScope = await getExporter();
-        const threads = await idbExportThreadsForScope(d.chatScopeId ?? 'local-offline');
+        const { idbExportThreadsForScope, exportGroupChatThreadsForScope } = await getExporters();
+        const [privateThreads, groupThreads] = await Promise.all([
+          idbExportThreadsForScope(d.chatScopeId ?? 'local-offline'),
+          exportGroupChatThreadsForScope(d.chatScopeId ?? 'local-offline'),
+        ]);
         window.parent.postMessage({
           type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT,
           requestId: d.requestId,
-          threads: threads.map(t => ({
-            roleId: t.roleId,
-            conversationId: t.conversationId,
-            messages: t.messages.map(m => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              time: m.time,
+          threads: {
+            privateThreads: privateThreads.map(t => ({
+              roleId: t.roleId,
+              conversationId: t.conversationId,
+              messages: t.messages.map(m => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                time: m.time,
+              })),
             })),
-          })),
+            groupThreads,
+          },
         }, '*');
-        console.info('[tavernPhoneBridge] ✅ 导出线程完成:', threads.length, '个联系人');
+        console.info('[tavernPhoneBridge] ✅ 导出线程完成:', privateThreads.length, '个私聊,', groupThreads.length, '个群聊');
       } catch (err) {
         console.error('[tavernPhoneBridge] ❌ 导出线程失败:', err);
         window.parent.postMessage({
           type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT,
           requestId: d.requestId,
           error: err instanceof Error ? err.message : String(err),
-          threads: [],
+          threads: { privateThreads: [], groupThreads: [] },
         }, '*');
       }
     }

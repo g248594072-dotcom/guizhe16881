@@ -81,24 +81,41 @@ class AnalysisScheduler {
   private async process(): Promise<void> {
     if (this.running || this.queue.length === 0 || !this.processFn) return;
     this.running = true;
-    while (this.queue.length > 0) {
-      const task = this.queue[0];
-      task.status = 'running';
+
+    // 持续处理直到没有 pending 任务
+    while (true) {
+      const nextTask = this.queue.find(t => t.status === 'pending');
+      if (!nextTask) break;
+
+      const pending = this.queue.filter(t => t.status === 'pending');
+      console.log(`[scheduler] 处理任务: ${nextTask.characterName} (${nextTask.type})，队列中还有 ${pending.length} 个待处理`);
+
+      nextTask.status = 'running';
       this.notifyListeners();
+
       try {
-        await this.processFn(task);
-        task.status = 'done';
+        await this.processFn(nextTask);
+        nextTask.status = 'done';
+        console.log(`[scheduler] 任务完成: ${nextTask.characterName}`);
       } catch (e) {
-        task.status = 'error';
-        task.errorMessage = e instanceof Error ? e.message : String(e);
-        console.warn('[scheduler] 分析任务失败:', task.errorMessage);
+        nextTask.status = 'error';
+        nextTask.errorMessage = e instanceof Error ? e.message : String(e);
+        console.error(`[scheduler] 任务失败: ${nextTask.characterName}, 错误:`, nextTask.errorMessage);
       }
-      this.queue.shift();
+
       this.notifyListeners();
-      // 每个任务之间休息 1 秒
-      await new Promise(r => setTimeout(r, 1000));
+
+      // 检查是否还有待处理任务，有则休息 1 秒后继续
+      if (this.queue.some(t => t.status === 'pending')) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
+
+    console.log('[scheduler] 所有任务处理完成');
+    // 清理已完成的任务
+    this.queue = [];
     this.running = false;
+    this.notifyListeners();
   }
 
   /** 获取当前队列快照 */

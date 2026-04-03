@@ -1,16 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ArrowUpFromLine,
   ChevronLeft,
   Loader2,
   RefreshCw,
   Send,
   Users,
   Plus,
-  Settings,
-  X,
   Check,
-  UserPlus,
   Trash2,
   Edit3,
   MoreVertical,
@@ -53,6 +49,23 @@ import {
   type GroupMember,
   type GroupChatContext,
 } from '../../chatCompletions';
+
+/** 获取当前用户名称（从酒馆全局对象或回退到默认值） */
+function getUserName(): string {
+  try {
+    // @ts-ignore - SillyTavern is global
+    const st = (window as any).SillyTavern;
+    if (st?.name1) {
+      return String(st.name1).trim();
+    }
+    if (st?.user?.name) {
+      return String(st.user.name).trim();
+    }
+  } catch {
+    // ignore
+  }
+  return '房东';
+}
 
 // ==================== 类型定义 ====================
 
@@ -139,7 +152,6 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [threadReady, setThreadReady] = useState(false);
-  const [injectBusy, setInjectBusy] = useState(false);
   const [showMemberList, setShowMemberList] = useState(false);
   const [listTick, setListTick] = useState(0);
 
@@ -150,6 +162,23 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
   const [editingGroup, setEditingGroup] = useState<GroupChatSession | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
   const [showGroupOptions, setShowGroupOptions] = useState<string | null>(null);
+
+  // 长按菜单状态
+  const [longPressMenu, setLongPressMenu] = useState<{
+    visible: boolean;
+    messageId: string | null;
+    messageContent: string;
+    messageRole: 'user' | 'assistant' | null;
+    position: { x: number; y: number };
+  }>({
+    visible: false,
+    messageId: null,
+    messageContent: '',
+    messageRole: null,
+    position: { x: 0, y: 0 },
+  });
+  const longPressTimerRef = useRef<number | null>(null);
+  const [retractingIds, setRetractingIds] = useState<Set<string>>(new Set());
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const contextFetchGenRef = useRef(0);
@@ -174,6 +203,7 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           recentStorySnippet: c.recentStorySnippet ?? '',
           roleStorySummaries: c.roleStorySummaries ?? {},
           openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
+          userName: c.userName ?? getUserName(),
         });
 
         // 构建所有可用联系人（用于邀请）
@@ -314,32 +344,47 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
 
     setSendError('');
     setSending(true);
+    setInput('');
 
-    try {
-      setInput('');
+    // 立即添加用户消息到 UI（不等 AI 回复）
+    const userName = ctx.userName || getUserName();
+    const userMsg: GroupChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text,
+      senderId: '<user>',
+      senderName: userName,
+      time: Date.now(),
+    };
+    setMessages(prev => [...prev, userMsg]);
 
-      // 构建群聊上下文
-      const groupCtx: GroupChatContext = {
-        ...ctx,
-        members: groupMembers,
-        groupName: sessionInfo.name,
-      };
+    // 异步生成 AI 回复
+    void (async () => {
+      try {
+        // 构建群聊上下文（使用从壳脚本传来的 userName）
+        const groupCtx: GroupChatContext = {
+          ...ctx,
+          members: groupMembers,
+          groupName: sessionInfo.name,
+          userName: userName,
+        };
 
-      // 调用 groupChat 模块生成回复（会自动保存消息）
-      await generateGroupChatReplies(groupCtx, text, chatScopeId);
+        // 调用 groupChat 模块生成回复（会自动保存消息）
+        await generateGroupChatReplies(groupCtx, text, chatScopeId, sessionInfo.id);
 
-      // 重新加载消息列表
-      const allMessages = await loadWeChatThreadForScope(chatScopeId, sessionInfo.id);
-      setMessages(allMessages as GroupChatMessage[]);
+        // 重新加载消息列表（包含 AI 回复）
+        const allMessages = await loadWeChatThreadForScope(chatScopeId, sessionInfo.id);
+        setMessages(allMessages as GroupChatMessage[]);
 
-      // 发群聊消息时主动触发世界书同步（立即通知壳脚本）
-      window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setSendError(msg);
-    } finally {
-      setSending(false);
-    }
+        // 发群聊消息时主动触发世界书同步（立即通知壳脚本）
+        window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setSendError(msg);
+      } finally {
+        setSending(false);
+      }
+    })();
   }, [ctx, sessionInfo, groupMembers, input, sending, chatScopeId]);
 
   // 打开群聊
@@ -367,6 +412,7 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
         ...ctx,
         members: groupMembers,
         groupName: sessionInfo.name,
+        userName: ctx.userName || getUserName(),
       };
 
       const newMsg = await regenerateMemberReply(groupCtx, chatScopeId, sessionInfo.id, msgId);
@@ -386,17 +432,139 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
   // 最后一条消息
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
 
-  // 填入主界面
-  const handleInjectToMain = async () => {
-    if (!lastMsg || injectBusy) return;
-    setInjectBusy(true);
-    try {
-      const { requestInjectToInput } = await import('../../tavernPhoneBridge');
-      await requestInjectToInput(lastMsg.content);
-    } finally {
-      setInjectBusy(false);
+  // ==================== 长按菜单功能 ====================
+
+  // 关闭长按菜单
+  const closeLongPressMenu = useCallback(() => {
+    setLongPressMenu(prev => ({ ...prev, visible: false }));
+    window.setTimeout(() => {
+      setLongPressMenu({ visible: false, messageId: null, messageContent: '', messageRole: null, position: { x: 0, y: 0 } });
+    }, 200);
+  }, []);
+
+  // 长按检测处理
+  const handleMessageTouchStart = useCallback((e: React.TouchEvent | React.MouseEvent, message: GroupChatMessage) => {
+    // 清除之前的定时器
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
     }
-  };
+
+    // 获取坐标
+    let clientX = 0;
+    let clientY = 0;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if ('clientX' in e) {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      setLongPressMenu({
+        visible: true,
+        messageId: message.id,
+        messageContent: message.content,
+        messageRole: message.role,
+        position: { x: clientX, y: clientY },
+      });
+    }, 600); // 600ms 长按阈值
+  }, []);
+
+  const handleMessageTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // 撤回消息
+  const handleRetractMessage = useCallback(async () => {
+    const messageId = longPressMenu.messageId;
+    const messageRole = longPressMenu.messageRole;
+    if (!messageId || !sessionInfo) return;
+
+    closeLongPressMenu();
+    setRetractingIds(prev => new Set(prev).add(messageId));
+
+    try {
+      setMessages(prev => {
+        // 找到被撤回消息的索引
+        const idx = prev.findIndex(m => m.id === messageId);
+        if (idx < 0) return prev;
+
+        // 移除被撤回的消息
+        const next = prev.filter(m => m.id !== messageId);
+
+        // 添加系统提示消息
+        const senderName = prev[idx].senderName || '对方';
+        const systemMsg: GroupChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: messageRole === 'user' ? '你撤回了一条消息' : `${senderName}撤回了一条消息`,
+          senderId: '<system>',
+          senderName: '系统',
+          time: Date.now(),
+        };
+
+        // 在原消息位置插入系统提示
+        next.splice(idx, 0, systemMsg);
+
+        // 保存到存储
+        void saveWeChatThreadForScope(chatScopeId, sessionInfo.id, next);
+
+        // 触发世界书同步
+        window.parent.postMessage({ type: TAVERN_PHONE_MSG.REQUEST_TRIGGER_WB_SYNC }, '*');
+        return next;
+      });
+
+      console.info('[GroupChat] 消息已撤回:', messageId);
+    } finally {
+      setRetractingIds(prev => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
+  }, [longPressMenu.messageId, longPressMenu.messageRole, sessionInfo, chatScopeId, closeLongPressMenu]);
+
+  // 重发消息（重新生成该成员的回复）
+  const handleResendMessage = useCallback(async () => {
+    const messageId = longPressMenu.messageId;
+    if (!messageId || !sessionInfo || !ctx) return;
+
+    closeLongPressMenu();
+
+    // 找到要重发的消息
+    const targetMsg = messages.find(m => m.id === messageId);
+    if (!targetMsg || targetMsg.role !== 'assistant') return;
+
+    setRegeneratingId(messageId);
+    setSendError('');
+
+    try {
+      const groupCtx: GroupChatContext = {
+        ...ctx,
+        members: groupMembers,
+        groupName: sessionInfo.name,
+        userName: ctx.userName || getUserName(),
+      };
+
+      const newMsg = await regenerateMemberReply(groupCtx, chatScopeId, sessionInfo.id, messageId);
+
+      if (newMsg) {
+        // 重新加载消息列表
+        const allMessages = await loadWeChatThreadForScope(chatScopeId, sessionInfo.id);
+        setMessages(allMessages as GroupChatMessage[]);
+      }
+
+      console.info('[GroupChat] 消息已重发:', messageId);
+    } catch (e) {
+      setSendError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRegeneratingId(null);
+    }
+  }, [longPressMenu.messageId, sessionInfo, ctx, groupMembers, messages, chatScopeId, closeLongPressMenu]);
 
   // ==================== 群聊管理功能 ====================
 
@@ -882,17 +1050,6 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
         >
           <Users size={20} />
         </button>
-        {lastMsg && !ctx?.offline && (
-          <button
-            type="button"
-            onClick={handleInjectToMain}
-            disabled={injectBusy}
-            className="shrink-0 flex items-center gap-0.5 rounded-lg px-2 py-1 text-[13px] text-[#576b95] disabled:opacity-40 active:bg-black/5"
-          >
-            {injectBusy ? <Loader2 className="animate-spin" size={16} /> : <ArrowUpFromLine size={16} />}
-            填入
-          </button>
-        )}
       </div>
 
       {/* 消息列表 */}
@@ -900,13 +1057,34 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
         <div className="space-y-3">
           {messages.map(m => {
             const isUser = m.role === 'user';
+            const isSystem = m.role === 'system';
             const senderName = (m as GroupChatMessage).senderName;
             const isLastOne = lastMsg?.id === m.id;
+
+            // 系统消息（如撤回提示）居中显示
+            if (isSystem) {
+              return (
+                <div key={m.id} className="flex justify-center py-1">
+                  <span className="text-[12px] text-gray-400 bg-gray-100/80 px-3 py-1 rounded-full">
+                    {m.content}
+                  </span>
+                </div>
+              );
+            }
 
             return (
               <div
                 key={m.id}
                 className={`flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}
+                onTouchStart={(e) => handleMessageTouchStart(e, m as GroupChatMessage)}
+                onTouchEnd={handleMessageTouchEnd}
+                onMouseDown={(e) => handleMessageTouchStart(e, m as GroupChatMessage)}
+                onMouseUp={handleMessageTouchEnd}
+                onMouseLeave={handleMessageTouchEnd}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleMessageTouchStart(e, m as GroupChatMessage);
+                }}
               >
                 {!isUser && (() => {
                   const gm =
@@ -933,7 +1111,7 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                     <span className="text-[10px] text-gray-400 mb-0.5 ml-1">{senderName}</span>
                   )}
                   <div
-                    className={`px-3 py-2 text-[15px] leading-relaxed ${
+                    className={`px-3 py-2 text-[15px] leading-relaxed select-none ${
                       isUser
                         ? 'bg-[#95EC69] text-gray-900 rounded-lg'
                         : 'bg-white text-gray-900 rounded-lg'
@@ -999,6 +1177,45 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           {sending ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
         </button>
       </div>
+
+      {/* 长按菜单 - 微信风格 Action Sheet */}
+      {longPressMenu.visible && (
+        <div
+          className="fixed inset-0 z-100 bg-black/30"
+          onClick={closeLongPressMenu}
+          onTouchStart={closeLongPressMenu}
+        >
+          <div
+            className="absolute bg-white rounded-xl shadow-2xl overflow-hidden min-w-[180px]"
+            style={{
+              left: Math.min(Math.max(longPressMenu.position.x - 90, 16), window.innerWidth - 196),
+              top: Math.min(Math.max(longPressMenu.position.y - 80, 16), window.innerHeight - 150),
+            }}
+          >
+            <div className="flex flex-col">
+              <button
+                type="button"
+                onClick={handleRetractMessage}
+                disabled={retractingIds.has(longPressMenu.messageId || '')}
+                className={`px-5 py-4 text-[17px] text-center text-red-500 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50 ${longPressMenu.messageRole === 'assistant' ? 'border-b border-gray-100' : ''}`}
+              >
+                {retractingIds.has(longPressMenu.messageId || '') ? '撤回中…' : '撤回'}
+              </button>
+              {/* 只有对方消息显示重发选项 */}
+              {longPressMenu.messageRole === 'assistant' && (
+                <button
+                  type="button"
+                  onClick={handleResendMessage}
+                  disabled={regeneratingId === longPressMenu.messageId}
+                  className="px-5 py-4 text-[17px] text-center text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50"
+                >
+                  {regeneratingId === longPressMenu.messageId ? '重发中…' : '重发'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 成员列表弹窗 */}
       {showMemberList && (

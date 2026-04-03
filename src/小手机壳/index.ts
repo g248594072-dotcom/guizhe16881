@@ -45,7 +45,7 @@ import {
   shouldEnableWorldbookMatcher,
 } from './utils/worldbookMatcher';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PHONE_W = 375;
 const PHONE_H = 812;
 const Z_OVERLAY = 30000;
@@ -1267,6 +1267,31 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
 type WbExportedMsg = { id: string; role: 'user' | 'assistant' | 'system'; content: string; time: number };
 type WbExportedThread = { roleId: string; conversationId: string; messages: WbExportedMsg[] };
 
+/** 群聊成员 */
+type WbExportedGroupMember = { id: string; displayName: string };
+
+/** 群聊导出消息（包含发送者信息） */
+type WbExportedGroupMsg = WbExportedMsg & { senderId: string; senderName: string };
+
+/** 群聊导出线程 */
+type WbExportedGroupThread = {
+  session: {
+    id: string;
+    name: string;
+    members: WbExportedGroupMember[];
+    createdAt: number;
+    lastActivity: number;
+  };
+  messages: WbExportedGroupMsg[];
+  lastActivity: number;
+};
+
+/** 综合导出结果：私聊 + 群聊 */
+type WbExportedThreadsResult = {
+  privateThreads: WbExportedThread[];
+  groupThreads: WbExportedGroupThread[];
+};
+
 type WbSyncScriptCfg = {
   enabled: boolean;
   /** 非空则优先使用；否则用当前角色卡绑定的主世界书 */
@@ -1652,6 +1677,142 @@ function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]):
   return '\n' + parts.join('\n');
 }
 
+/**
+ * 格式化群聊世界书条目内容块
+ */
+function formatGroupChatWorldbookBlock(
+  groupName: string,
+  memberNames: string[],
+  msgs: WbExportedGroupMsg[],
+): string {
+  const now = new Date();
+  const timeStr = now.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts: string[] = [];
+  parts.push(`更新时间: ${timeStr}`);
+  parts.push(`群聊名称: ${groupName}`);
+  parts.push(`群成员: ${memberNames.join('、')}`);
+  parts.push('---');
+
+  const groups = groupMessagesByDate(msgs as WbExportedMsg[]);
+  for (const [dateStr, dayMsgs] of groups) {
+    const dateLine = dateStr.replace(/^(\d{4})\/(\d{2})\/(\d{2})$/, (_m, _y, mo, d) => `${mo}月${d}日`);
+    parts.push(`【${dateLine}】`);
+    for (const m of dayMsgs as WbExportedGroupMsg[]) {
+      const t = new Date(m.time);
+      const timeLabel = t.toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+      // 系统消息（如撤回提示）用特殊格式显示
+      if (m.role === 'system') {
+        parts.push(`[${timeLabel}] [${m.content}]`);
+      } else {
+        // 使用发送者名称，玩家显示为"玩家"
+        const who = m.role === 'user' ? '玩家' : (m.senderName || 'AI');
+        parts.push(`[${timeLabel}] ${who}: ${m.content}`);
+      }
+    }
+  }
+
+  return '\n' + parts.join('\n');
+}
+
+/**
+ * 从聊天变量获取群聊上次同步时间
+ */
+function getGroupChatWbSyncLastTimeFromChatVars(
+  vars: Record<string, unknown>,
+  dotPath: string,
+  scopeKey: string,
+  sessionId: string,
+): number {
+  try {
+    const node = getByPath(vars, dotPath) as Record<string, unknown> | undefined;
+    if (!node || typeof node !== 'object') {
+      return 0;
+    }
+    const sc = node[scopeKey] as Record<string, unknown> | undefined;
+    if (!sc || typeof sc !== 'object') {
+      return 0;
+    }
+    const groupNode = sc['group'] as Record<string, unknown> | undefined;
+    if (!groupNode || typeof groupNode !== 'object') {
+      return 0;
+    }
+    const s = groupNode[sessionId] as Record<string, unknown> | undefined;
+    if (!s || typeof s !== 'object') {
+      return 0;
+    }
+    const raw = s.lastSyncTime;
+    if (typeof raw === 'number') {
+      return raw;
+    }
+    if (typeof raw === 'string') {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : 0;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 更新群聊同步指针到聊天变量
+ */
+function mergeGroupChatWbSyncPointerIntoChatVars(
+  vars: Record<string, unknown>,
+  dotPath: string,
+  scopeKey: string,
+  sessionId: string,
+  lastSyncTime: number,
+): Record<string, unknown> {
+  const next = JSON.parse(JSON.stringify(vars)) as Record<string, unknown>;
+  const parts = dotPath.split('.').filter(Boolean);
+  if (parts.length === 0) {
+    return next;
+  }
+  let cur: Record<string, unknown> = next;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    const ex = cur[key];
+    if (ex == null || typeof ex !== 'object' || Array.isArray(ex)) {
+      cur[key] = {};
+    }
+    cur = cur[key] as Record<string, unknown>;
+  }
+  const leaf = parts[parts.length - 1];
+  const root =
+    cur[leaf] != null && typeof cur[leaf] === 'object' && !Array.isArray(cur[leaf])
+      ? (cur[leaf] as Record<string, unknown>)
+      : {};
+  cur[leaf] = root;
+  const byScope =
+    root[scopeKey] != null && typeof root[scopeKey] === 'object' && !Array.isArray(root[scopeKey])
+      ? (root[scopeKey] as Record<string, unknown>)
+      : {};
+  root[scopeKey] = byScope;
+  const groupNode =
+    byScope['group'] != null && typeof byScope['group'] === 'object' && !Array.isArray(byScope['group'])
+      ? (byScope['group'] as Record<string, unknown>)
+      : {};
+  byScope['group'] = groupNode;
+  const prev =
+    groupNode[sessionId] != null && typeof groupNode[sessionId] === 'object' && !Array.isArray(groupNode[sessionId])
+      ? (groupNode[sessionId] as Record<string, unknown>)
+      : {};
+  groupNode[sessionId] = { ...prev, lastSyncTime };
+  return next;
+}
+
 function sanitizeWorldbookEntryName(s: string): string {
   const t = s.replace(/[\r\n]+/g, ' ').trim();
   return t.length > 180 ? `${t.slice(0, 177)}…` : t;
@@ -1886,10 +2047,15 @@ async function syncCharacterAnalysisToWorldbook(
           const next = [...entries];
           const idx = next.findIndex(e => e.uid === existingEntry.uid);
           if (idx >= 0) {
+            // 角色列表：追加内容；其他：替换内容
+            const existingContent = typeof next[idx].content === 'string' ? next[idx].content : '';
+            const newContent = isCharacterList && existingContent
+              ? existingContent + '\n\n' + content
+              : content;
             next[idx] = {
               ...next[idx],
               name: entryName,
-              content,
+              content: newContent,
               enabled: true,
               strategy: strat,
               position,
@@ -1938,6 +2104,7 @@ async function buildWeChatContext(): Promise<{
   recentStorySnippet: string;
   roleStorySummaries: Record<string, string>;
   openAiDefaults: { apiBaseUrl: string | null; model: string | null; apiKey?: string | null; apiName?: string | null };
+  userName: string;
 }> {
   const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
   const defaultMap: Record<string, string> = {
@@ -1983,6 +2150,28 @@ async function buildWeChatContext(): Promise<{
     ? rawModel.trim()
     : tavernApiCfg.model;
 
+  // 获取当前用户名称（{{user}}）
+  let userName = '房东';
+  try {
+    const st = getSillyTavern();
+    if (st) {
+      // 优先使用 name1（酒馆主用户名称）
+      const root = st as Record<string, unknown>;
+      if (typeof root.name1 === 'string' && root.name1.trim()) {
+        userName = root.name1.trim();
+      } else if (typeof st.getContext === 'function') {
+        const ctx = st.getContext() as { name1?: string; user?: { name?: string } } | undefined;
+        if (ctx?.name1) {
+          userName = ctx.name1;
+        } else if (ctx?.user?.name) {
+          userName = ctx.user.name;
+        }
+      }
+    }
+  } catch {
+    // 回退到默认值
+  }
+
   return {
     chatScopeId: getChatScopeId(),
     characterName: cardName,
@@ -1999,6 +2188,7 @@ async function buildWeChatContext(): Promise<{
       apiKey: tavernApiCfg.apiKey ? 'proxy-managed' : null,
       apiName: tavernApiCfg.apiName,
     },
+    userName,
   };
 }
 
@@ -3132,7 +3322,7 @@ $(() => {
     // 如果 iframe 已存在，不要重新加载，直接通过 postMessage 通信
   }
 
-  function requestExportThreadsFromIframe(iframeWin: Window, chatScopeId: string): Promise<WbExportedThread[]> {
+  function requestExportThreadsFromIframe(iframeWin: Window, chatScopeId: string): Promise<WbExportedThreadsResult> {
     return new Promise((resolve, reject) => {
       const requestId = crypto.randomUUID();
       // 消息监听器必须挂在 window.parent（SillyTavern 主页面）上，
@@ -3141,7 +3331,7 @@ $(() => {
       const timer = window.setTimeout(() => {
         shellWindow.removeEventListener('message', onMsg);
         console.warn('[tavern-phone] 导出微信线程超时，跳过世界书同步');
-        resolve([]);
+        resolve({ privateThreads: [], groupThreads: [] });
       }, 8000);
       function onMsg(e: MessageEvent) {
         if (e.source !== iframeWin) {
@@ -3159,7 +3349,21 @@ $(() => {
           reject(new Error(String(e.data.error)));
           return;
         }
-        resolve(Array.isArray(e.data.threads) ? (e.data.threads as WbExportedThread[]) : []);
+        const result = e.data.threads as WbExportedThreadsResult | undefined;
+        if (result && typeof result === 'object') {
+          resolve({
+            privateThreads: Array.isArray(result.privateThreads) ? result.privateThreads : [],
+            groupThreads: Array.isArray(result.groupThreads) ? result.groupThreads : [],
+          });
+        } else if (Array.isArray(e.data.threads)) {
+          // 兼容旧格式：只返回私聊线程数组
+          resolve({
+            privateThreads: e.data.threads as WbExportedThread[],
+            groupThreads: [],
+          });
+        } else {
+          resolve({ privateThreads: [], groupThreads: [] });
+        }
       }
       shellWindow.addEventListener('message', onMsg);
       iframeWin.postMessage({ type: MSG.REQUEST_EXPORT_THREADS_FOR_WB, requestId, chatScopeId }, '*');
@@ -3189,28 +3393,39 @@ $(() => {
     if (!iframeWin) {
       return;
     }
-    let threads: WbExportedThread[];
+    let result: WbExportedThreadsResult;
     try {
-      threads = await requestExportThreadsFromIframe(iframeWin, chatScopeId);
+      result = await requestExportThreadsFromIframe(iframeWin, chatScopeId);
     } catch (e) {
       console.warn('[tavern-phone] 导出微信线程失败', e);
       return;
     }
-    if (threads.length === 0) {
-      console.info('[tavern-phone][wb-sync] ❌ 跳过：IndexedDB 中无任何微信线程（threads 为空）');
+
+    const { privateThreads, groupThreads } = result;
+    const hasPrivate = privateThreads.length > 0;
+    const hasGroup = groupThreads.length > 0;
+
+    if (!hasPrivate && !hasGroup) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：IndexedDB 中无任何微信线程（私聊和群聊都为空）');
       return;
     }
+
+    console.info(`[tavern-phone][wb-sync] 导出完成: ${privateThreads.length} 个私聊, ${groupThreads.length} 个群聊`);
+
     const ctx = await buildWeChatContext();
     const dynamicKeys = buildDynamicSelectiveKeysForWbSync(ctx, cfg);
     const idToName = new Map(ctx.contacts.map(c => [c.id, c.displayName] as const));
     let chatVars = getVariables({ type: 'chat' }) as Record<string, unknown>;
-    const pending: Array<{
+
+    // ========== 处理私聊 ==========
+    const pendingPrivate: Array<{
       contactId: string;
       displayName: string;
       block: string;
       tailId: string | null;
     }> = [];
-    for (const th of threads) {
+
+    for (const th of privateThreads) {
       const displayName = idToName.get(th.roleId) ?? th.roleId;
       const lastId = getWbSyncLastMsgIdFromChatVars(chatVars, cfg.statePath, scopeKey, th.roleId);
       const newMsgs = sliceNewWeChatMessages(th.messages, lastId);
@@ -3219,15 +3434,55 @@ $(() => {
       }
       const block = formatWeChatWorldbookBlock(displayName, newMsgs);
       const tailId = th.messages.length > 0 ? th.messages[th.messages.length - 1].id : null;
-      pending.push({ contactId: th.roleId, displayName, block, tailId });
+      pendingPrivate.push({ contactId: th.roleId, displayName, block, tailId });
     }
-    if (pending.length === 0) {
-      console.info('[tavern-phone][wb-sync] ❌ 跳过：各联系人均无新消息（所有线程已同步过）');
+
+    // ========== 处理群聊 ==========
+    const pendingGroup: Array<{
+      sessionId: string;
+      groupName: string;
+      members: string[];
+      block: string;
+      lastMsgTime: number;
+    }> = [];
+
+    for (const gt of groupThreads) {
+      // 群聊使用 session.id 作为唯一标识
+      const sessionId = gt.session.id;
+      const groupName = gt.session.name;
+      const memberNames = gt.session.members.map(m => m.displayName);
+
+      // 获取上次同步的时间戳
+      const lastSyncTime = getGroupChatWbSyncLastTimeFromChatVars(chatVars, cfg.statePath, scopeKey, sessionId);
+
+      // 筛选新消息（基于消息时间戳）
+      const newMsgs = gt.messages.filter(m => m.time > lastSyncTime);
+      if (newMsgs.length === 0) {
+        continue;
+      }
+
+      const block = formatGroupChatWorldbookBlock(groupName, memberNames, newMsgs);
+      const lastMsgTime = gt.messages.length > 0 ? gt.messages[gt.messages.length - 1].time : 0;
+
+      pendingGroup.push({
+        sessionId,
+        groupName,
+        members: memberNames,
+        block,
+        lastMsgTime,
+      });
+    }
+
+    if (pendingPrivate.length === 0 && pendingGroup.length === 0) {
+      console.info('[tavern-phone][wb-sync] ❌ 跳过：私聊和群聊均无新消息（所有线程已同步过）');
       return;
     }
+
+    console.info(`[tavern-phone][wb-sync] 待同步: ${pendingPrivate.length} 个私聊, ${pendingGroup.length} 个群聊`);
+
     // 确保世界书存在：不存在则自动创建并激活为全局
     console.info('[tavern-phone][wb-sync] → 调用 ensureWorldbookForSync', worldbookName);
-    let wbResult: { template: import('@types/function/worldbook').WorldbookEntry; isNew: boolean } | null = null;
+    let wbResult: { template: WorldbookEntry; isNew: boolean } | null = null;
     try {
       wbResult = await ensureWorldbookForSync(worldbookName);
     } catch (e) {
@@ -3238,10 +3493,6 @@ $(() => {
       console.error('[tavern-phone][wb-sync] ❌ ensureWorldbookForSync 返回 null（同上，已打印过错误）');
       return;
     }
-    if (!wbResult) {
-      console.error('[tavern-phone] 无法创建/读取世界书，同步中止', worldbookName);
-      return;
-    }
     console.info('[tavern-phone][wb-sync] ✅ 世界书存在/已创建，模板条目：', wbResult.template.name);
     const { template } = wbResult;
     const rec = wbSyncRecursionClosed();
@@ -3249,45 +3500,90 @@ $(() => {
       worldbookName,
       entries => {
         let next = [...entries];
-        for (const u of pending) {
+
+        // ========== 同步私聊条目 ==========
+        for (const u of pendingPrivate) {
           const entryName = sanitizeWorldbookEntryName(`${u.displayName}小手机聊天记录摘要`);
           const idx = next.findIndex(e => e.name === entryName);
-            // 聊天记录条目固定蓝灯 + 深度4（不受脚本配置影响）
-            const strat = wbStrategyConstantFromTemplate(template.strategy);
-            strat.scan_depth = 4;
-            if (idx < 0) {
-              const neu: PartialDeep<WorldbookEntry> = {
-                name: entryName,
-                content: u.block,
-                enabled: true,
-                strategy: strat,
-                position: template.position,
-                probability: template.probability ?? 100,
-                recursion: rec,
-                effect: template.effect,
-              };
-              next.push(neu as WorldbookEntry);
-            } else {
-              const e = next[idx];
-              const cur = typeof e.content === 'string' ? e.content : '';
-              next[idx] = {
-                ...e,
-                content: cur + u.block,
-                strategy: strat,
-                recursion: rec,
-              };
-            }
+          // 聊天记录条目固定蓝灯 + 深度4（不受脚本配置影响）
+          const strat = wbStrategyConstantFromTemplate(template.strategy);
+          strat.scan_depth = 4;
+          if (idx < 0) {
+            const neu: PartialDeep<WorldbookEntry> = {
+              name: entryName,
+              content: u.block,
+              enabled: true,
+              strategy: strat,
+              position: template.position,
+              probability: template.probability ?? 100,
+              recursion: rec,
+              effect: template.effect,
+            };
+            next.push(neu as WorldbookEntry);
+          } else {
+            const e = next[idx];
+            const cur = typeof e.content === 'string' ? e.content : '';
+            next[idx] = {
+              ...e,
+              content: cur + u.block,
+              strategy: strat,
+              recursion: rec,
+            };
+          }
         }
+
+        // ========== 同步群聊条目 ==========
+        for (const g of pendingGroup) {
+          const entryName = sanitizeWorldbookEntryName(`${g.groupName}群聊记录摘要`);
+          const idx = next.findIndex(e => e.name === entryName);
+          // 群聊记录条目固定蓝灯 + 深度4
+          const strat = wbStrategyConstantFromTemplate(template.strategy);
+          strat.scan_depth = 4;
+          if (idx < 0) {
+            const neu: PartialDeep<WorldbookEntry> = {
+              name: entryName,
+              content: g.block,
+              enabled: true,
+              strategy: strat,
+              position: template.position,
+              probability: template.probability ?? 100,
+              recursion: rec,
+              effect: template.effect,
+            };
+            next.push(neu as WorldbookEntry);
+          } else {
+            const e = next[idx];
+            const cur = typeof e.content === 'string' ? e.content : '';
+            next[idx] = {
+              ...e,
+              content: cur + g.block,
+              strategy: strat,
+              recursion: rec,
+            };
+          }
+        }
+
         return next;
       },
       { render: 'immediate' },
     );
+
+    // 更新同步指针
     let merged = chatVars;
-    for (const u of pending) {
+    for (const u of pendingPrivate) {
       merged = mergeWbSyncPointerIntoChatVars(merged, cfg.statePath, scopeKey, u.contactId, u.tailId);
     }
+    for (const g of pendingGroup) {
+      merged = mergeGroupChatWbSyncPointerIntoChatVars(merged, cfg.statePath, scopeKey, g.sessionId, g.lastMsgTime);
+    }
     updateVariablesWith(() => merged, { type: 'chat' });
-    console.info('[tavern-phone] 已同步微信增量到世界书', worldbookName, pending.map(p => p.displayName).join(', '));
+
+    const privateNames = pendingPrivate.map(p => p.displayName).join(', ');
+    const groupNames = pendingGroup.map(g => g.groupName).join(', ');
+    console.info('[tavern-phone] 已同步微信增量到世界书', worldbookName,
+      privateNames ? `私聊: ${privateNames}` : '',
+      groupNames ? `群聊: ${groupNames}` : ''
+    );
   }
 
   const api: TavernPhoneApi = {

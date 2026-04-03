@@ -37,8 +37,8 @@ export function useCharacters() {
 
       const currentThought = char.当前内心想法 || char.currentThought || '';
       const traits = normalizeTagMap(char.性格 ?? char.traits);
-      const fetishes = normalizeTagMap(char.性癖 ?? char.fetishes);
-      const sensitiveParts = normalizeTagMap(char.敏感部位 ?? char.sensitiveParts);
+      // 性癖和敏感部位是复杂对象结构（含等级/细节描述等），不走 normalizeTagMap
+      // 它们在下面的 fetishDetails / sensitivePartDetails 中正确解析
       const hiddenFetish = char.隐藏性癖 || char.hiddenFetish || '';
 
       const body = char.身体信息 || {};
@@ -108,8 +108,19 @@ export function useCharacters() {
         },
         currentThought,
         traits,
-        fetishes,
-        sensitiveParts,
+        // 性癖和敏感部位：从复杂对象生成可读的字符串格式供UI展示
+        fetishes: Object.fromEntries(
+          Object.entries(fetishDetails).map(([k, v]) => [
+            k,
+            v.description || `${k}（等级${v.level}）`,
+          ]),
+        ),
+        sensitiveParts: Object.fromEntries(
+          Object.entries(sensitivePartDetails).map(([k, v]) => [
+            k,
+            v.reaction || `${k}（敏感等级${v.level}）`,
+          ]),
+        ),
         hiddenFetish,
         currentPhysiologicalDesc: char.当前综合生理描述 || char.currentPhysiologicalDesc || '',
         fetishDetails,

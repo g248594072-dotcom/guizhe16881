@@ -2983,6 +2983,27 @@ async function handleRegenerateVariablesOnly() {
   { "op": "add", "path": "/路径", "value": 值 }
 ]`;
 
+      // 分析现有角色的空缺字段
+      const characterArchives = currentVariables?.角色档案 || {};
+      const characterGaps: string[] = [];
+      for (const [charId, charData] of Object.entries(characterArchives)) {
+        const gaps: string[] = [];
+        const c = charData as any;
+        if (!c.性格 || Object.keys(c.性格).length === 0) gaps.push('性格（空对象，需填充）');
+        if (!c.性癖 || Object.keys(c.性癖).length === 0) gaps.push('性癖（空对象，需填充）');
+        if (!c.敏感部位 || Object.keys(c.敏感部位).length === 0) gaps.push('敏感部位（空对象，需填充）');
+        if (!c.隐藏性癖 || c.隐藏性癖 === '') gaps.push('隐藏性癖（空字符串，需填充）');
+        if (!c.当前内心想法 || c.当前内心想法 === '') gaps.push('当前内心想法（空，需基于正文推断）');
+        if (!c.当前综合生理描述 || c.当前综合生理描述 === '') gaps.push('当前综合生理描述（空，需基于正文推断）');
+        if (gaps.length > 0) {
+          characterGaps.push(`- ${c.姓名 || charId}: ${gaps.join('、')}`);
+        }
+      }
+
+      const characterGapSection = characterGaps.length > 0
+        ? `## ⚠️ 现有角色档案空缺检测\n以下角色存在空缺的字段，请**务必基于正文内容**进行推断和填充：\n${characterGaps.join('\n')}\n\n`
+        : '';
+
       return `你是一位专门负责游戏变量更新的AI助手。你的任务是根据提供的游戏正文和当前变量数据，生成变量更新指令。
 
 ## 当前变量数据（JSON格式）
@@ -2990,7 +3011,7 @@ async function handleRegenerateVariablesOnly() {
 ${JSON.stringify(currentVariables, null, 2)}
 \`\`\`
 
-${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}## 变量输出格式
+${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}${characterGapSection}## 变量输出格式
 请严格按照以下 JSON Patch 格式输出变量更新：
 \`\`\`json
 ${outputFormat}
@@ -3001,12 +3022,23 @@ ${outputFormat}
 ${maintext}
 </maintext>
 
+## 核心任务（优先级从高到低）
+1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感部位、隐藏性癖、当前内心想法、当前综合生理描述）
+2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
+3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
+4. **更新世界规则**：如有新规则生效或规则状态变化
+
+## 重要原则
+- **优先使用 replace 操作更新现有角色**，而非 insert 创建新条目
+- **绝对禁止**：让性格、性癖、敏感部位保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
+- **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
+
 ## 输出要求
 1. 只输出 <UpdateVariable> 标签及其内容
 2. 不要输出正文、解释或任何其他内容
 3. 使用标准的 JSON Patch 格式（op: replace/add/remove）
 4. 确保 JSON 格式正确无误
-5. 基于"当前变量数据"进行增量更新，只更新被正文明确影响的变量；但当正文中出现新角色（[新增角色]）时，必须生成该角色的完整档案，包括姓名、描写、性格、性癖、敏感部位、隐藏性癖、身体信息（年龄/身高/体重/三围/体质特征）、数值（好感度/发情值/性癖开发值）、当前综合生理描述，不得遗漏任何字段
+5. 检查确认：所有现有角色的空缺字段都已被填充
 
 请输出：
 <UpdateVariable>...</UpdateVariable>`;

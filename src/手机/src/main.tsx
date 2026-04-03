@@ -48,32 +48,8 @@ window.addEventListener('message', event => {
     }
     return;
   }
-  if (event.data?.type !== TAVERN_PHONE_MSG.REQUEST_EXPORT_THREADS_FOR_WB) {
-    return;
-  }
-  const requestId = event.data?.requestId;
-  const chatScopeId = event.data?.chatScopeId;
-  if (typeof requestId !== 'string' || typeof chatScopeId !== 'string') {
-    return;
-  }
-  void (async () => {
-    try {
-      const threads = await exportWeChatThreadsForScope(chatScopeId);
-      window.parent.postMessage(
-        { type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT, requestId, threads },
-        '*',
-      );
-    } catch (e) {
-      window.parent.postMessage(
-        {
-          type: TAVERN_PHONE_MSG.EXPORT_THREADS_FOR_WB_RESULT,
-          requestId,
-          error: e instanceof Error ? e.message : String(e),
-        },
-        '*',
-      );
-    }
-  })();
+  // 注：微信线程导出监听已移至 tavernPhoneBridge.ts 的 initExportThreadsListener()
+  // 由 WeChatApp.tsx 在组件挂载时统一初始化，避免重复监听
 });
 
 // ==================== 初始化 ====================

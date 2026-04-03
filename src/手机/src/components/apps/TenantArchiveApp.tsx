@@ -269,17 +269,28 @@ export default function TenantArchiveApp({
     void load();
   }, [load]);
 
+  // 监听分析队列状态变化
   useEffect(() => {
     const scheduler = getAnalysisScheduler();
     const update = (queue: typeof import('../../characterArchive/analysisScheduler').AnalysisTask[]) => {
       const hasActive = queue.some(t => t.status === 'pending' || t.status === 'running');
-      if (!hasActive) {
+      const hasError = queue.some(t => t.status === 'error');
+      const total = queue.length;
+      const done = queue.filter(t => t.status === 'done').length;
+
+      console.log(`[TenantArchive] 队列状态: 总计=${total}, 完成=${done}, 进行中=${hasActive ? '是' : '否'}, 错误=${hasError ? '是' : '否'}`);
+
+      if (!hasActive && total > 0) {
+        // 所有任务已完成（或有错误）
+        console.log('[TenantArchive] 所有分析任务已完成');
         setAnalyzing(false);
+        // 完成后刷新角色列表
+        void load();
       }
     };
     const unsub = scheduler.on(update);
     return unsub;
-  }, []);
+  }, [load]);
 
   const handleAnalyze = useCallback(() => {
     if (!selected) return;
@@ -309,15 +320,35 @@ export default function TenantArchiveApp({
   /** 一键分析全部角色 */
   const handleAnalyzeAll = useCallback(() => {
     if (characters.length === 0) return;
+    console.log(`[TenantArchive] 开始批量分析 ${characters.length} 个角色`);
     setAnalyzing(true);
     const scheduler = getAnalysisScheduler();
+
+    // 检查队列中是否已有这些角色的任务，避免重复添加
+    const existingQueue = scheduler.getQueueStatus();
+    const existingIds = new Set(existingQueue.map(t => t.characterId));
+
+    // 只添加尚未在队列中的角色
+    let addedCount = 0;
     for (const char of characters) {
+      if (existingIds.has(char.id)) {
+        console.log(`[TenantArchive] 跳过已在队列中的角色: ${char.name}`);
+        continue;
+      }
+      console.log(`[TenantArchive] 添加分析任务: ${char.name} (${char.id})`);
       scheduler.addTask({
         type: 'ANALYZE_CHARACTER',
         priority: 'HIGH',
         characterId: char.id,
         characterName: char.name,
       });
+      addedCount++;
+    }
+
+    if (addedCount === 0) {
+      console.log('[TenantArchive] 所有角色都已在分析队列中');
+    } else {
+      console.log(`[TenantArchive] 已添加 ${addedCount} 个新分析任务到队列`);
     }
   }, [characters]);
 

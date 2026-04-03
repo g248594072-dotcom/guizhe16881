@@ -8,6 +8,27 @@
  */
 
 import type { WeChatStoredMessage } from './weChatStorage';
+
+/**
+ * 获取当前用户名称（从酒馆全局对象或回退到默认值）
+ */
+function getUserName(): string {
+  try {
+    // @ts-ignore - SillyTavern is global
+    const st = (window as any).SillyTavern;
+    if (st?.name1) {
+      return String(st.name1).trim();
+    }
+    // 尝试从 user 对象获取
+    if (st?.user?.name) {
+      return String(st.user.name).trim();
+    }
+  } catch {
+    // ignore
+  }
+  // 回退：检查上下文中是否有用户名称
+  return '房东';
+}
 import {
   completeGroupChatReply,
   parseGroupChatReply,
@@ -457,17 +478,20 @@ export async function generateGroupChatReplies(
     sender: (m as GroupChatMessage).senderName,
   }));
 
+  // 获取当前用户名称
+  const userName = getUserName();
+
   // 构建带用户消息的历史
   const userMsg: GroupChatMessage = {
     id: crypto.randomUUID(),
     role: 'user',
     content: userMessage,
     senderId: '<user>',
-    senderName: '房东',
+    senderName: userName,
     time: Date.now(),
   };
   const fullHistory = [...history, userMsg];
-  const fullHistoryForApi = [...historyForApi, { role: 'user' as const, content: userMessage, sender: '房东' }];
+  const fullHistoryForApi = [...historyForApi, { role: 'user' as const, content: userMessage, sender: userName }];
 
   // 保存用户消息
   await saveWeChatThreadForScope(chatScopeId, session.id, fullHistory);
@@ -501,10 +525,15 @@ export async function generateGroupChatReplies(
         { regenerate: false },
       );
 
-      // 解析回复（可能包含多个成员的消息）
-      const parsedReplies = parseGroupChatReply(replyContent, session.members.map(m => m.displayName));
+      // 解析回复（传入预期发送者以修正可能的身份混淆）
+      const parsedReplies = parseGroupChatReply(
+        replyContent,
+        session.members.map(m => m.displayName),
+        member.displayName, // 预期发送者
+      );
 
       for (const parsed of parsedReplies) {
+        // 使用解析到的发送者，但确保是有效成员
         const senderMember = session.members.find(m => m.displayName === parsed.sender) || member;
         const msg: GroupChatMessage = {
           id: crypto.randomUUID(),
