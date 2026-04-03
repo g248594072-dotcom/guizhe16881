@@ -88,6 +88,17 @@ function classifyTagBalance(
   }
 
   if (open === close) {
+    // option 标签：只要有一个闭合就算绿
+    if (tag === 'option' && close >= 1) {
+      return {
+        tag,
+        isValid: true,
+        severity: 'ok',
+        isOpen: true,
+        isClosed: true,
+        message: close === 1 ? `${angle} 仅 1 组开闭，正确` : `${angle} 共 ${open} 组开闭，正确`,
+      };
+    }
     if (open === 1) {
       return {
         tag,
