@@ -51,13 +51,11 @@ const OPENING_MAINTEXT_REQUEST = `<request>
  */
 export async function initializeGameVariables(formData: OpeningFormData): Promise<boolean> {
   try {
-    // 获取0层变量表（如果不存在则创建）
-    let variables: any;
+    // 检查0层变量是否存在（updateVariablesWith 会自动创建）
     try {
-      variables = getVariables({ type: 'message', message_id: 0 });
-    } catch (err) {
-      console.warn('⚠️ 0层消息不存在，将在更新时创建', err);
-      variables = { stat_data: {} };
+      getVariables({ type: 'message', message_id: 0 });
+    } catch {
+      // 0层消息不存在，updateVariablesWith 会在更新时创建
     }
 
     // 使用 updateVariablesWith 更新0层变量
@@ -120,9 +118,9 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   const sceneDesc = formData.sceneDescription || '神秘的未知场所';
   const openingDetail = String(formData.openingSceneDetail ?? '').trim();
 
-  const rules = formData.selectedRules ?? [];
-  const presetRules = rules.filter((r: { isCustom?: boolean }) => !r.isCustom);
-  const customRules = rules.filter((r: { isCustom?: boolean }) => r.isCustom);
+  const rules = (formData.selectedRules ?? []) as Array<{ name: string; desc: string; isCustom?: boolean }>;
+  const presetRules = rules.filter(r => !r.isCustom);
+  const customRules = rules.filter(r => r.isCustom);
   const characters = formData.characters ?? [];
 
   const ruleLinesForNarrative: string[] = [];
@@ -252,6 +250,28 @@ ${OPENING_MAINTEXT_REQUEST}
 - **正文与变量一致**：正文若已写生理/情绪/好感等，须在「数值」「当前综合生理描述」（必要时「当前内心想法」）中反映。
 - **格式**：勿在 \`<JSONPatch>\` 数组外夹带假 JSON；\`<Analysis>\` 语言与篇幅若角色卡另有规定，从其规定。
 
+## 五、玩家行动后的强制变量更新要求（**重要**）
+玩家已发送第一条行动消息。AI 在回复本次玩家输入时，**必须在回复末尾输出完整的变量更新块**。
+
+**角色档案完整性检查清单**（每个角色必须满足，禁止留空）：
+- **姓名**：已确定的角色名
+- **状态**：「出场中」或「暂时退场」
+- **描写**：角色的外貌、衣着、当前姿态等描写
+- **当前内心想法**：角色当前的心理活动
+- **性格**：至少一条性格特征，如 \`{"害羞": "容易脸红，不敢直视他人"}\`
+- **性癖**：至少一条性癖，如 \`{"被注视": "被人注视时会感到紧张"}\`
+- **敏感部位**：至少一个敏感部位，如 \`{"耳朵": "被轻触时会颤抖"}\`
+- **隐藏性癖**：字符串，可为空字符串但必须是字符串类型
+- **身体信息**：年龄、身高、体重、三围、体质特征
+- **数值**：好感度、发情值、性癖开发值（均须为数字）
+- **当前综合生理描述**：角色当前的身体状态描述
+
+**强制要求**：
+1. 每个角色上述字段**必须全部存在**，不能为空对象或缺失
+2. 性格、性癖、敏感部位**每个至少包含一条**（不得为空对象 \`{}\`）
+3. 回复末尾必须包含完整的 \`<UpdateVariable>\` 块，内含 \`<Analysis>\` 和 \`<JSONPatch>\`
+4. 如有任何字段不满足，本次回复视为不完整，需补充修正
+
 <maintext>
 [正在发生的现场剧情，须覆盖清单全部条目；写法遵守「二（续）」]
 </maintext>
@@ -310,50 +330,6 @@ export async function createOpeningStoryMessage(formData: OpeningFormData): Prom
   } catch (error) {
     console.error('❌ [gameInitializer] 准备开局提示词失败:', error);
     return { success: false };
-  }
-}
-
-/**
- * 管理世界书条目
- * 根据玩家选择的配置启用/禁用对应的世界书条目
- */
-async function manageWorldbookEntries(formData: OpeningFormData): Promise<void> {
-  try {
-    const worldbookName = '规则系统'; // 根据实际情况修改
-    let entries: any[];
-
-    try {
-      entries = await getWorldbook(worldbookName);
-    } catch (err) {
-      console.warn('⚠️ [gameInitializer] 世界书不存在或为空:', err);
-      return;
-    }
-
-    if (!entries || entries.length === 0) {
-      console.warn('⚠️ [gameInitializer] 世界书条目为空');
-      return;
-    }
-
-    // 根据配置更新条目启用状态
-    const updatedEntries = entries.map(entry => {
-      // 根据启用选项决定是否启用条目
-      if (entry.title?.includes('世界规则') && !formData.enableWorldRules) {
-        return { ...entry, enable: false };
-      }
-      if (entry.title?.includes('区域规则') && !formData.enableRegionalRules) {
-        return { ...entry, enable: false };
-      }
-      if (entry.title?.includes('个人规则') && !formData.enablePersonalRules) {
-        return { ...entry, enable: false };
-      }
-      return entry;
-    });
-
-    await replaceWorldbook(worldbookName, updatedEntries, { render: 'debounced' });
-    console.log('✅ [gameInitializer] 世界书条目更新完成');
-  } catch (error) {
-    console.error('❌ [gameInitializer] 管理世界书条目失败:', error);
-    throw error;
   }
 }
 

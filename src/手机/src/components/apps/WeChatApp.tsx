@@ -1541,7 +1541,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
       {/* 长按菜单 - 微信风格 Action Sheet */}
       {longPressMenu.visible && (
         <div
-          className="fixed inset-0 z-[100] bg-black/30"
+          className="fixed inset-0 z-100 bg-black/30"
           onClick={closeLongPressMenu}
           onTouchStart={closeLongPressMenu}
         >

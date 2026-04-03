@@ -60,7 +60,7 @@ export default function NewsApp({ onClose }: { onClose: () => void }) {
           <h2 className="text-[22px] font-bold leading-tight mb-2 text-black">The Future of AI: What to Expect in the Next Decade</h2>
           <p className="text-[15px] text-gray-600 mb-3 line-clamp-2">Experts predict massive shifts in how we interact with technology, from personalized AI assistants to autonomous systems.</p>
           <div className="flex items-center justify-between text-[13px] text-gray-500">
-            <span className="font-medium text-black">Wired â 2h ago</span>
+            <span className="font-medium text-black">Wired • 2h ago</span>
             <div className="flex gap-3">
               <button><Bookmark size={16} /></button>
               <button><Share size={16} /></button>
@@ -78,11 +78,11 @@ export default function NewsApp({ onClose }: { onClose: () => void }) {
                   <h3 className="text-base font-semibold leading-snug mb-2 line-clamp-3">{item.title}</h3>
                 </div>
                 <div className="flex items-center justify-between text-xs text-gray-500">
-                  <span>{item.source} â {item.time}</span>
+                  <span>{item.source} • {item.time}</span>
                   <button><Bookmark size={14} /></button>
                 </div>
               </div>
-              <img src={item.image} alt={item.title} className="w-24 h-24 object-cover rounded-lg flex-shrink-0" />
+              <img src={item.image} alt={item.title} className="w-24 h-24 object-cover rounded-lg shrink-0" />
             </div>
           ))}
         </div>

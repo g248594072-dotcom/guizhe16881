@@ -1334,6 +1334,8 @@ const isGenerating = ref(false);
 const isRegenerating = ref(false); // 重 roll 中，用于显示「正在重ROLL请稍等」遮罩与正文虚化
 /** 长按重 ROLL 生成完成后：在标签弹窗「确认」写入楼层后强制刷新一次（避免 messageId 未变导致 loadMessageContent 跳过） */
 const refreshFromRerollAfterTagConfirm = ref(false);
+/** 单独重roll变量模式：只更新变量，不修改正文/选项/sum，更新现有消息而不是创建新消息 */
+const isVariableRerollOnly = ref(false);
 const streamTextBuffer = ref('');
 
 // 游戏消息相关状态
@@ -2259,6 +2261,87 @@ async function onRecoverLastUserMessage() {
 }
 
 /**
+ * 从 UpdateVariable 块中提取 JSON Patch 内容
+ */
+function extractJsonPatchFromUpdateVariable(message: string): Array<{op: string; path: string; value?: any; from?: string}> | null {
+  const match = message.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/i);
+  if (!match) return null;
+
+  try {
+    const jsonStr = match[1].trim();
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch (e) {
+    console.warn('⚠️ [App] JSON Patch 解析失败:', e);
+    return null;
+  }
+}
+
+/**
+ * 应用 JSON Patch 到对象（支持 replace, add, remove, move, copy）
+ */
+function applyJsonPatch(target: any, patches: Array<{op: string; path: string; value?: any; from?: string}>): void {
+  for (const patch of patches) {
+    const pathParts = patch.path.replace(/^\//, '').split('/');
+
+    switch (patch.op) {
+      case 'replace':
+      case 'add': {
+        let current = target;
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const part = pathParts[i];
+          if (!(part in current)) {
+            current[part] = {};
+          }
+          current = current[part];
+        }
+        const lastPart = pathParts[pathParts.length - 1];
+        current[lastPart] = patch.value;
+        break;
+      }
+      case 'remove': {
+        let current = target;
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const part = pathParts[i];
+          if (!(part in current)) break;
+          current = current[part];
+        }
+        const lastPart = pathParts[pathParts.length - 1];
+        delete current[lastPart];
+        break;
+      }
+      case 'move': {
+        if (!patch.from) break;
+        const fromParts = patch.from.replace(/^\//, '').split('/');
+        let source = target;
+        for (let i = 0; i < fromParts.length - 1; i++) {
+          const part = fromParts[i];
+          if (!(part in source)) break;
+          source = source[part];
+        }
+        const value = source[fromParts[fromParts.length - 1]];
+        // 设置目标路径
+        let current = target;
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const part = pathParts[i];
+          if (!(part in current)) {
+            current[part] = {};
+          }
+          current = current[part];
+        }
+        current[pathParts[pathParts.length - 1]] = value;
+        // 删除源
+        delete source[fromParts[fromParts.length - 1]];
+        break;
+      }
+    }
+  }
+}
+
+/**
  * 若消息文本含 &lt;UpdateVariable&gt;，以 baseMvu 为基线解析并写入指定楼层（与 assistant 解析路径一致）。
  * 用于用户消息内自带的变量补丁（例如开局说明里附带的 JSON Patch）。
  */
@@ -2268,7 +2351,6 @@ async function applyMvuParseToMessageFloor(
   messageId: number,
 ): Promise<void> {
   if (!/<UpdateVariable>/i.test(messageText)) return;
-  if (typeof Mvu?.parseMessage !== 'function') return;
   try {
     await waitGlobalInitialized('Mvu');
     let baseForParse: Mvu.MvuData;
@@ -2277,7 +2359,22 @@ async function applyMvuParseToMessageFloor(
     } catch {
       baseForParse = JSON.parse(JSON.stringify(baseMvu)) as Mvu.MvuData;
     }
-    const parsed = await Mvu.parseMessage(messageText, baseForParse);
+
+    let parsed: Mvu.MvuData | null = null;
+
+    // 首先尝试解析 <JSONPatch> 格式
+    const jsonPatches = extractJsonPatchFromUpdateVariable(messageText);
+    if (jsonPatches) {
+      console.log('✅ [App] 用户消息检测到 <JSONPatch> 格式，手动应用变量更新...');
+      parsed = JSON.parse(JSON.stringify(baseForParse));
+      if (!parsed.stat_data) parsed.stat_data = {};
+      applyJsonPatch(parsed.stat_data, jsonPatches);
+      console.log('✅ [App] 用户消息 JSON Patch 已手动应用');
+    } else if (typeof Mvu?.parseMessage === 'function') {
+      // 回退到 MVU 的 parseMessage（处理 _.set() 格式）
+      parsed = await Mvu.parseMessage(messageText, baseForParse);
+    }
+
     if (!parsed) {
       console.log('ℹ️ [App] 消息含 <UpdateVariable> 但 parseMessage 未产生新数据，楼层:', messageId);
       return;
@@ -2940,51 +3037,22 @@ ${maintext}
     // 直接应用变量更新（像“重试额外模型解析”一样，不需要弹窗确认）
     console.log('🔄 [App] 直接应用变量更新到楼层:', info.messageId);
 
-    const withoutOld = filtered.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
-    const updatedMessage = `${withoutOld}\n\n<UpdateVariable>\n${updateVariable.trim()}\n</UpdateVariable>`;
+    // 构建完整消息：保留原正文、选项、sum，只替换变量部分
+    const withoutOldVariable = filtered.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
+    const updatedMessage = `${withoutOldVariable}\n\n<UpdateVariable>\n${updateVariable.trim()}\n</UpdateVariable>`;
 
-    // 使用 MVU 方式直接更新变量数据（不修改消息内容，避免楼层重新渲染）
-    try {
-      await waitGlobalInitialized('Mvu');
-      const base = baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(info.messageId - 1, 0) });
+    // 保存到快照，设置标记，打开标签验证弹窗（与handleRegenerate保持一致）
+    lastGenerationRaw.value = updatedMessage;
+    refreshFromRerollAfterTagConfirm.value = true;
+    isVariableRerollOnly.value = true; // 标记这是单独重roll变量模式
+    openTagValidationDialog(extractFilteredContent(updatedMessage));
 
-      console.log('🔄 [App] 使用 Mvu.parseMessage 解析变量更新...');
-      const parsed = (typeof Mvu?.parseMessage === 'function')
-        ? await Mvu.parseMessage(updatedMessage, base)
-        : null;
-
-      if (parsed) {
-        console.log('✅ [App] MVU 解析成功，准备使用 replaceMvuData 写回变量...');
-        // 关键：使用 Mvu.replaceMvuData 直接替换变量数据，不修改消息内容
-        await Mvu.replaceMvuData(parsed, { type: 'message', message_id: info.messageId });
-        console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', info.messageId);
-      } else {
-        console.warn('⚠️ [App] MVU 解析返回空，跳过写回变量');
-      }
-    } catch (e) {
-      console.warn('⚠️ [App] MVU 方式更新变量失败，尝试降级到 replaceVariables:', e);
-      // 降级方案：使用 replaceVariables
-      try {
-        await waitGlobalInitialized('Mvu');
-        const base = baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(info.messageId - 1, 0) });
-        const parsed = await Mvu.parseMessage(updatedMessage, base);
-        if (parsed) {
-          await replaceVariables(parsed, { type: 'message', message_id: info.messageId });
-          console.log('✅ [App] 变量已通过 replaceVariables 降级方案应用到楼层');
-        }
-      } catch (e2) {
-        console.error('❌ [App] 降级方案也失败:', e2);
-        throw e2;
-      }
-    }
-
-    // 轻量级刷新界面
-    currentMessageId.value = undefined;
-    await loadMessageContent();
-    toastr.success('变量已更新（重试额外模型解析）');
+    console.log('✅ [App] 单独重roll变量：已生成新变量并打开标签验证弹窗');
   } catch (error) {
     console.error('❌ [App] 单独重roll变量失败:', error);
     toastr.error('单独重roll变量失败: ' + String(error));
+    refreshFromRerollAfterTagConfirm.value = false;
+    isVariableRerollOnly.value = false;
     loadMessageContent();
   } finally {
     isGenerating.value = false;
@@ -3022,12 +3090,22 @@ async function confirmVariableRerollApply() {
     try {
       await waitGlobalInitialized('Mvu');
       const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
-      
-      console.log('🔄 [App] 使用 Mvu.parseMessage 解析变量更新...');
-      const parsed = (typeof Mvu?.parseMessage === 'function')
-        ? await Mvu.parseMessage(updatedMessage, base)
-        : null;
-        
+
+      // 首先尝试手动解析 <JSONPatch> 格式
+      let parsed: Mvu.MvuData | null = null;
+      const jsonPatches = extractJsonPatchFromUpdateVariable(updatedMessage);
+      if (jsonPatches && base) {
+        console.log('🔄 [App] 检测到 <JSONPatch> 格式，手动应用变量更新...');
+        parsed = JSON.parse(JSON.stringify(base));
+        if (!parsed.stat_data) parsed.stat_data = {};
+        applyJsonPatch(parsed.stat_data, jsonPatches);
+        console.log('✅ [App] JSON Patch 已手动应用');
+      } else if (typeof Mvu?.parseMessage === 'function') {
+        // 回退到 MVU 的 parseMessage
+        console.log('🔄 [App] 使用 Mvu.parseMessage 解析变量更新...');
+        parsed = await Mvu.parseMessage(updatedMessage, base);
+      }
+
       if (parsed) {
         console.log('✅ [App] MVU 解析成功，准备使用 replaceMvuData 写回变量...');
         // 关键修改：使用 Mvu.replaceMvuData 直接替换变量数据，不修改消息内容
@@ -3042,7 +3120,18 @@ async function confirmVariableRerollApply() {
       try {
         await waitGlobalInitialized('Mvu');
         const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
-        const parsed = await Mvu.parseMessage(updatedMessage, base);
+
+        // 降级方案也先尝试 JSON Patch
+        let parsed: Mvu.MvuData | null = null;
+        const jsonPatches = extractJsonPatchFromUpdateVariable(updatedMessage);
+        if (jsonPatches && base) {
+          parsed = JSON.parse(JSON.stringify(base));
+          if (!parsed.stat_data) parsed.stat_data = {};
+          applyJsonPatch(parsed.stat_data, jsonPatches);
+        } else if (typeof Mvu?.parseMessage === 'function') {
+          parsed = await Mvu.parseMessage(updatedMessage, base);
+        }
+
         if (parsed) {
           await replaceVariables(parsed, { type: 'message', message_id: pending.messageId });
           console.log('✅ [App] 变量已通过 replaceVariables 降级方案应用到楼层');
@@ -3440,13 +3529,56 @@ async function onTagDialogIgnore() {
   isVariablePersistInProgress.value = true;
 
   try {
-    await recordAssistantMessage(snapshotRaw);
-    await normalizeLatestChineseStatData();
-    await runShujukuManualUpdateAfterAssistantSaved();
+    // 单独重roll变量模式：更新现有消息而不是创建新消息
+    if (isVariableRerollOnly.value && currentMessageInfo.value.messageId !== undefined) {
+      const messageId = currentMessageInfo.value.messageId;
+      console.log('🔄 [App] 单独重roll变量模式：更新现有楼层消息:', messageId);
 
-    // 注意：开场白不再手动调用 refineOpeningAssistantWithSecondaryApi
-    // 让MVU框架自动触发额外模型解析
-    // 开场白生成时已通过第二API处理变量，此处直接写入楼层即可
+      // 1. 更新消息内容
+      if (typeof setChatMessages === 'function') {
+        await setChatMessages([{ message_id: messageId, message: snapshotRaw }], { refresh: 'none' });
+        console.log('✅ [App] 已更新楼层消息内容');
+      }
+
+      // 2. 应用变量更新（使用MVU方式）
+      try {
+        await waitGlobalInitialized('Mvu');
+        const baseId = Math.max(messageId - 1, 0);
+        const base = Mvu.getMvuData({ type: 'message', message_id: baseId });
+
+        let parsed: Mvu.MvuData | null = null;
+        const jsonPatches = extractJsonPatchFromUpdateVariable(snapshotRaw);
+        if (jsonPatches && base) {
+          console.log('🔄 [App] 检测到 <JSONPatch> 格式，手动应用变量更新...');
+          parsed = JSON.parse(JSON.stringify(base));
+          if (!parsed.stat_data) parsed.stat_data = {};
+          applyJsonPatch(parsed.stat_data, jsonPatches);
+          console.log('✅ [App] JSON Patch 已手动应用');
+        } else if (typeof Mvu?.parseMessage === 'function') {
+          parsed = await Mvu.parseMessage(snapshotRaw, base);
+        }
+
+        if (parsed) {
+          await Mvu.replaceMvuData(parsed, { type: 'message', message_id: messageId });
+          console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', messageId);
+        }
+      } catch (e) {
+        console.warn('⚠️ [App] 单独重roll变量时应用变量更新失败:', e);
+      }
+
+      // 3. 更新编年史
+      try {
+        const { checkAndUpdateChronicle } = await import('./utils/chronicleUpdater');
+        await checkAndUpdateChronicle();
+      } catch (e) {
+        console.warn('⚠️ [App] 更新编年史失败:', e);
+      }
+    } else {
+      // 正常模式：创建新消息
+      await recordAssistantMessage(snapshotRaw);
+      await normalizeLatestChineseStatData();
+      await runShujukuManualUpdateAfterAssistantSaved();
+    }
   } finally {
     isVariablePersistInProgress.value = false;
   }
@@ -3461,6 +3593,7 @@ async function onTagDialogIgnore() {
   lastMessageIdSnapshot.value = undefined;
   isGenerating.value = false;
   showAiOutput.value = false; // 重置展开状态
+  isVariableRerollOnly.value = false; // 重置单独重roll变量标记
 
   // 如果是开局流程，结束初始化并刷新楼层元数据
   if (wasOpeningPhase) {
@@ -3519,6 +3652,7 @@ async function stopOpeningGeneration() {
 async function onTagDialogRollback() {
   console.log('⏮️ [App] 用户选择回退');
   refreshFromRerollAfterTagConfirm.value = false;
+  isVariableRerollOnly.value = false; // 重置单独重roll变量标记
 
   // 如果是开局流程，删除已创建的 user 消息并回到开局表单
   if (isOpeningPhase.value) {
@@ -3611,8 +3745,21 @@ async function refineOpeningAssistantWithSecondaryApi(
     await waitGlobalInitialized('Mvu');
     const baseId = Math.max(assistantMessageId - 1, 0);
     const base = Mvu.getMvuData({ type: 'message', message_id: baseId });
-    const parsed =
-      typeof Mvu?.parseMessage === 'function' ? await Mvu.parseMessage(updatedMessage, base) : null;
+
+    // 首先尝试手动解析 <JSONPatch> 格式
+    let parsed: Mvu.MvuData | null = null;
+    const jsonPatches = extractJsonPatchFromUpdateVariable(updatedMessage);
+    if (jsonPatches && base) {
+      console.log('✅ [App] 开局精炼变量：检测到 <JSONPatch> 格式，手动应用变量更新...');
+      parsed = JSON.parse(JSON.stringify(base));
+      if (!parsed.stat_data) parsed.stat_data = {};
+      applyJsonPatch(parsed.stat_data, jsonPatches);
+      console.log('✅ [App] 开局精炼变量：JSON Patch 已手动应用');
+    } else if (typeof Mvu?.parseMessage === 'function') {
+      // 回退到 MVU 的 parseMessage
+      parsed = await Mvu.parseMessage(updatedMessage, base);
+    }
+
     if (parsed) {
       await replaceVariables(parsed, { type: 'message', message_id: assistantMessageId });
     }
@@ -3627,12 +3774,12 @@ async function recordAssistantMessage(message: string) {
   try {
     if (typeof createChatMessages === 'function') {
       // 准备数据 - 使用完整 MVU 格式
-      let finalData = { stat_data: {}, display_data: {}, delta_data: {} };
-      let baseData: any = null;
+      let finalData: Mvu.MvuData = { initialized_lorebooks: {}, stat_data: {}, display_data: {}, delta_data: {} };
+      let baseData: Mvu.MvuData | null = null;
       try {
         baseData = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
         if (baseData) {
-          finalData = baseData;
+          finalData = JSON.parse(JSON.stringify(baseData));
         }
       } catch (e) {
         // 忽略错误
@@ -3641,7 +3788,18 @@ async function recordAssistantMessage(message: string) {
       // 关键：解析 <UpdateVariable>，把 JSONPatch 应用到 MVU 数据中
       try {
         await waitGlobalInitialized('Mvu');
-        if (typeof Mvu?.parseMessage === 'function' && baseData) {
+
+        // 首先尝试解析 <JSONPatch> 格式（本界面使用的格式）
+        const jsonPatches = extractJsonPatchFromUpdateVariable(message);
+        if (jsonPatches && baseData) {
+          console.log('✅ [App] 检测到 <JSONPatch> 格式，手动应用变量更新...');
+          // 确保 stat_data 结构存在
+          if (!finalData.stat_data) finalData.stat_data = {};
+          // 应用 JSON Patch 到 stat_data
+          applyJsonPatch(finalData.stat_data, jsonPatches);
+          console.log('✅ [App] JSON Patch 已手动应用到变量数据');
+        } else if (typeof Mvu?.parseMessage === 'function' && baseData) {
+          // 回退到 MVU 的 parseMessage（处理 _.set() 格式）
           const parsed = await Mvu.parseMessage(message, baseData);
           if (parsed && typeof parsed === 'object') {
             finalData = parsed;  // 使用解析后的完整 MVU 数据

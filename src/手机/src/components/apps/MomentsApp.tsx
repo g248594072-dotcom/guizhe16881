@@ -80,7 +80,7 @@ export default function MomentsApp({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col">
           {posts.map((post, index) => (
             <div key={post.id} className={`flex gap-3 px-4 py-4 ${index !== posts.length - 1 ? 'border-b border-gray-100' : ''}`}>
-              <img src={post.avatar} alt={post.author} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+              <img src={post.avatar} alt={post.author} className="w-10 h-10 rounded-lg object-cover shrink-0" />
               <div className="flex-1">
                 <h3 className="text-[15px] font-semibold text-[#576B95] mb-1">{post.author}</h3>
                 <p className="text-[15px] text-gray-900 mb-2 leading-snug">{post.content}</p>
@@ -102,7 +102,7 @@ export default function MomentsApp({ onClose }: { onClose: () => void }) {
                   <div className="bg-[#F7F7F7] rounded text-[13px] mt-2">
                     {post.likes.length > 0 && (
                       <div className="px-2 py-1.5 flex items-start gap-1 text-[#576B95] border-b border-gray-200/50 last:border-0">
-                        <Heart size={14} className="mt-0.5 flex-shrink-0" />
+                        <Heart size={14} className="mt-0.5 shrink-0" />
                         <span className="font-medium">{post.likes.join(', ')}</span>
                       </div>
                     )}
