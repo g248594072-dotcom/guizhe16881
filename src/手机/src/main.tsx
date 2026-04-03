@@ -6,7 +6,7 @@ import { TAVERN_PHONE_MSG } from './tavernPhoneBridge';
 import { exportWeChatThreadsForScope } from './weChatWorldbookExport';
 import { getCharacterAnalyzer } from './characterArchive/characterAnalyzer';
 import { getAnalysisScheduler } from './characterArchive/analysisScheduler';
-import { getTavernPhoneApiConfig, applyOpenAiDefaultsFromParent } from './tavernPhoneApiConfig';
+import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
 import { normalizeApiBaseUrl } from './apiUrl';
 import { migrateLegacyPhoneCharacterAvatars } from './phoneCharacterAvatars';
 import {
@@ -122,18 +122,6 @@ function initAutoSchedule(): void {
   const scheduler = getAnalysisScheduler();
   scheduler.startAutoSchedule(20);
 }
-
-// 监听父窗口下发的 API 默认值
-window.addEventListener('message', (e: MessageEvent) => {
-  if (e.source !== window.parent) {
-    return;
-  }
-  const data = e.data as { type?: string; payload?: { openAiDefaults?: { apiBaseUrl?: string | null; model?: string | null } } };
-  if (data?.type === TAVERN_PHONE_MSG.CONTEXT && data?.payload?.openAiDefaults) {
-    applyOpenAiDefaultsFromParent(data.payload.openAiDefaults);
-    initPhoneApiConfig();
-  }
-});
 
 // 初始化
 initPhoneApiConfig();

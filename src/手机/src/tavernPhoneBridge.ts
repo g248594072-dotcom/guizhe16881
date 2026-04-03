@@ -74,6 +74,7 @@ export type TavernPhoneOpenAiDefaults = {
   apiBaseUrl: string | null;
   apiKey?: string | null;
   model: string | null;
+  apiName?: string | null;
 };
 
 /** 父窗口通过壳脚本注入的角色上下文（与规则/变量联动） */
@@ -179,7 +180,7 @@ function ensureContextListener(): void {
           contacts: [{ id: 'default', displayName: '角色' }],
           recentStorySnippet: '',
           roleStorySummaries: {},
-          openAiDefaults: { apiBaseUrl: null, model: null },
+          openAiDefaults: { apiBaseUrl: null, apiKey: null, model: null, apiName: null },
           currentCharacterAvatarUrl: undefined,
           offline: true,
         });
@@ -191,7 +192,7 @@ function ensureContextListener(): void {
           ...raw,
           recentStorySnippet: raw.recentStorySnippet ?? '',
           roleStorySummaries: raw.roleStorySummaries ?? {},
-          openAiDefaults: raw.openAiDefaults ?? { apiBaseUrl: null, model: null },
+          openAiDefaults: raw.openAiDefaults ?? { apiBaseUrl: null, apiKey: null, model: null, apiName: null },
           currentCharacterAvatarUrl: raw.currentCharacterAvatarUrl,
         });
       } else {
@@ -204,7 +205,7 @@ function ensureContextListener(): void {
           contacts: [{ id: 'default', displayName: '角色' }],
           recentStorySnippet: '',
           roleStorySummaries: {},
-          openAiDefaults: { apiBaseUrl: null, model: null },
+          openAiDefaults: { apiBaseUrl: null, apiKey: null, model: null, apiName: null },
           currentCharacterAvatarUrl: undefined,
           offline: true,
         });
@@ -289,7 +290,7 @@ export function requestTavernPhoneContext(): Promise<TavernPhoneContextPayload> 
         contacts: [{ id: 'default', displayName: '本地预览' }],
         recentStorySnippet: '',
         roleStorySummaries: {},
-        openAiDefaults: { apiBaseUrl: null, model: null },
+        openAiDefaults: { apiBaseUrl: null, apiKey: null, model: null, apiName: null },
         currentCharacterAvatarUrl: undefined,
         offline: true,
       });
@@ -309,7 +310,7 @@ export function requestTavernPhoneContext(): Promise<TavernPhoneContextPayload> 
         contacts: [{ id: 'default', displayName: '本地预览' }],
         recentStorySnippet: '',
         roleStorySummaries: {},
-        openAiDefaults: { apiBaseUrl: null, model: null },
+        openAiDefaults: { apiBaseUrl: null, apiKey: null, model: null, apiName: null },
         currentCharacterAvatarUrl: undefined,
         offline: true,
       });

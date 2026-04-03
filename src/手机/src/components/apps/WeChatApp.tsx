@@ -21,7 +21,7 @@ import {
   initExportThreadsListener,
 } from '../../tavernPhoneBridge';
 import { buildWeChatMessages, completeWeChatReply, summarizePhoneExchangeForMemory } from '../../chatCompletions';
-import { applyOpenAiDefaultsFromParent, getTavernPhoneApiConfig } from '../../tavernPhoneApiConfig';
+import { getTavernPhoneApiConfig } from '../../tavernPhoneApiConfig';
 import {
   initWeChatStorage,
   loadWeChatThreadForScope,
@@ -444,8 +444,9 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     visible: boolean;
     messageId: string | null;
     messageContent: string;
+    messageRole: 'user' | 'assistant' | null;
     position: { x: number; y: number };
-  }>({ visible: false, messageId: null, messageContent: '', position: { x: 0, y: 0 } });
+  }>({ visible: false, messageId: null, messageContent: '', messageRole: null, position: { x: 0, y: 0 } });
   const longPressTimerRef = useRef<number | null>(null);
   const [retractingIds, setRetractingIds] = useState<Set<string>>(new Set());
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
@@ -519,7 +520,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
           openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
         });
         setContextPulledAt(Date.now());
-        applyOpenAiDefaultsFromParent(c.openAiDefaults);
         setChatScopeId(resolveChatScopeId(c.chatScopeId));
       } finally {
         if (!cancelled) {
@@ -560,7 +560,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
           });
           setContextPulledAt(Date.now());
-          applyOpenAiDefaultsFromParent(c.openAiDefaults);
         } catch {
           /* 忽略：仍保留上一帧 ctx */
         }
@@ -746,9 +745,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   /** 长按检测处理 */
   const handleMessageTouchStart = useCallback((e: React.TouchEvent | React.MouseEvent, message: WeChatStoredMessage) => {
-    // 只处理 AI 消息
-    if (message.role !== 'assistant') return;
-
     // 清除之前的定时器
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
@@ -763,6 +759,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         visible: true,
         messageId: message.id,
         messageContent: message.content,
+        messageRole: message.role,
         position: { x: clientX, y: clientY },
       });
     }, 600); // 600ms 长按阈值
@@ -779,13 +776,14 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     setLongPressMenu(prev => ({ ...prev, visible: false }));
     // 延迟清除 messageId，避免菜单消失动画突兀
     window.setTimeout(() => {
-      setLongPressMenu({ visible: false, messageId: null, messageContent: '', position: { x: 0, y: 0 } });
+      setLongPressMenu({ visible: false, messageId: null, messageContent: '', messageRole: null, position: { x: 0, y: 0 } });
     }, 200);
   }, []);
 
   /** 撤回消息 */
   const handleRetractMessage = useCallback(async () => {
     const messageId = longPressMenu.messageId;
+    const messageRole = longPressMenu.messageRole;
     if (!messageId || !selectedContact) return;
 
     closeLongPressMenu();
@@ -793,7 +791,25 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
     try {
       setMessages(prev => {
+        // 找到被撤回消息的索引
+        const idx = prev.findIndex(m => m.id === messageId);
+        if (idx < 0) return prev;
+
+        // 移除被撤回的消息
         const next = prev.filter(m => m.id !== messageId);
+
+        // 添加系统提示消息（像微信那样显示"你撤回了一条消息"或"对方撤回了一条消息"）
+        const systemMsg: WeChatStoredMessage = {
+          id: crypto.randomUUID(),
+          role: 'system',
+          content: messageRole === 'user' ? '你撤回了一条消息' : `${selectedContact.displayName}撤回了一条消息`,
+          time: Date.now(),
+          systemType: 'retract',
+        };
+
+        // 在原消息位置插入系统提示
+        next.splice(idx, 0, systemMsg);
+
         // 保存到 IndexedDB
         void saveWeChatThreadForScope(chatScopeId, selectedContact.id, next);
         // 触发世界书同步
@@ -809,7 +825,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         return next;
       });
     }
-  }, [longPressMenu.messageId, selectedContact, chatScopeId, closeLongPressMenu]);
+  }, [longPressMenu.messageId, longPressMenu.messageRole, selectedContact, chatScopeId, closeLongPressMenu]);
 
   /** 重发消息 */
   const handleResendMessage = useCallback(async () => {
@@ -891,7 +907,6 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
         openAiDefaults: c.openAiDefaults ?? { apiBaseUrl: null, model: null },
       });
       setContextPulledAt(Date.now());
-      applyOpenAiDefaultsFromParent(c.openAiDefaults);
       setChatScopeId(resolveChatScopeId(c.chatScopeId));
     } catch {
       /* 保留上一帧 */
@@ -1071,6 +1086,19 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <div className="space-y-3">
               {messages.map(m => {
                 const isAssistant = m.role === 'assistant';
+                const isSystem = m.role === 'system';
+
+                // 系统消息（如撤回提示）居中显示，无头像
+                if (isSystem) {
+                  return (
+                    <div key={m.id} className="flex justify-center py-1">
+                      <span className="text-[12px] text-gray-400 bg-gray-100/80 px-3 py-1 rounded-full">
+                        {m.content}
+                      </span>
+                    </div>
+                  );
+                }
+
                 return (
                 <div
                   key={m.id}
@@ -1111,7 +1139,20 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                     </div>
                   ) : (
                     <>
-                      <div className="max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black">
+                      <div
+                        className={`max-w-[72%] rounded-lg px-3 py-2 text-[15px] leading-relaxed bg-[#95EC69] text-black select-none ${retractingIds.has(m.id) ? 'opacity-40' : ''}`}
+                        onTouchStart={(e) => handleMessageTouchStart(e, m)}
+                        onTouchEnd={handleMessageTouchEnd}
+                        onMouseDown={(e) => handleMessageTouchStart(e, m)}
+                        onMouseUp={handleMessageTouchEnd}
+                        onMouseLeave={handleMessageTouchEnd}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          handleMessageTouchStart(e, m);
+                          window.setTimeout(() => handleMessageTouchEnd(), 100);
+                        }}
+                        style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                      >
                         <p className="whitespace-pre-wrap wrap-break-word">{m.content}</p>
                         <p className="text-[10px] mt-1 text-gray-600">{formatMsgTime(m.time)}</p>
                       </div>
@@ -1519,18 +1560,21 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                 type="button"
                 onClick={handleRetractMessage}
                 disabled={retractingIds.has(longPressMenu.messageId || '')}
-                className="px-5 py-4 text-[17px] text-center text-red-500 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-100 disabled:opacity-50"
+                className={`px-5 py-4 text-[17px] text-center text-red-500 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50 ${longPressMenu.messageRole === 'assistant' ? 'border-b border-gray-100' : ''}`}
               >
                 {retractingIds.has(longPressMenu.messageId || '') ? '撤回中…' : '撤回'}
               </button>
-              <button
-                type="button"
-                onClick={handleResendMessage}
-                disabled={regeneratingAssistantId === longPressMenu.messageId}
-                className="px-5 py-4 text-[17px] text-center text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50"
-              >
-                {regeneratingAssistantId === longPressMenu.messageId ? '重发中…' : '重发'}
-              </button>
+              {/* 只有对方消息显示重发选项 */}
+              {longPressMenu.messageRole === 'assistant' && (
+                <button
+                  type="button"
+                  onClick={handleResendMessage}
+                  disabled={regeneratingAssistantId === longPressMenu.messageId}
+                  className="px-5 py-4 text-[17px] text-center text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors disabled:opacity-50"
+                >
+                  {regeneratingAssistantId === longPressMenu.messageId ? '重发中…' : '重发'}
+                </button>
+              )}
             </div>
           </div>
         </div>

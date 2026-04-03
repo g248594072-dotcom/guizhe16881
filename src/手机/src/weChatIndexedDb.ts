@@ -11,11 +11,13 @@ const LS_MIGRATION_FLAG = 'tavern-phone:idb-v1-ls-imported';
 
 export type WeChatStoredMessage = {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   time: number;
   /** 对应酒馆聊天楼层中的 last_id；开场白为 1 */
   lastId?: number;
+  /** 系统消息类型，如 'retract' 表示撤回提示 */
+  systemType?: 'retract' | 'other';
 };
 
 export type ThreadRecord = {
@@ -53,11 +55,12 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function isValidMessage(m: unknown): m is WeChatStoredMessage {
+  const role = (m as WeChatStoredMessage).role;
   return (
     m != null &&
     typeof m === 'object' &&
     typeof (m as WeChatStoredMessage).id === 'string' &&
-    ((m as WeChatStoredMessage).role === 'user' || (m as WeChatStoredMessage).role === 'assistant') &&
+    (role === 'user' || role === 'assistant' || role === 'system') &&
     typeof (m as WeChatStoredMessage).content === 'string' &&
     typeof (m as WeChatStoredMessage).time === 'number'
   );

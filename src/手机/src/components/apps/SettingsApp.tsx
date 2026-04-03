@@ -6,7 +6,6 @@ import {
   saveTavernPhoneApiConfig,
   getTavernPhoneApiConfig,
   type TavernPhoneApiConfig,
-  type ResolvedTavernPhoneApiConfig,
 } from '../../tavernPhoneApiConfig';
 import { fetchOpenAiCompatibleModelIds, testOpenAiCompatibleConnection } from '../../openaiCompatible';
 import { THEME_LABELS, type PhoneTheme } from '../../theme';
@@ -23,7 +22,6 @@ export default function SettingsApp({
   currentTheme?: PhoneTheme;
 }) {
   const [cfg, setCfg] = useState<TavernPhoneApiConfig>(() => loadTavernPhoneApiConfig());
-  const [resolvedCfg, setResolvedCfg] = useState<ResolvedTavernPhoneApiConfig>(() => getTavernPhoneApiConfig());
   const [testState, setTestState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [testMessage, setTestMessage] = useState('');
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -32,17 +30,7 @@ export default function SettingsApp({
 
   useEffect(() => {
     saveTavernPhoneApiConfig(cfg);
-    setResolvedCfg(getTavernPhoneApiConfig());
   }, [cfg]);
-
-  useEffect(() => {
-    const sync = () => {
-      setCfg(loadTavernPhoneApiConfig());
-      setResolvedCfg(getTavernPhoneApiConfig());
-    };
-    window.addEventListener('tavern-phone-api-config-changed', sync);
-    return () => window.removeEventListener('tavern-phone-api-config-changed', sync);
-  }, []);
 
   const setField = useCallback(<K extends keyof TavernPhoneApiConfig>(key: K, value: TavernPhoneApiConfig[K]) => {
     setCfg(prev => ({ ...prev, [key]: value }));
@@ -60,28 +48,19 @@ export default function SettingsApp({
   const handleTest = async () => {
     setTestState('loading');
     setTestMessage('');
-    const resolved = getTavernPhoneApiConfig();
+    const cfg = getTavernPhoneApiConfig();
 
-    // 使用酒馆代理连接
-    if (resolved.source === 'tavern') {
-      const r = await testOpenAiCompatibleConnection('', '', true);
-      setTestMessage(r.message);
-      setTestState(r.ok ? 'success' : 'error');
-      return;
-    }
-
-    // 本地配置连接
-    if (!resolved.apiBaseUrl.trim()) {
-      setTestMessage('请先填写 API URL（或开启「使用酒馆插头 API 设置」）');
+    if (!cfg.apiBaseUrl.trim()) {
+      setTestMessage('请先填写 API URL');
       setTestState('error');
       return;
     }
-    if (!resolved.apiKey.trim()) {
-      setTestMessage('请先填写 API Key（或开启「使用酒馆插头 API 设置」）');
+    if (!cfg.apiKey.trim()) {
+      setTestMessage('请先填写 API Key');
       setTestState('error');
       return;
     }
-    const r = await testOpenAiCompatibleConnection(resolved.apiBaseUrl, resolved.apiKey, false);
+    const r = await testOpenAiCompatibleConnection(cfg.apiBaseUrl, cfg.apiKey, false);
     setTestMessage(r.message);
     setTestState(r.ok ? 'success' : 'error');
   };
@@ -91,26 +70,15 @@ export default function SettingsApp({
     setModelsError('');
     setModelOptions([]);
     try {
-      const resolved = getTavernPhoneApiConfig();
+      const cfg = getTavernPhoneApiConfig();
 
-      // 使用酒馆代理获取模型
-      if (resolved.source === 'tavern') {
-        const ids = await fetchOpenAiCompatibleModelIds('', '', true);
-        setModelOptions(ids);
-        if (ids.length === 0) {
-          setModelsError('列表为空（接口返回 0 个模型）');
-        }
-        return;
+      if (!cfg.apiBaseUrl.trim()) {
+        throw new Error('请先填写 API URL');
       }
-
-      // 本地配置获取模型
-      if (!resolved.apiBaseUrl.trim()) {
-        throw new Error('请先填写 API URL（或开启「使用酒馆插头 API 设置」）');
+      if (!cfg.apiKey.trim()) {
+        throw new Error('请先填写 API Key');
       }
-      if (!resolved.apiKey.trim()) {
-        throw new Error('请先填写 API Key（或开启「使用酒馆插头 API 设置」）');
-      }
-      const ids = await fetchOpenAiCompatibleModelIds(resolved.apiBaseUrl, resolved.apiKey, false);
+      const ids = await fetchOpenAiCompatibleModelIds(cfg.apiBaseUrl, cfg.apiKey, false);
       setModelOptions(ids);
       if (ids.length === 0) {
         setModelsError('列表为空（接口返回 0 个模型）');
@@ -145,55 +113,13 @@ export default function SettingsApp({
             <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--settings-desc)' }}>API 配置</p>
           </div>
           <div className="px-3 pb-3 space-y-3 border-t pt-3" style={{ borderColor: 'var(--card-border)' }}>
-            <label className="flex items-center justify-between gap-3 py-1">
-              <span className="text-[15px]" style={{ color: 'var(--settings-title)' }}>使用酒馆当前 API 连接</span>
-              <input
-                type="checkbox"
-                className="h-5 w-5"
-                style={{ accentColor: 'var(--accent)' }}
-                checked={cfg.useTavernApiSettings}
-                onChange={e => setField('useTavernApiSettings', e.target.checked)}
-              />
-            </label>
-            <p className="text-[12px] leading-relaxed" style={{ color: 'var(--settings-desc)' }}>
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>开：</strong>
-              自动使用酒馆当前的 API 地址、模型和密钥（通过壳脚本代理请求，无CORS问题，Key更安全）。<br />
-              <strong className="font-medium" style={{ color: 'var(--settings-title)' }}>关：</strong>
-              手动填写下方 API 配置（可能遇到CORS错误，Key存储在本地）。
-            </p>
-
-            {cfg.useTavernApiSettings && resolvedCfg.source === 'tavern' && (
-              <div className="mt-2 p-3 rounded-lg bg-green-50 border border-green-200">
-                <p className="text-[12px] text-green-700 font-medium mb-1">✅ 已连接酒馆 API（壳脚本代理）</p>
-                <p className="text-[11px] text-green-600">
-                  <span className="font-medium">API：</span>
-                  {resolvedCfg.apiBaseUrl || '（未获取到）'}
-                </p>
-                <p className="text-[11px] text-green-600">
-                  <span className="font-medium">模型：</span>
-                  {resolvedCfg.model || '（未获取到）'}
-                </p>
-                <p className="text-[10px] text-green-500 mt-1">🔒 API Key 不会传递到前端，由壳脚本安全代理</p>
-              </div>
-            )}
-
-            {cfg.useTavernApiSettings && resolvedCfg.source !== 'tavern' && (
-              <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                <p className="text-[12px] text-amber-700">
-                  正在尝试使用酒馆配置，但尚未获取到。请确保：<br />
-                  1. 小手机壳脚本已正确加载<br />
-                  2. 已与小手机建立连接
-                </p>
-              </div>
-            )}
-
-            <label className={`block ${cfg.useTavernApiSettings ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className="block">
               <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>API URL</span>
               <input
                 type="url"
                 autoComplete="off"
                 placeholder="https://api.openai.com/v1"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2 disabled:opacity-60"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -201,16 +127,15 @@ export default function SettingsApp({
                 }}
                 value={cfg.apiBaseUrl}
                 onChange={e => setField('apiBaseUrl', e.target.value)}
-                disabled={cfg.useTavernApiSettings}
               />
             </label>
-            <label className={`block ${cfg.useTavernApiSettings ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className="block">
               <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>API Key</span>
               <input
                 type="password"
                 autoComplete="off"
                 placeholder="sk-…"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2 disabled:opacity-60"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -218,17 +143,16 @@ export default function SettingsApp({
                 }}
                 value={cfg.apiKey}
                 onChange={e => setField('apiKey', e.target.value)}
-                disabled={cfg.useTavernApiSettings}
               />
             </label>
-            <label className={`block ${cfg.useTavernApiSettings ? 'opacity-50 pointer-events-none' : ''}`}>
+            <label className="block">
               <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>模型</span>
               <input
                 type="text"
                 list="tavern-phone-model-datalist"
                 autoComplete="off"
                 placeholder="手动输入或先获取列表后选择"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2 disabled:opacity-60"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -236,7 +160,6 @@ export default function SettingsApp({
                 }}
                 value={cfg.model}
                 onChange={e => setField('model', e.target.value)}
-                disabled={cfg.useTavernApiSettings}
               />
               <datalist id="tavern-phone-model-datalist">
                 {modelOptions.map(id => (
@@ -261,7 +184,7 @@ export default function SettingsApp({
               />
             </label>
 
-            {/* 连接测试按钮移到重试下面 */}
+            {/* 连接测试按钮 */}
             <div className="flex flex-col gap-2 pt-1">
               <div className="flex gap-2">
                 <button
@@ -312,7 +235,7 @@ export default function SettingsApp({
               保存设置
             </button>
 
-            {/* 开关区域 - 简化版，不显示详细解释 */}
+            {/* 开关区域 */}
             <div className="border-t pt-3 mt-2" style={{ borderColor: 'var(--card-border)' }}>
               <p className="text-[13px] font-medium uppercase tracking-wide mb-3" style={{ color: 'var(--settings-desc)' }}>功能开关</p>
 

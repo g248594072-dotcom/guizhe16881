@@ -646,6 +646,245 @@ function getSillyTavernForChatScope(): SillyTavernChatScope | undefined {
   return pickSillyTavernFromWindow(window);
 }
 
+/**
+ * 获取完整的 SillyTavern 对象（用于访问 chatCompletionSettings 等）
+ */
+function getSillyTavern(): typeof SillyTavern | undefined {
+  try {
+    const topWin = window.top;
+    if (topWin && topWin !== window) {
+      const st = (topWin as Window & { SillyTavern?: typeof SillyTavern }).SillyTavern;
+      if (st) {
+        return st;
+      }
+    }
+  } catch {
+    /* 跨域 top */
+  }
+  try {
+    if (window.parent !== window) {
+      const st = (window.parent as Window & { SillyTavern?: typeof SillyTavern }).SillyTavern;
+      if (st) {
+        return st;
+      }
+    }
+  } catch {
+    /* 跨域 parent */
+  }
+  return (window as Window & { SillyTavern?: typeof SillyTavern }).SillyTavern;
+}
+
+function getAccessibleParentDocument(): Document {
+  try {
+    const topWin = window.top;
+    if (topWin?.document) {
+      return topWin.document;
+    }
+  } catch {
+    /* 跨域 top */
+  }
+  try {
+    if (window.parent !== window && window.parent?.document) {
+      return window.parent.document;
+    }
+  } catch {
+    /* 跨域 parent */
+  }
+  return document;
+}
+
+function normalizeChatCompletionSource(raw: unknown): string {
+  const source = String(raw ?? '').trim().toLowerCase();
+  if (!source) {
+    return '';
+  }
+  if (source.includes('deepseek')) {
+    return 'deepseek';
+  }
+  if (source.includes('claude') || source.includes('anthropic')) {
+    return 'claude';
+  }
+  if (source.includes('openrouter')) {
+    return 'openrouter';
+  }
+  if (source.includes('openai')) {
+    return 'openai';
+  }
+  if (source.includes('custom')) {
+    return 'custom';
+  }
+  if (source.includes('mistral')) {
+    return 'mistralai';
+  }
+  return source;
+}
+
+function readChatApiKeyFromDom(doc: Document): string | null {
+  const selectors = [
+    '#api_key_openai',
+    '#api_key_custom',
+    '#api_key_openrouter',
+    '#api_key_deepseek',
+    '#api_key_moonshot',
+    '#api_key_xai',
+    '#api_key_groq',
+    '#api_key_claude',
+    '#api_key_mistralai',
+    '#api_key_makersuite',
+    '#api_key_azure_openai',
+    '#api_key_siliconflow',
+    '#api_key_cohere',
+    '#api_key_perplexity',
+    '#api_key_ai21',
+    '#api_key_fireworks',
+    '#api_key_cometapi',
+    '#api_key_zai',
+    '#api_key_chutes',
+    '#api_key_electronhub',
+    '#api_key_nanogpt',
+    '#api_key_aimlapi',
+    '#api_key_pollinations',
+    '#api_key_vertexai',
+  ];
+  for (const selector of selectors) {
+    try {
+      const el = doc.querySelector(selector) as HTMLInputElement | null;
+      const value = el?.value?.trim();
+      if (value) {
+        return value;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+/**
+ * SillyTavern 对每个 API 提供商使用不同的字段名：
+ * - OpenAI:   api_key_openai,  reverse_proxy, model_openai_select
+ * - DeepSeek: api_key_deepseek, reverse_proxy, (getChatCompletionModel)
+ * - Claude:   api_key_claude,  reverse_proxy, claude_model
+ * - Custom:   api_key_openai,  custom_url,    model_custom_select
+ * 本函数利用酒馆官方 API + 按 source 映射字段来获取配置。
+ */
+function getTavernApiConfig(): {
+  apiUrl: string | null;
+  apiKey: string | null;
+  model: string | null;
+  apiName: string | null;
+} {
+  const result = { apiUrl: null as string | null, apiKey: null as string | null, model: null as string | null, apiName: null as string | null };
+
+  try {
+    const st = getSillyTavern();
+    if (!st) {
+      console.warn('[tavern-phone] SillyTavern 对象未找到');
+      return result;
+    }
+
+    const oai: Record<string, unknown> | undefined = st.chatCompletionSettings as Record<string, unknown> | undefined;
+    if (!oai) {
+      console.warn('[tavern-phone] chatCompletionSettings 为空');
+      return result;
+    }
+
+    const source = normalizeChatCompletionSource(oai.chat_completion_source);
+    const pageDoc = getAccessibleParentDocument();
+    result.apiName = source || 'unknown';
+    console.info('[tavern-phone] chat_completion_source:', source);
+
+    // --- 获取模型 ---
+    try {
+      result.model = st.getChatCompletionModel?.() || st.getChatCompletionModel?.(source) || null;
+    } catch { /* */ }
+    if (!result.model) {
+      for (const f of [`${source}_model`, `model_${source}`, `model_${source}_select`, 'model_openai_select', 'model']) {
+        const v = oai[f];
+        if (typeof v === 'string' && v.trim()) { result.model = v.trim(); break; }
+      }
+    }
+
+    // --- 获取 API Key ---
+    const keyMap: Record<string, string[]> = {
+      openai:      ['api_key_openai'],
+      deepseek:    ['api_key_deepseek'],
+      claude:      ['api_key_claude'],
+      scale:       ['api_key_scale'],
+      makersuite:  ['api_key_makersuite'],
+      mistralai:   ['api_key_mistralai'],
+      cohere:      ['api_key_cohere'],
+      perplexity:  ['api_key_perplexity'],
+      groq:        ['api_key_groq'],
+      custom:      ['api_key_openai'],
+      '01ai':      ['api_key_01ai'],
+      ai21:        ['api_key_ai21'],
+      blockentropy: ['api_key_blockentropy'],
+      zerooneai:   ['api_key_zerooneai'],
+    };
+    for (const f of (keyMap[source] || [])) {
+      const v = oai[f];
+      if (typeof v === 'string' && v.trim()) { result.apiKey = v.trim(); break; }
+    }
+    if (!result.apiKey) {
+      for (const f of ['proxy_password', 'api_key', 'api_key_openai']) {
+        const v = oai[f];
+        if (typeof v === 'string' && v.trim()) { result.apiKey = v.trim(); break; }
+      }
+    }
+    if (!result.apiKey) {
+      result.apiKey = readChatApiKeyFromDom(pageDoc);
+    }
+
+    // --- 获取 API URL ---
+    // 反向代理优先
+    const rp = oai.reverse_proxy;
+    if (typeof rp === 'string' && rp.trim()) {
+      result.apiUrl = rp.trim();
+    }
+    // custom 类型使用 custom_url
+    if (!result.apiUrl && source === 'custom') {
+      for (const f of ['custom_url', 'api_url']) {
+        const v = oai[f];
+        if (typeof v === 'string' && v.trim()) { result.apiUrl = v.trim(); break; }
+      }
+    }
+    // 按 source 使用默认 URL
+    if (!result.apiUrl) {
+      const defaults: Record<string, string> = {
+        openai:     'https://api.openai.com',
+        deepseek:   'https://api.deepseek.com',
+        claude:     'https://api.anthropic.com',
+        openrouter: 'https://openrouter.ai/api',
+        mistralai:  'https://api.mistral.ai',
+        cohere:     'https://api.cohere.ai',
+        perplexity: 'https://api.perplexity.ai',
+        groq:       'https://api.groq.com/openai',
+      };
+      result.apiUrl = defaults[source] || null;
+    }
+    // 最终回退：酒馆官方方法
+    if (!result.apiUrl) {
+      try {
+        const srv = st.getTextGenServer?.(source) || st.getTextGenServer?.();
+        if (typeof srv === 'string' && srv.trim()) { result.apiUrl = srv.trim(); }
+      } catch { /* */ }
+    }
+
+    console.info('[tavern-phone] API 配置结果:', {
+      source,
+      apiUrl: result.apiUrl ? `${result.apiUrl.slice(0, 30)}...` : null,
+      apiKey: result.apiKey ? '***已获取***' : null,
+      model: result.model,
+    });
+
+    return result;
+  } catch (err) {
+    console.error('[tavern-phone] 获取酒馆 API 配置失败:', err);
+    return result;
+  }
+}
+
 function getChatScopeId(): string | null {
   try {
     const st = getSillyTavernForChatScope();
@@ -1025,7 +1264,7 @@ async function mirrorPhoneSummaryToWorldbookIfConfigured(summary: string): Promi
   );
 }
 
-type WbExportedMsg = { id: string; role: 'user' | 'assistant'; content: string; time: number };
+type WbExportedMsg = { id: string; role: 'user' | 'assistant' | 'system'; content: string; time: number };
 type WbExportedThread = { roleId: string; conversationId: string; messages: WbExportedMsg[] };
 
 type WbSyncScriptCfg = {
@@ -1399,9 +1638,14 @@ function formatWeChatWorldbookBlock(displayName: string, msgs: WbExportedMsg[]):
         minute: '2-digit',
         hour12: false,
       });
-      // 玩家消息使用"玩家"，AI 消息使用联系人显示名
-      const who = m.role === 'user' ? '玩家' : displayName;
-      parts.push(`[${timeLabel}] ${who}: ${m.content}`);
+      // 系统消息（如撤回提示）用特殊格式显示
+      if (m.role === 'system') {
+        parts.push(`[${timeLabel}] [${m.content}]`);
+      } else {
+        // 玩家消息使用"玩家"，AI 消息使用联系人显示名
+        const who = m.role === 'user' ? '玩家' : displayName;
+        parts.push(`[${timeLabel}] ${who}: ${m.content}`);
+      }
     }
   }
 
@@ -1693,7 +1937,7 @@ async function buildWeChatContext(): Promise<{
   currentCharacterAvatarUrl?: string;
   recentStorySnippet: string;
   roleStorySummaries: Record<string, string>;
-  openAiDefaults: { apiBaseUrl: string | null; model: string | null };
+  openAiDefaults: { apiBaseUrl: string | null; model: string | null; apiKey?: string | null; apiName?: string | null };
 }> {
   const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
   const defaultMap: Record<string, string> = {
@@ -1726,10 +1970,19 @@ async function buildWeChatContext(): Promise<{
     enrichContactsWithStAvatars(contactsRaw),
     resolveCharacterAvatarDataUrl('current'),
   ]);
+  // 获取酒馆当前的 API 配置（支持多种 API 类型）
+  const tavernApiCfg = getTavernApiConfig();
+
+  // 脚本变量中的配置（用户手动覆盖）优先于酒馆配置
   const rawBase = scriptVars.phone_openai_api_base;
   const rawModel = scriptVars.phone_openai_model;
-  const apiBaseFromScript = typeof rawBase === 'string' && rawBase.trim() ? rawBase.trim() : null;
-  const modelFromScript = typeof rawModel === 'string' && rawModel.trim() ? rawModel.trim() : null;
+  const apiBaseFromScript = typeof rawBase === 'string' && rawBase.trim()
+    ? rawBase.trim()
+    : tavernApiCfg.apiUrl;
+  const modelFromScript = typeof rawModel === 'string' && rawModel.trim()
+    ? rawModel.trim()
+    : tavernApiCfg.model;
+
   return {
     chatScopeId: getChatScopeId(),
     characterName: cardName,
@@ -1740,7 +1993,12 @@ async function buildWeChatContext(): Promise<{
     ...(currentAv ? { currentCharacterAvatarUrl: currentAv } : {}),
     recentStorySnippet: buildRecentStorySnippet(),
     roleStorySummaries: buildRoleStorySummaries(),
-    openAiDefaults: { apiBaseUrl: apiBaseFromScript, model: modelFromScript },
+    openAiDefaults: {
+      apiBaseUrl: apiBaseFromScript,
+      model: modelFromScript,
+      apiKey: tavernApiCfg.apiKey ? 'proxy-managed' : null,
+      apiName: tavernApiCfg.apiName,
+    },
   };
 }
 
@@ -2621,23 +2879,24 @@ $(() => {
       }
       void (async () => {
         try {
-          // 获取酒馆当前的 API 配置
-          const settings = SillyTavern?.chatCompletionSettings;
-          const apiUrl = settings?.api_url || settings?.api_base;
-          const apiKey = settings?.api_key;
-          const model = request.model || settings?.model;
+          // 获取酒馆当前的 API 配置（支持多种 API 类型）
+          const cfg = getTavernApiConfig();
 
-          if (!apiUrl || !apiKey) {
+          if (!cfg.apiUrl || !cfg.apiKey) {
             getIframeEl()?.contentWindow?.postMessage(
               {
                 type: MSG.CHAT_COMPLETION_RESULT,
                 requestId,
-                error: '酒馆未配置 API URL 或 API Key，请在酒馆设置中配置',
+                error: '酒馆未配置 API URL 或 API Key，请在酒馆设置中配置（支持 OpenAI、DeepSeek、豆包、Claude 等）',
               },
               '*',
             );
             return;
           }
+
+          const apiUrl = cfg.apiUrl;
+          const apiKey = cfg.apiKey;
+          const model = request.model || cfg.model || 'default';
 
           // 调用 API
           const url = `${apiUrl.replace(/\/$/, '')}/v1/chat/completions`;
@@ -2693,22 +2952,23 @@ $(() => {
       }
       void (async () => {
         try {
-          // 获取酒馆当前的 API 配置
-          const settings = SillyTavern?.chatCompletionSettings;
-          const apiUrl = settings?.api_url || settings?.api_base;
-          const apiKey = settings?.api_key;
+          // 获取酒馆当前的 API 配置（支持多种 API 类型）
+          const cfg = getTavernApiConfig();
 
-          if (!apiUrl || !apiKey) {
+          if (!cfg.apiUrl || !cfg.apiKey) {
             getIframeEl()?.contentWindow?.postMessage(
               {
                 type: MSG.MODELS_RESULT,
                 requestId,
-                error: '酒馆未配置 API URL 或 API Key',
+                error: '酒馆未配置 API URL 或 API Key（支持 OpenAI、DeepSeek、豆包、Claude 等）',
               },
               '*',
             );
             return;
           }
+
+          const apiUrl = cfg.apiUrl;
+          const apiKey = cfg.apiKey;
 
           // 调用 API 获取模型列表
           const url = `${apiUrl.replace(/\/$/, '')}/v1/models`;

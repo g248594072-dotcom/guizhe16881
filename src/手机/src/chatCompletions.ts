@@ -2,7 +2,6 @@ import { normalizeApiBaseUrl } from './apiUrl';
 import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
 import type { TavernPhoneContextPayload } from './tavernPhoneBridge';
 import type { TavernPhoneWeChatContact } from './tavernPhoneBridge';
-import { requestChatCompletionViaShell, type ChatCompletionRequest } from './tavernPhoneBridge';
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -77,7 +76,7 @@ export function cleanMessageContent(
 
   // 如果是私聊，移除角色名前缀（角色名: 内容）
   if (options?.expectedSender) {
-    const namePattern = new RegExp(`^${escapeRegExp(options.expectedSender)}\\s*[:：]\\s*`, 'i');
+    const namePattern = new RegExp(`^${escapeRegExp(options.expectedSender)}\s*[:：]\s*`, 'i');
     cleaned = cleaned.replace(namePattern, '');
   }
 
@@ -384,30 +383,6 @@ async function fetchChatOnce(
   apiBaseUrl: string,
   apiKey: string,
 ): Promise<string> {
-  const cfg = getTavernPhoneApiConfig();
-
-  // 优先使用壳脚本代理（避免CORS，更安全）
-  if (cfg.source === 'tavern') {
-    try {
-      const request: ChatCompletionRequest = {
-        model: body.model as string,
-        messages: body.messages as ChatCompletionRequest['messages'],
-        temperature: body.temperature as number,
-        max_tokens: body.max_tokens as number,
-      };
-      const response = await requestChatCompletionViaShell(request);
-      const content = response.choices?.[0]?.message?.content;
-      if (typeof content !== 'string') {
-        throw new Error('响应中无 assistant 正文');
-      }
-      return content.trim();
-    } catch (err) {
-      // 如果壳脚本代理失败，回退到直接调用
-      console.warn('[chatCompletions] 壳脚本代理失败，回退到直接调用:', err);
-    }
-  }
-
-  // 直接调用（本地配置或回退）
   const url = `${normalizeApiBaseUrl(apiBaseUrl)}/chat/completions`;
   const res = await fetch(url, {
     method: 'POST',
@@ -435,8 +410,7 @@ async function fetchChatOnce(
 }
 
 /**
- * 使用设置中的 OpenAI 兼容 API 发送一轮对话（含 system 人设）。
- * 优先使用壳脚本代理（无CORS，Key安全），其次使用本地配置。
+ * 使用本地 API 配置发送一轮对话（含 system 人设）
  */
 export async function completeWeChatReply(
   ctx: TavernPhoneContextPayload,
@@ -445,37 +419,8 @@ export async function completeWeChatReply(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  // 使用壳脚本代理（酒馆配置）- 无需检查本地配置
-  if (cfg.source === 'tavern') {
-    const messages = buildWeChatMessages(ctx, historyForApi, options);
-    const request: ChatCompletionRequest = {
-      model: cfg.model,
-      messages,
-      temperature: options?.regenerate ? 0.9 : 0.85,
-      max_tokens: options?.regenerate ? 896 : 768,
-    };
-    let lastErr: Error = new Error('未知错误');
-    const tries = Math.max(1, cfg.maxRetries + 1);
-    for (let i = 0; i < tries; i++) {
-      try {
-        const response = await requestChatCompletionViaShell(request);
-        const content = response.choices?.[0]?.message?.content;
-        if (typeof content !== 'string') {
-          throw new Error('响应中无 assistant 正文');
-        }
-        return content.trim();
-      } catch (e) {
-        lastErr = e instanceof Error ? e : new Error(String(e));
-        // 壳脚本错误不重试
-        throw lastErr;
-      }
-    }
-    throw lastErr;
-  }
-
-  // 使用本地配置
   if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-    throw new Error('请先在「设置」中填写 API URL、API Key 与模型，或开启「使用酒馆插头 API 设置」');
+    throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
   const messages = buildWeChatMessages(ctx, historyForApi, options);
   const body = {
@@ -498,7 +443,6 @@ export async function completeWeChatReply(
 
 /**
  * 群聊回复生成
- * 优先使用壳脚本代理（无CORS，Key安全），其次使用本地配置。
  */
 export async function completeGroupChatReply(
   ctx: GroupChatContext,
@@ -508,36 +452,8 @@ export async function completeGroupChatReply(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  // 使用壳脚本代理（酒馆配置）
-  if (cfg.source === 'tavern') {
-    const messages = buildGroupChatMessages(ctx, historyForApi, targetMember, options);
-    const request: ChatCompletionRequest = {
-      model: cfg.model,
-      messages,
-      temperature: options?.regenerate ? 0.9 : 0.85,
-      max_tokens: options?.regenerate ? 896 : 768,
-    };
-    let lastErr: Error = new Error('未知错误');
-    const tries = Math.max(1, cfg.maxRetries + 1);
-    for (let i = 0; i < tries; i++) {
-      try {
-        const response = await requestChatCompletionViaShell(request);
-        const content = response.choices?.[0]?.message?.content;
-        if (typeof content !== 'string') {
-          throw new Error('响应中无 assistant 正文');
-        }
-        return content.trim();
-      } catch (e) {
-        lastErr = e instanceof Error ? e : new Error(String(e));
-        throw lastErr;
-      }
-    }
-    throw lastErr;
-  }
-
-  // 使用本地配置
   if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-    throw new Error('请先在「设置」中填写 API URL、API Key 与模型，或开启「使用酒馆插头 API 设置」');
+    throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
   const messages = buildGroupChatMessages(ctx, historyForApi, targetMember, options);
   const body = {
@@ -560,18 +476,21 @@ export async function completeGroupChatReply(
 
 /**
  * 为写入聊天变量生成简短摘要
- * 优先使用壳脚本代理（无CORS，Key安全），其次使用本地配置。
  */
 export async function summarizePhoneExchangeForMemory(
   lines: { role: 'user' | 'assistant'; content: string }[],
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
+  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+    throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
+  }
+
   const tail = lines.slice(-16);
   const text = tail
     .map(m => `${m.role === 'user' ? '用户' : '对方'}: ${m.content}`)
     .join('\n');
-  const messages: ChatCompletionRequest['messages'] = [
+  const messages = [
     {
       role: 'system',
       content:
@@ -579,31 +498,6 @@ export async function summarizePhoneExchangeForMemory(
     },
     { role: 'user', content: text },
   ];
-
-  // 使用壳脚本代理（酒馆配置）
-  if (cfg.source === 'tavern') {
-    const request: ChatCompletionRequest = {
-      model: cfg.model,
-      messages,
-      temperature: 0.35,
-      max_tokens: 400,
-    };
-    try {
-      const response = await requestChatCompletionViaShell(request);
-      const content = response.choices?.[0]?.message?.content;
-      if (typeof content !== 'string') {
-        throw new Error('响应中无 assistant 正文');
-      }
-      return content.trim();
-    } catch (e) {
-      throw e instanceof Error ? e : new Error(String(e));
-    }
-  }
-
-  // 使用本地配置
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-    throw new Error('请先在「设置」中填写 API URL、API Key 与模型，或开启「使用酒馆插头 API 设置」');
-  }
   const body = {
     model: cfg.model,
     messages,
@@ -626,18 +520,21 @@ export async function summarizePhoneExchangeForMemory(
 
 /**
  * 生成群聊摘要（供聊天变量/世界书使用）
- * 优先使用壳脚本代理（无CORS，Key安全），其次使用本地配置。
  */
 export async function summarizeGroupChatForMemory(
   lines: { role: 'user' | 'assistant'; content: string; sender?: string }[],
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
+  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+    throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
+  }
+
   const tail = lines.slice(-20);
   const text = tail
     .map(m => `${m.sender || (m.role === 'user' ? '房东' : '群友')}: ${m.content}`)
     .join('\n');
-  const messages: ChatCompletionRequest['messages'] = [
+  const messages = [
     {
       role: 'system',
       content:
@@ -645,31 +542,6 @@ export async function summarizeGroupChatForMemory(
     },
     { role: 'user', content: text },
   ];
-
-  // 使用壳脚本代理（酒馆配置）
-  if (cfg.source === 'tavern') {
-    const request: ChatCompletionRequest = {
-      model: cfg.model,
-      messages,
-      temperature: 0.35,
-      max_tokens: 500,
-    };
-    try {
-      const response = await requestChatCompletionViaShell(request);
-      const content = response.choices?.[0]?.message?.content;
-      if (typeof content !== 'string') {
-        throw new Error('响应中无 assistant 正文');
-      }
-      return content.trim();
-    } catch (e) {
-      throw e instanceof Error ? e : new Error(String(e));
-    }
-  }
-
-  // 使用本地配置
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-    throw new Error('请先在「设置」中填写 API URL、API Key 与模型，或开启「使用酒馆插头 API 设置」');
-  }
   const body = {
     model: cfg.model,
     messages,
