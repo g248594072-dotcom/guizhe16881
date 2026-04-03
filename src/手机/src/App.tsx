@@ -49,9 +49,9 @@ const APPS: AppConfig[] = [
   { id: 'wechat', name: '微信', icon: <MessageCircle size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#07C160]', component: WeChatApp },
   { id: 'groupchat', name: '群聊', icon: <MessageSquare size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#5856D6]', component: GroupChatApp },
   { id: 'diary', name: '日记', icon: <BookHeart size={34} color="#f59e0b" strokeWidth={1.5} />, color: 'bg-white', component: DiaryApp },
+  { id: 'forum', name: '论坛', icon: <Users size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#007AFF]', component: ForumApp },
   { id: 'moments', name: '朋友圈', icon: <Aperture size={34} color="white" strokeWidth={1.5} />, color: 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500', component: MomentsApp },
   { id: 'news', name: '新闻', icon: <Newspaper size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#FF2D55]', component: NewsApp },
-  { id: 'forum', name: '论坛', icon: <Users size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#007AFF]', component: ForumApp },
   { id: 'settings', name: '设置', icon: <SettingsIcon size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#8E8E93]', component: SettingsApp },
 ];
 
@@ -140,7 +140,7 @@ export default function App() {
           {/* Home Screen */}
           <div className="pt-20 px-6 h-full flex flex-col">
             <div className="grid grid-cols-4 gap-x-4 gap-y-7">
-              {APPS.slice(0, 6).map((app) => (
+              {APPS.slice(0, 7).map((app) => (
                 <button 
                   key={app.id} 
                   onClick={() => setActiveApp(app.id)}
@@ -158,7 +158,7 @@ export default function App() {
 
           {/* Dock */}
           <div className="absolute bottom-5 inset-x-4 h-[88px] bg-white/25 backdrop-blur-2xl rounded-[34px] flex items-center justify-center gap-6 px-4 border border-white/10 shadow-xl">
-             {APPS.slice(6, 8).map((app) => (
+             {APPS.slice(7, 8).map((app) => (
                 <button
                   key={app.id}
                   onClick={() => setActiveApp(app.id)}
