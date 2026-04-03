@@ -48,8 +48,8 @@ import {
 const VERSION = '1.0.0';
 const PHONE_W = 375;
 const PHONE_H = 812;
-const Z_OVERLAY = 10050;
-const Z_PHONE = 10051;
+const Z_OVERLAY = 30000;
+const Z_PHONE = 30001;
 
 /** 与 src/手机 内 tavernPhoneBridge.ts 保持一致 */
 const MSG = {
@@ -2526,6 +2526,25 @@ $(() => {
     bindPhoneDragEdges($inner, layoutWin);
 
     applyLayout();
+
+    // 全屏模式处理：监听全屏变化，在全屏时将小手机移动到全屏元素内部以确保可见
+    const fullscreenHandler = () => {
+      const fsElement = parentDoc.fullscreenElement as HTMLElement | null;
+      if (fsElement && fsElement !== parentDoc.body) {
+        // 进入全屏：将小手机移动到全屏元素内部
+        if ($overlay && $phoneRoot) {
+          $overlay.appendTo(fsElement);
+          $phoneRoot.appendTo(fsElement);
+        }
+      } else {
+        // 退出全屏：移回 body
+        if ($overlay && $phoneRoot) {
+          $overlay.appendTo(parentDoc.body);
+          $phoneRoot.appendTo(parentDoc.body);
+        }
+      }
+    };
+    parentDoc.addEventListener('fullscreenchange', fullscreenHandler);
   }
 
   async function setIframeSrc(): Promise<void> {
