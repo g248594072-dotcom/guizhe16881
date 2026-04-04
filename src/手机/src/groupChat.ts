@@ -8,6 +8,7 @@
  */
 
 import type { WeChatStoredMessage } from './weChatStorage';
+import { splitMessageIntoSegments } from './chatCompletions';
 
 /**
  * 获取当前用户名称（从酒馆全局对象或回退到默认值）
@@ -41,6 +42,10 @@ import {
 } from './phoneEvents';
 import { saveWeChatThreadForScope, loadWeChatThreadForScope } from './weChatStorage';
 import { TavernPhoneWeChatContact } from './tavernPhoneBridge';
+import {
+  idbLoadGroupChatList,
+  idbSaveGroupChatList,
+} from './groupChatIndexedDb';
 
 // ==================== 类型定义 ====================
 
@@ -88,6 +93,8 @@ const GROUP_CHAT_CONFIG = {
   defaultGroupName: '新建群聊',
   /** 单次生成最多回复几个成员 */
   maxRepliesPerTurn: 3,
+  /** 每位成员单次 API 回复最多拆成几个气泡（一两句即可） */
+  maxSegmentsPerMemberTurn: 2,
   /** 回复之间的时间间隔（毫秒）模拟真实感 */
   replyDelay: 1500,
   /** 是否启用多成员回复 */
@@ -98,45 +105,33 @@ const GROUP_CHAT_CONFIG = {
   dataVersion: 1,
 };
 
-// ==================== 群聊列表持久化存储 ====================
+// ==================== 群聊列表持久化存储 (IndexedDB) ====================
 
 /**
- * 获取群聊列表存储键（按 chatScopeId 隔离）
+ * 从 IndexedDB 加载群聊列表
  */
-function getGroupChatStorageKey(chatScopeId: string): string {
-  return `${GROUP_CHAT_CONFIG.storageKey}:${chatScopeId}`;
-}
-
-/**
- * 从 localStorage 加载群聊列表
- */
-function loadGroupChatListFromStorage(chatScopeId: string): GroupChatListData {
-  const key = getGroupChatStorageKey(chatScopeId);
+async function loadGroupChatListFromStorage(chatScopeId: string): Promise<GroupChatListData> {
   try {
-    const data = localStorage.getItem(key);
-    if (data) {
-      const parsed = JSON.parse(data) as GroupChatListData;
-      if (parsed.version === GROUP_CHAT_CONFIG.dataVersion) {
-        return parsed;
-      }
-    }
+    return await idbLoadGroupChatList(chatScopeId);
   } catch (e) {
     console.error('[GroupChat] 加载群聊列表失败:', e);
+    return {
+      version: GROUP_CHAT_CONFIG.dataVersion,
+      sessions: [],
+      currentSessionId: null,
+    };
   }
-  return {
-    version: GROUP_CHAT_CONFIG.dataVersion,
-    sessions: [],
-    currentSessionId: null,
-  };
 }
 
 /**
- * 保存群聊列表到 localStorage
+ * 保存群聊列表到 IndexedDB
  */
-function saveGroupChatListToStorage(chatScopeId: string, data: GroupChatListData): void {
-  const key = getGroupChatStorageKey(chatScopeId);
+async function saveGroupChatListToStorage(
+  chatScopeId: string,
+  data: GroupChatListData,
+): Promise<void> {
   try {
-    localStorage.setItem(key, JSON.stringify(data));
+    await idbSaveGroupChatList(chatScopeId, data);
   } catch (e) {
     console.error('[GroupChat] 保存群聊列表失败:', e);
   }
@@ -162,15 +157,30 @@ class GroupChatState {
   private currentSession: string | null = null;
   private chatScopeId: string = 'local-offline';
   private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
 
   /**
    * 初始化群聊状态（从存储加载）
    */
-  initialize(chatScopeId: string): void {
+  async initialize(chatScopeId: string): Promise<void> {
     if (this.initialized && this.chatScopeId === chatScopeId) return;
 
+    // 防止并发初始化，同时处理不同 scope 的情况
+    if (this.initPromise) {
+      await this.initPromise;
+      // 等待完成后，检查是否已初始化为目标 scope
+      if (this.initialized && this.chatScopeId === chatScopeId) return;
+      // 如果初始化的是其他 scope，需要重新初始化当前 scope
+    }
+
+    this.initPromise = this.doInitialize(chatScopeId);
+    await this.initPromise;
+    this.initPromise = null;
+  }
+
+  private async doInitialize(chatScopeId: string): Promise<void> {
     this.chatScopeId = chatScopeId;
-    const data = loadGroupChatListFromStorage(chatScopeId);
+    const data = await loadGroupChatListFromStorage(chatScopeId);
 
     this.sessions.clear();
     for (const session of data.sessions) {
@@ -183,9 +193,18 @@ class GroupChatState {
   }
 
   /**
+   * 等待初始化完成（用于需要确保已初始化的场景）
+   */
+  async ensureInitialized(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+  }
+
+  /**
    * 持久化当前状态
    */
-  private persist(): void {
+  private async persist(): Promise<void> {
     if (!this.initialized) return;
 
     const data: GroupChatListData = {
@@ -193,16 +212,16 @@ class GroupChatState {
       sessions: this.getAllSessions(),
       currentSessionId: this.currentSession,
     };
-    saveGroupChatListToStorage(this.chatScopeId, data);
+    await saveGroupChatListToStorage(this.chatScopeId, data);
   }
 
   getSession(id: string): GroupChatSession | undefined {
     return this.sessions.get(id);
   }
 
-  setSession(session: GroupChatSession): void {
+  async setSession(session: GroupChatSession): Promise<void> {
     this.sessions.set(session.id, session);
-    this.persist();
+    await this.persist();
   }
 
   getCurrentSession(): GroupChatSession | null {
@@ -210,31 +229,31 @@ class GroupChatState {
     return this.sessions.get(this.currentSession) ?? null;
   }
 
-  setCurrentSession(id: string | null): void {
+  async setCurrentSession(id: string | null): Promise<void> {
     this.currentSession = id;
-    this.persist();
+    await this.persist();
   }
 
   getAllSessions(): GroupChatSession[] {
     return Array.from(this.sessions.values()).sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
-  updateLastActivity(id: string): void {
+  async updateLastActivity(id: string): Promise<void> {
     const session = this.sessions.get(id);
     if (session) {
       session.lastActivity = Date.now();
       this.sessions.set(id, session);
-      this.persist();
+      await this.persist();
     }
   }
 
-  deleteSession(id: string): boolean {
+  async deleteSession(id: string): Promise<boolean> {
     const existed = this.sessions.delete(id);
     if (existed) {
       if (this.currentSession === id) {
         this.currentSession = null;
       }
-      this.persist();
+      await this.persist();
     }
     return existed;
   }
@@ -260,19 +279,19 @@ export const groupChatState = new GroupChatState();
 /**
  * 初始化群聊系统
  */
-export function initializeGroupChatSystem(chatScopeId: string): void {
-  groupChatState.initialize(chatScopeId);
+export async function initializeGroupChatSystem(chatScopeId: string): Promise<void> {
+  await groupChatState.initialize(chatScopeId);
 }
 
 /**
  * 创建群聊会话（新版，支持自定义名称和选择成员）
  */
-export function createGroupChat(
+export async function createGroupChat(
   chatScopeId: string,
   params: CreateGroupChatParams,
-): GroupChatSession {
+): Promise<GroupChatSession> {
   // 确保已初始化
-  groupChatState.initialize(chatScopeId);
+  await groupChatState.initialize(chatScopeId);
 
   const id = `group:${chatScopeId}:${crypto.randomUUID()}`;
   const session: GroupChatSession = {
@@ -284,7 +303,7 @@ export function createGroupChat(
     ownerId: '<user>',
     avatarUrl: params.avatarUrl,
   };
-  groupChatState.setSession(session);
+  await groupChatState.setSession(session);
   console.log('[GroupChat] 创建群聊:', session.name, '成员数:', session.members.length);
   return session;
 }
@@ -292,10 +311,10 @@ export function createGroupChat(
 /**
  * 更新群聊信息
  */
-export function updateGroupChat(
+export async function updateGroupChat(
   sessionId: string,
   updates: Partial<Pick<GroupChatSession, 'name' | 'members' | 'avatarUrl'>>,
-): GroupChatSession | null {
+): Promise<GroupChatSession | null> {
   const session = groupChatState.getSession(sessionId);
   if (!session) return null;
 
@@ -309,22 +328,22 @@ export function updateGroupChat(
     session.avatarUrl = updates.avatarUrl;
   }
 
-  groupChatState.setSession(session);
+  await groupChatState.setSession(session);
   return session;
 }
 
 /**
  * 删除群聊
  */
-export function deleteGroupChat(sessionId: string): boolean {
-  return groupChatState.deleteSession(sessionId);
+export async function deleteGroupChat(sessionId: string): Promise<boolean> {
+  return await groupChatState.deleteSession(sessionId);
 }
 
 /**
  * 获取所有群聊列表
  */
-export function getAllGroupChats(chatScopeId: string): GroupChatSession[] {
-  groupChatState.initialize(chatScopeId);
+export async function getAllGroupChats(chatScopeId: string): Promise<GroupChatSession[]> {
+  await groupChatState.initialize(chatScopeId);
   return groupChatState.getAllSessions();
 }
 
@@ -338,8 +357,8 @@ export function getGroupChat(sessionId: string): GroupChatSession | undefined {
 /**
  * 设置当前活跃的群聊会话
  */
-export function setCurrentGroupChatSession(sessionId: string | null): void {
-  groupChatState.setCurrentSession(sessionId);
+export async function setCurrentGroupChatSession(sessionId: string | null): Promise<void> {
+  await groupChatState.setCurrentSession(sessionId);
 }
 
 /**
@@ -359,7 +378,10 @@ export function isGroupNameAvailable(name: string, excludeId?: string): boolean 
 /**
  * 向群聊添加成员
  */
-export function addMembersToGroupChat(sessionId: string, newMembers: GroupMember[]): GroupChatSession | null {
+export async function addMembersToGroupChat(
+  sessionId: string,
+  newMembers: GroupMember[],
+): Promise<GroupChatSession | null> {
   const session = groupChatState.getSession(sessionId);
   if (!session) return null;
 
@@ -369,7 +391,7 @@ export function addMembersToGroupChat(sessionId: string, newMembers: GroupMember
 
   if (membersToAdd.length > 0) {
     session.members = [...session.members, ...membersToAdd];
-    groupChatState.setSession(session);
+    await groupChatState.setSession(session);
     console.log('[GroupChat] 添加成员到群聊:', session.name, '新增:', membersToAdd.length);
   }
 
@@ -379,12 +401,15 @@ export function addMembersToGroupChat(sessionId: string, newMembers: GroupMember
 /**
  * 从群聊移除成员
  */
-export function removeMembersFromGroupChat(sessionId: string, memberIds: string[]): GroupChatSession | null {
+export async function removeMembersFromGroupChat(
+  sessionId: string,
+  memberIds: string[],
+): Promise<GroupChatSession | null> {
   const session = groupChatState.getSession(sessionId);
   if (!session) return null;
 
   session.members = session.members.filter(m => !memberIds.includes(m.id));
-  groupChatState.setSession(session);
+  await groupChatState.setSession(session);
   console.log('[GroupChat] 从群聊移除成员:', session.name, '移除:', memberIds.length);
   return session;
 }
@@ -394,11 +419,11 @@ export function removeMembersFromGroupChat(sessionId: string, memberIds: string[
 /**
  * 创建群聊会话（旧版，保持兼容）
  */
-export function createGroupChatSession(
+export async function createGroupChatSession(
   id: string,
   name: string,
   members: GroupMember[],
-): GroupChatSession {
+): Promise<GroupChatSession> {
   const session: GroupChatSession = {
     id,
     name,
@@ -406,7 +431,7 @@ export function createGroupChatSession(
     createdAt: Date.now(),
     lastActivity: Date.now(),
   };
-  groupChatState.setSession(session);
+  await groupChatState.setSession(session);
   return session;
 }
 
@@ -414,11 +439,11 @@ export function createGroupChatSession(
  * 获取或创建群聊会话（旧版，自动创建默认群聊）
  * 如果没有群聊，会自动创建一个包含所有联系人的默认群聊
  */
-export function getOrCreateGroupChatSession(
+export async function getOrCreateGroupChatSession(
   chatScopeId: string,
   members: GroupMember[],
-): GroupChatSession {
-  groupChatState.initialize(chatScopeId);
+): Promise<GroupChatSession> {
+  await groupChatState.initialize(chatScopeId);
 
   // 检查是否已有群聊
   const allSessions = groupChatState.getAllSessions();
@@ -426,24 +451,24 @@ export function getOrCreateGroupChatSession(
     // 更新第一个群聊的成员
     const firstSession = allSessions[0];
     firstSession.members = members;
-    groupChatState.setSession(firstSession);
+    await groupChatState.setSession(firstSession);
     return firstSession;
   }
 
   // 创建默认群聊
   const sessionId = `group:${chatScopeId}:default`;
   const memberNames = members.map(m => m.displayName).join('、');
-  return createGroupChatSession(sessionId, memberNames || GROUP_CHAT_CONFIG.defaultGroupName, members);
+  return await createGroupChatSession(sessionId, memberNames || GROUP_CHAT_CONFIG.defaultGroupName, members);
 }
 
 /**
  * 更新群聊成员（旧版，保持兼容）
  */
-export function updateGroupChatMembers(sessionId: string, members: GroupMember[]): void {
+export async function updateGroupChatMembers(sessionId: string, members: GroupMember[]): Promise<void> {
   const session = groupChatState.getSession(sessionId);
   if (session) {
     session.members = members;
-    groupChatState.setSession(session);
+    await groupChatState.setSession(session);
   }
 }
 
@@ -458,9 +483,10 @@ export async function generateGroupChatReplies(
   userMessage: string,
   chatScopeId: string,
   targetSessionId?: string,
+  existingUserMsg?: GroupChatMessage,
 ): Promise<GroupChatMessage[]> {
   // 确保群聊系统已初始化
-  groupChatState.initialize(chatScopeId);
+  await groupChatState.initialize(chatScopeId);
 
   const session = targetSessionId
     ? groupChatState.getSession(targetSessionId)
@@ -479,10 +505,10 @@ export async function generateGroupChatReplies(
   }));
 
   // 获取当前用户名称
-  const userName = getUserName();
+  const userName = ctx.userName || getUserName();
 
-  // 构建带用户消息的历史
-  const userMsg: GroupChatMessage = {
+  // 构建带用户消息的历史（使用传入的 existingUserMsg 或创建新的）
+  const userMsg: GroupChatMessage = existingUserMsg || {
     id: crypto.randomUUID(),
     role: 'user',
     content: userMessage,
@@ -493,8 +519,10 @@ export async function generateGroupChatReplies(
   const fullHistory = [...history, userMsg];
   const fullHistoryForApi = [...historyForApi, { role: 'user' as const, content: userMessage, sender: userName }];
 
-  // 保存用户消息
-  await saveWeChatThreadForScope(chatScopeId, session.id, fullHistory);
+  // 保存用户消息（仅在未传入 existingUserMsg 时，即需要内部管理历史时）
+  if (!existingUserMsg) {
+    await saveWeChatThreadForScope(chatScopeId, session.id, fullHistory);
+  }
   emitMessageSent(chatScopeId, session.id, userMessage);
 
   // 确定要回复的成员（随机选择）
@@ -508,6 +536,8 @@ export async function generateGroupChatReplies(
   // 为每个成员生成回复
   const replies: GroupChatMessage[] = [];
   let currentHistory = fullHistoryForApi;
+  /** 本轮内已产生的助手正文（给后续成员作「禁止照搬」提示） */
+  const sameTurnPeerTexts: string[] = [];
 
   for (let i = 0; i < responders.length; i++) {
     const member = responders[i];
@@ -522,7 +552,7 @@ export async function generateGroupChatReplies(
         ctx,
         currentHistory,
         member,
-        { regenerate: false },
+        { regenerate: false, sameTurnPeerTexts: [...sameTurnPeerTexts] },
       );
 
       // 解析回复（传入预期发送者以修正可能的身份混淆）
@@ -532,20 +562,37 @@ export async function generateGroupChatReplies(
         member.displayName, // 预期发送者
       );
 
-      for (const parsed of parsedReplies) {
-        // 使用解析到的发送者，但确保是有效成员
-        const senderMember = session.members.find(m => m.displayName === parsed.sender) || member;
+      // 单次 API 返回的多行合并后再分段，避免模型连刷多句却都挂在同一人名下；发送者固定为当前成员
+      const mergedRaw = parsedReplies
+        .map(p => p.content.trim())
+        .filter(Boolean)
+        .join('\n');
+      if (!mergedRaw) {
+        continue;
+      }
+
+      const segments = splitMessageIntoSegments(mergedRaw).slice(
+        0,
+        GROUP_CHAT_CONFIG.maxSegmentsPerMemberTurn,
+      );
+      const baseTime = Date.now();
+      sameTurnPeerTexts.push(mergedRaw);
+
+      for (let si = 0; si < segments.length; si++) {
         const msg: GroupChatMessage = {
           id: crypto.randomUUID(),
           role: 'assistant',
-          content: parsed.content,
-          senderId: senderMember.id,
-          senderName: parsed.sender,
-          time: Date.now(),
+          content: segments[si],
+          senderId: member.id,
+          senderName: member.displayName,
+          time: baseTime + si * 500,
         };
 
         replies.push(msg);
-        currentHistory = [...currentHistory, { role: 'assistant' as const, content: parsed.content, sender: parsed.sender }];
+        currentHistory = [
+          ...currentHistory,
+          { role: 'assistant' as const, content: segments[si], sender: member.displayName },
+        ];
       }
     } catch (e) {
       console.error(`[GroupChat] 生成 ${member.displayName} 回复失败:`, e);
@@ -561,7 +608,7 @@ export async function generateGroupChatReplies(
   }
 
   // 更新最后活动时间
-  groupChatState.updateLastActivity(session.id);
+  await groupChatState.updateLastActivity(session.id);
 
   return replies;
 }
@@ -672,10 +719,18 @@ export async function regenerateMemberReply(
       { regenerate: true },
     );
 
-    // 更新消息
+    // 清理括号动作和星号动作
+    let cleanedContent = newContent.replace(/[（\(][^）\)]*[）\)]\s*/g, '');
+    cleanedContent = cleanedContent.replace(/\*[^*]+\*\s*/g, '');
+    cleanedContent = cleanedContent.trim();
+
+    // 分割成多个小气泡
+    const segments = splitMessageIntoSegments(cleanedContent);
+
+    // 取第一个段作为重新生成的消息（像私聊一样）
     const newMsg: GroupChatMessage = {
       ...targetMsg,
-      content: newContent,
+      content: segments[0] || cleanedContent,
       time: Date.now(),
     };
 

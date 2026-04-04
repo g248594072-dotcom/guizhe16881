@@ -471,9 +471,10 @@ export function subscribeAutoAnalyzeAll(handler: () => void): () => void {
 }
 
 // 动态导入避免循环依赖
-async function getExporter() {
+async function getExporters() {
   const { idbExportThreadsForScope } = await import('./weChatIndexedDb');
-  return idbExportThreadsForScope;
+  const { exportGroupChatThreadsForScope } = await import('./groupChatWorldbookExport');
+  return { idbExportThreadsForScope, exportGroupChatThreadsForScope };
 }
 
 /**

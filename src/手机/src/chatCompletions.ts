@@ -264,19 +264,27 @@ export interface GroupChatContext extends TavernPhoneContextPayload {
   userName: string;
 }
 
+/** 群聊单次补全的选项 */
+export type GroupChatCompletionOptions = {
+  regenerate?: boolean;
+  /** 本轮对话里、排在当前成员之前已发出的助手正文（用于禁止照搬） */
+  sameTurnPeerTexts?: string[];
+};
+
 /**
- * 构建群聊系统提示词
+ * 构建群聊系统提示词（仅包含当前成员的信息）
  */
-function buildGroupChatSystemPrompt(
+function buildGroupChatSystemPromptForMember(
   ctx: GroupChatContext,
-  options?: { regenerate?: boolean },
+  targetMember: GroupMember,
+  options?: GroupChatCompletionOptions,
 ): string {
   const cfg = getTavernPhoneApiConfig();
   const parts: string[] = [];
 
   // 群聊设定
   const userName = ctx.userName || '房东';
-  parts.push(`你正在一个微信群「${ctx.groupName}」中，群里有多个角色。`);
+  parts.push(`你正在一个微信群「${ctx.groupName}」中，群里有${ctx.members.length}个角色。`);
   parts.push(
     `你需要注意：这是群聊，不是私聊。用户在群里发了一条消息，你和群里其他人都可以看到并回复。`,
   );
@@ -284,53 +292,58 @@ function buildGroupChatSystemPrompt(
     `【重要 - 用户称呼】群里这位用户的昵称是「${userName}」，你必须用这个称呼来指代他/她。禁止使用其他任何称呼（如房东、用户、客人等）。`,
   );
   parts.push(
-    `请用第一人称回复，语气自然、像真人发微信，每条消息简短（一两句为宜），不要长篇大论或Markdown。`,
+    `【重要 - 回复长度限制】每人每轮只说**一两句**就够，能一句说完就不要两句；像真微信群，别霸屏。\n` +
+    `全文（含标点）合计以**约12～28字**为宜，**不要超过40字**。禁止长篇、禁止连珠炮式追问或解释。`,
   );
   parts.push(
     `【重要】禁止模仿主界面的格式与元内容——不要输出 A/B/C 选项、不要输出 JSON、不要写第三人称小说旁白；只发角色本人会打的微信文字。`,
   );
   parts.push(
-    `【重要 - 输出格式限制】\n` +
+    `【重要 - 输出格式限制（违规将视为无效回复）】\n` +
     `这是手机微信文字聊天，不是面对面互动，不是小说场景。\n` +
-    `你只能输出角色用手机打出来的文字消息。\n` +
-    `严禁以下内容：\n` +
-    `- 括号动作描写：如 (低头打字)、(微笑)、(从包里掏出xx)、*递过去* 等\n` +
+    `你只能输出角色用手机打出来的纯文字消息。\n` +
+    `严禁以下内容（发现任何一项都会导致回复被拒绝）：\n` +
+    `- 括号及圆括号动作描写：如 (低头打字)、(微笑)、（小声）、（看到紫灵的消息）等\n` +
+    `- 星号动作标记：如 *递过去*、*微笑*、*脸红* 等\n` +
     `- 第三人称叙事旁白：如"她红着脸说"、"他沉默了一会儿"\n` +
-    `- 环境/动作描写：如"阳光照在窗台上"、"伸手摸了摸头"\n` +
-    `- 任何非文字内容：语音、表情包描述、图片描述\n` +
+    `- 环境/动作/心理描写：如"阳光照在窗台上"、"伸手摸了摸头"、"心想..."\n` +
+    `- 任何非文字内容：语音描述、表情包描述、图片描述\n` +
     `允许使用：颜文字 (如 ^_^、QAQ、orz)、emoji 表情符号\n` +
-    `只输出角色会实际用拇指在手机键盘上打出来的文字。`,
+    `输出要求：只输出角色会实际用拇指在手机键盘上打出来的文字，严禁任何形式的场景、动作、心理描述。`,
   );
 
   if (options?.regenerate) {
     parts.push('（本条为重新生成：请写完整，自然收尾。）');
   }
 
-  // 成员信息（包含角色分析后的档案和态度）
-  if (ctx.members.length > 0) {
-    parts.push('\n【群成员信息】');
-    for (const member of ctx.members) {
-      parts.push(`\n【${member.displayName}】`);
+  // 只显示当前成员的信息（避免AI混淆）
+  parts.push(`\n\n========== 你的身份信息（你是${targetMember.displayName}）==========`);
+  parts.push(`你的群昵称：${targetMember.displayName}`);
 
-      // 基础人设
-      if (member.personality) {
-        parts.push(`性格：${member.personality}`);
-      }
-      if (member.thought) {
-        parts.push(`当前心理：${member.thought}`);
-      }
+  // 基础人设
+  if (targetMember.personality) {
+    parts.push(`\n【你的性格特点】\n${targetMember.personality}`);
+  }
+  if (targetMember.thought) {
+    parts.push(`\n【你当前的想法/心情】\n${targetMember.thought}`);
+  }
 
-      // 从角色档案摘要中获取分析后的信息
-      const roleSummary = ctx.roleStorySummaries?.[member.id];
-      if (roleSummary) {
-        parts.push(`角色档案：${roleSummary}`);
-      }
+  // 从角色档案摘要中获取分析后的信息
+  const roleSummary = ctx.roleStorySummaries?.[targetMember.id];
+  if (roleSummary) {
+    parts.push(`\n【你的角色档案/背景】\n${roleSummary}`);
+  }
 
-      // 从当前会话联系人的剧情摘要获取（如果有）
-      if (ctx.roleStorySummary && member.id === ctx.contacts?.[0]?.id) {
-        parts.push(`与主角关系：${ctx.roleStorySummary}`);
-      }
-    }
+  // 从当前会话联系人的剧情摘要获取（如果有）
+  if (ctx.roleStorySummary && targetMember.id === ctx.contacts?.[0]?.id) {
+    parts.push(`\n【你与${userName}的关系】\n${ctx.roleStorySummary}`);
+  }
+
+  // 其他成员只显示名字，不显示详细信息（避免AI混淆身份）
+  const otherMembers = ctx.members.filter(m => m.id !== targetMember.id);
+  if (otherMembers.length > 0) {
+    parts.push(`\n\n【群里还有这些人（你不需要替他们回复）】`);
+    parts.push(otherMembers.map(m => m.displayName).join('、'));
   }
 
   // 正文上下文（包含角色分析后的世界书内容）
@@ -378,25 +391,81 @@ function buildGroupChatSystemPrompt(
 }
 
 /**
+ * 兼容别名 - 保留旧函数名以防止缓存问题
+ * @deprecated 请使用 buildGroupChatSystemPromptForMember
+ */
+export const buildGroupChatSystemPrompt = buildGroupChatSystemPromptForMember;
+
+/**
  * 构建群聊消息（仅返回需要回复的单个成员）
  */
 export function buildGroupChatMessages(
   ctx: GroupChatContext,
   history: { role: 'user' | 'assistant'; content: string; sender?: string }[],
   targetMember: GroupMember,
-  options?: { regenerate?: boolean },
+  options?: GroupChatCompletionOptions,
 ): ChatMessage[] {
   const cfg = getTavernPhoneApiConfig();
   const useJailbreak = cfg.enableNsfw;
 
-  // 构建针对特定成员的提示词 - 使用更严格的身份约束
-  const memberSpecificPrompt = `\n\n【重要 - 身份约束】
-1. 你现在的身份是群成员「${targetMember.displayName}」
-2. 你必须以「${targetMember.displayName}」的身份思考和说话
-3. 禁止提到自己是其他角色或AI
-4. 禁止在回复中自我介绍为其他名字（如白雪、白梦梦等）
+  const peerTextsFiltered = options?.sameTurnPeerTexts?.filter(t => t.trim()) ?? [];
+  const peerBlock =
+    peerTextsFiltered.length > 0
+      ? `\n【本轮已有其他成员先回复 — 禁止照搬】\n${peerTextsFiltered
+          .slice(-8)
+          .map(t => `- ${t.replace(/\s+/g, ' ').trim().slice(0, 120)}`)
+          .join('\n')}\n你必须用完全不同的说法接话，禁止同义反复、禁止只改标点或微调后重复上述句子。\n`
+      : '';
+
+  // 构建针对特定成员的强身份约束提示词
+  const memberSpecificPrompt = `
+
+========== 身份约束与说话风格（必须遵守）==========
+
+【核心身份】
+你现在是「${targetMember.displayName}」，这是你唯一的身份。
+你必须以「${targetMember.displayName}」的性格、语气、说话风格来回复。
+绝对禁止模仿其他角色的语气或内容。
+
+【性格与说话风格要求】
+${targetMember.personality ? `你的性格特点：${targetMember.personality}
+你的回复必须体现这种性格特点。` : '请根据你的角色档案，用符合你性格的语气说话。'}
+${targetMember.thought ? `你当前的想法：${targetMember.thought}
+你的回复应该反映这种心情/态度。` : ''}
+
+【绝对禁止】
+1. 禁止回复内容与其他群成员雷同（如白雪说"晚安"，你不能也说同样的"晚安"）
+2. 禁止复制或模仿其他成员说过的话
+3. 禁止输出其他成员的名字或替他们说话
+4. 禁止自我介绍为其他名字
 5. 回复格式必须是：${targetMember.displayName}: 你的回复内容
-6. 只输出这一条回复，不要为其他成员输出内容`;
+6. **条数与篇幅**：本轮你**最多说一两句**；优先只写**一句**短话。不要用多行堆很多句；若必须补半句，第二句也要极短。
+
+【差异化要求】
+群里每个成员都有独特的性格，你的回复必须体现「${targetMember.displayName}」的独特性：
+- 用词习惯要符合你的角色特点
+- 语气态度要体现你的性格
+- 回复内容要有个性，不能是模板化的回复
+- 即使话题相同，你的反应也要与其他人不同
+${peerBlock}
+【长度限制（必须遵守）】
+本轮合计**不要超过40字**（含标点），**以12～28字为佳**；能一句说完就只输出一句。
+
+【输出格式限制（违规将导致回复失败）】
+这是手机微信群文字聊天，不是面对面互动，不是小说场景。
+你只能输出角色用手机打出来的纯文字消息。
+严禁以下内容：
+- 括号动作描写：如 (低头打字)、(微笑)、（小声）、*递过去* 等任何动作标记
+- 第三人称叙事旁白：如"她红着脸说"、"他沉默了一会儿"
+- 环境/动作描写：如"阳光照在窗台上"、"伸手摸了摸头"
+- 任何非文字内容：语音、表情包描述、图片描述
+允许使用：颜文字 (如 ^_^、QAQ、orz)、emoji 表情符号
+你必须只输出角色会实际用拇指在手机键盘上打出来的文字，严禁任何动作描述。
+
+========== 请以「${targetMember.displayName}」的身份回复 ==========`;
+
+  // 获取针对当前成员的系统提示词（只包含该成员的详细信息）
+  const memberSystemPrompt = buildGroupChatSystemPromptForMember(ctx, targetMember, options);
 
   if (useJailbreak) {
     const systemContent = [
@@ -404,7 +473,7 @@ export function buildGroupChatMessages(
       '',
       JAILBREAK_LAYER2_NSFW,
       '',
-      buildGroupChatSystemPrompt(ctx, options),
+      memberSystemPrompt,
       memberSpecificPrompt,
     ].join('\n');
 
@@ -418,7 +487,7 @@ export function buildGroupChatMessages(
     }
     return out;
   } else {
-    const system = buildGroupChatSystemPrompt(ctx, options) + memberSpecificPrompt;
+    const system = memberSystemPrompt + memberSpecificPrompt;
     const out: ChatMessage[] = [{ role: 'system', content: system }];
     for (const m of history) {
       out.push({ role: m.role, content: m.content });
@@ -434,6 +503,164 @@ export function buildGroupChatMessages(
 export interface ParsedGroupMessage {
   sender: string;
   content: string;
+}
+
+/**
+ * 按句子分割消息，用于分段发送（模拟真实微信聊天）
+ * 规则：
+ * 1. 优先按强标点（。！？…~）分割，每个带标点的句子独立成段
+ * 2. 逗号、分号作为次要分割点
+ * 3. 空格、换行作为第三级分割点
+ * 4. 无标点的长文本按 100 字强制分割
+ * 5. 每个句子最多 150 字，超长则继续分割
+ */
+export function splitMessageIntoSegments(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  // 微信风格：短句优先，每气泡尽量控制在15-40字
+  const MAX_BUBBLE_LENGTH = 50;  // 最大长度，超过必须分割
+  const TARGET_BUBBLE_LENGTH = 35; // 目标长度，超过尝试分割
+
+  // 第一步：按强标点分割句子（。！？…~）
+  const rawSentences: string[] = [];
+  const strongPunctuation = /[。！？…~]+/;
+  let remaining = trimmed;
+
+  while (remaining.length > 0) {
+    const match = remaining.match(strongPunctuation);
+    if (!match) {
+      if (remaining.trim()) {
+        rawSentences.push(remaining.trim());
+      }
+      break;
+    }
+
+    const idx = match.index!;
+    const sentence = remaining.slice(0, idx + match[0].length).trim();
+    if (sentence) {
+      rawSentences.push(sentence);
+    }
+    remaining = remaining.slice(idx + match[0].length);
+  }
+
+  // 第二步：对每个句子按空格/换行进行二次分割
+  const sentences: string[] = [];
+  for (const raw of rawSentences) {
+    const parts = raw.split(/\n+|\s{2,}/).filter(s => s.trim().length > 0);
+    if (parts.length > 1) {
+      sentences.push(...parts.map(s => s.trim()));
+    } else {
+      sentences.push(raw);
+    }
+  }
+
+  // 第三步：处理每个句子，如果过长则在逗号/分号处分割
+  const segments: string[] = [];
+
+  for (const sentence of sentences) {
+    // 如果句子在目标长度内，直接作为一个气泡
+    if (sentence.length <= TARGET_BUBBLE_LENGTH) {
+      segments.push(sentence);
+      continue;
+    }
+
+    // 如果句子超过目标长度，尝试在逗号/分号处分割
+    if (sentence.length > TARGET_BUBBLE_LENGTH) {
+      const weakPunctuation = /[，,；;]/;
+      let temp = '';
+      let remainingSentence = sentence;
+
+      while (remainingSentence.length > 0) {
+        const match = remainingSentence.match(weakPunctuation);
+        if (!match) {
+          // 没有更多弱标点了
+          if (temp) {
+            const combined = temp.trim() + remainingSentence.trim();
+            if (combined.length <= MAX_BUBBLE_LENGTH) {
+              segments.push(combined);
+            } else {
+              if (temp.trim()) segments.push(temp.trim());
+              segments.push(remainingSentence.trim());
+            }
+          } else {
+            // 剩下的强制截断到MAX_BUBBLE_LENGTH
+            if (remainingSentence.length > MAX_BUBBLE_LENGTH) {
+              for (let i = 0; i < remainingSentence.length; i += TARGET_BUBBLE_LENGTH) {
+                segments.push(remainingSentence.slice(i, Math.min(i + TARGET_BUBBLE_LENGTH, remainingSentence.length)));
+              }
+            } else {
+              segments.push(remainingSentence.trim());
+            }
+          }
+          break;
+        }
+
+        const idx = match.index!;
+        const part = remainingSentence.slice(0, idx + 1);
+
+        if ((temp + part).length > TARGET_BUBBLE_LENGTH) {
+          // 当前部分已经达到目标长度，先推送
+          if (temp.trim()) {
+            segments.push(temp.trim());
+          }
+          temp = part;
+        } else {
+          temp += part;
+        }
+        remainingSentence = remainingSentence.slice(idx + 1);
+      }
+
+      if (temp && !segments.includes(temp.trim())) {
+        // 最后一段如果太长则再分割
+        if (temp.length > MAX_BUBBLE_LENGTH) {
+          for (let i = 0; i < temp.length; i += TARGET_BUBBLE_LENGTH) {
+            segments.push(temp.slice(i, Math.min(i + TARGET_BUBBLE_LENGTH, temp.length)));
+          }
+        } else {
+          segments.push(temp.trim());
+        }
+      }
+    }
+  }
+
+  // 第四步：合并过短的气泡（<10字），但限制合并后的总长度
+  const finalSegments: string[] = [];
+  let currentSegment = '';
+  const MIN_BUBBLE_LENGTH = 10;
+
+  for (const seg of segments) {
+    if (!currentSegment) {
+      currentSegment = seg;
+    } else if (currentSegment.length < MIN_BUBBLE_LENGTH && (currentSegment + seg).length <= TARGET_BUBBLE_LENGTH) {
+      // 当前片段很短，且合并后不超过目标长度，才合并
+      currentSegment += seg;
+    } else {
+      finalSegments.push(currentSegment);
+      currentSegment = seg;
+    }
+  }
+
+  if (currentSegment) {
+    finalSegments.push(currentSegment);
+  }
+
+  // 第五步：最终检查，确保没有超长段落
+  const result: string[] = [];
+  for (const seg of finalSegments) {
+    if (seg.length <= MAX_BUBBLE_LENGTH) {
+      result.push(seg);
+    } else {
+      // 强制截断
+      for (let i = 0; i < seg.length; i += TARGET_BUBBLE_LENGTH) {
+        result.push(seg.slice(i, Math.min(i + TARGET_BUBBLE_LENGTH, seg.length)));
+      }
+    }
+  }
+
+  return result.filter(s => s.trim().length > 0);
 }
 
 export function parseGroupChatReply(
@@ -452,10 +679,18 @@ export function parseGroupChatReply(
       '',
     );
 
+    // 清理括号动作描写和星号动作
+    cleanedLine = cleanedLine.replace(/[（\(][^）\)]*[）\)]\s*/g, '');
+    cleanedLine = cleanedLine.replace(/\*[^*]+\*\s*/g, '');
+
     const match = cleanedLine.match(/^(.+?)[:：]\s*(.+)$/);
     if (match) {
       const sender = match[1].trim();
-      const content = match[2].trim();
+      let content = match[2].trim();
+
+      // 对内容再次清理括号动作
+      content = content.replace(/[（\(][^）\)]*[）\)]\s*/g, '');
+      content = content.replace(/\*[^*]+\*\s*/g, '');
 
       // 验证是否为有效成员
       if (validMembers.includes(sender) && content) {
@@ -471,14 +706,33 @@ export function parseGroupChatReply(
         // 格式不正确但有内容，使用预期发送者
         replies.push({ sender: expectedSender, content });
       }
+    } else {
+      // 没有匹配到发送者格式，但指定了预期发送者，且有内容
+      // 检查这行是否包含其他成员的名称（防止AI把其他成员的回复混在一起）
+      const lineWithoutTimestamp = cleanedLine.trim();
+      const containsOtherMember = expectedSender && validMembers.some(
+        m => m !== expectedSender && lineWithoutTimestamp.includes(m)
+      );
+
+      if (expectedSender && lineWithoutTimestamp && !containsOtherMember) {
+        // 这行没有识别出发送者格式，也没有包含其他成员名称，当作当前成员的回复
+        replies.push({ sender: expectedSender, content: lineWithoutTimestamp });
+      } else if (expectedSender && lineWithoutTimestamp && containsOtherMember) {
+        // 这行包含其他成员名称，可能是AI混淆了，丢弃这行
+        console.warn(`[parseGroupChatReply] 丢弃包含其他成员名称的行: ${lineWithoutTimestamp.substring(0, 50)}`);
+      }
     }
   }
 
   // 如果解析失败，至少返回一条（使用预期发送者）
   if (replies.length === 0 && response.trim()) {
+    let fallbackContent = response.trim().substring(0, 200);
+    // 清理括号动作
+    fallbackContent = fallbackContent.replace(/[（\(][^）\)]*[）\)]\s*/g, '');
+    fallbackContent = fallbackContent.replace(/\*[^*]+\*\s*/g, '');
     replies.push({
       sender: expectedSender || validMembers[0] || '未知',
-      content: response.trim().substring(0, 200),
+      content: fallbackContent,
     });
   }
 
@@ -553,11 +807,19 @@ export async function completeWeChatReply(
 /**
  * 群聊回复生成
  */
+function hashStringToUint(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 export async function completeGroupChatReply(
   ctx: GroupChatContext,
   historyForApi: { role: 'user' | 'assistant'; content: string; sender?: string }[],
   targetMember: GroupMember,
-  options?: { regenerate?: boolean },
+  options?: GroupChatCompletionOptions,
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
@@ -565,11 +827,13 @@ export async function completeGroupChatReply(
     throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
   const messages = buildGroupChatMessages(ctx, historyForApi, targetMember, options);
+  const jitter = (hashStringToUint(targetMember.id + (options?.sameTurnPeerTexts?.length ?? 0)) % 9) * 0.012;
   const body = {
     model: cfg.model,
     messages,
-    temperature: options?.regenerate ? 0.9 : 0.85,
-    max_tokens: options?.regenerate ? 896 : 768,
+    temperature: (options?.regenerate ? 0.9 : 0.85) + jitter,
+    // 群聊压短输出：正常一两句即可；重生成略放宽
+    max_tokens: options?.regenerate ? 384 : 200,
   };
   let lastErr: Error = new Error('未知错误');
   const tries = Math.max(1, cfg.maxRetries + 1);

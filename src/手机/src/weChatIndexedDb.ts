@@ -88,7 +88,7 @@ export async function idbGetThread(conversationId: string): Promise<WeChatStored
   }
 }
 
-/** 列出当前聊天 scope 下（conversationId 前缀匹配）的全部微信线程 */
+/** 列出当前聊天 scope 下（conversationId 前缀匹配）的全部微信线程（私聊，排除群聊） */
 export async function idbExportThreadsForScope(chatScopeId: string): Promise<WeChatThreadExport[]> {
   const scope = (chatScopeId.trim() || LOCAL_OFFLINE_SCOPE).replace(/::/g, '_');
   const prefix = `${scope}::`;
@@ -106,7 +106,8 @@ export async function idbExportThreadsForScope(chatScopeId: string): Promise<WeC
       }
       const row = cursor.value as ThreadRecord;
       const cid = row?.conversationId;
-      if (typeof cid === 'string' && cid.startsWith(prefix)) {
+      // 只导出私聊线程：匹配 scope 前缀且不是群聊（群聊 ID 格式为 ${scope}::group:...）
+      if (typeof cid === 'string' && cid.startsWith(prefix) && !cid.includes('::group:')) {
         const parsed = parseConversationId(cid);
         if (parsed) {
           const raw = row.messages;

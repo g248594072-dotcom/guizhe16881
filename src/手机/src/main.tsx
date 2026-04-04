@@ -2,7 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { TAVERN_PHONE_MSG } from './tavernPhoneBridge';
+import { TAVERN_PHONE_MSG, initExportThreadsListener } from './tavernPhoneBridge';
 import { exportWeChatThreadsForScope } from './weChatWorldbookExport';
 import { getCharacterAnalyzer } from './characterArchive/characterAnalyzer';
 import { getAnalysisScheduler } from './characterArchive/analysisScheduler';
@@ -103,3 +103,5 @@ function initAutoSchedule(): void {
 initPhoneApiConfig();
 void initCharacterAnalyzer();
 initAutoSchedule();
+// 全局初始化微信线程导出监听，确保壳脚本发起世界书同步时无论当前在哪个 App 都能响应
+initExportThreadsListener();

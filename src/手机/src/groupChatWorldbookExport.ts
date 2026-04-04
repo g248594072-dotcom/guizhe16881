@@ -6,6 +6,7 @@
 import { loadWeChatThreadForScope } from './weChatStorage';
 import type { WeChatStoredMessage } from './weChatStorage';
 import type { GroupChatSession, GroupChatMessage } from './groupChat';
+import { idbExportAllGroupChatSessions } from './groupChatIndexedDb';
 
 /** 群聊线程导出结构 */
 export type GroupChatThreadExport = {
@@ -17,50 +18,18 @@ export type GroupChatThreadExport = {
   lastActivity: number;
 };
 
-const GROUP_CHAT_STORAGE_KEY = 'tavern_phone_group_chat_list';
-
-/**
- * 获取群聊列表存储键（按 chatScopeId 隔离）
- */
-function getGroupChatStorageKey(chatScopeId: string): string {
-  return `${GROUP_CHAT_STORAGE_KEY}:${chatScopeId}`;
-}
-
-/**
- * 从 localStorage 加载群聊列表
- */
-function loadGroupChatListFromStorage(chatScopeId: string): { version: number; sessions: GroupChatSession[]; currentSessionId: string | null } {
-  const key = getGroupChatStorageKey(chatScopeId);
-  try {
-    const data = localStorage.getItem(key);
-    if (data) {
-      const parsed = JSON.parse(data) as { version: number; sessions: GroupChatSession[]; currentSessionId: string | null };
-      if (parsed.version === 1) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error('[GroupChatExport] 加载群聊列表失败:', e);
-  }
-  return {
-    version: 1,
-    sessions: [],
-    currentSessionId: null,
-  };
-}
-
 /**
  * 导出指定 scope 下的所有群聊线程
  */
 export async function exportGroupChatThreadsForScope(chatScopeId: string): Promise<GroupChatThreadExport[]> {
-  const listData = loadGroupChatListFromStorage(chatScopeId);
-  if (listData.sessions.length === 0) {
+  const sessions = await idbExportAllGroupChatSessions(chatScopeId);
+  if (sessions.length === 0) {
     return [];
   }
 
   const exports: GroupChatThreadExport[] = [];
 
-  for (const session of listData.sessions) {
+  for (const session of sessions) {
     try {
       // 群聊消息使用 session.id 作为 roleId 存储
       const messages = await loadWeChatThreadForScope(chatScopeId, session.id) as GroupChatMessage[];
