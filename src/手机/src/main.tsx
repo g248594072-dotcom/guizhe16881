@@ -14,6 +14,7 @@ import {
   PHONE_CHARACTER_AVATAR_SYNC_TYPE,
   applyCharacterAvatarOverrideLocal,
 } from '../../shared/phoneCharacterAvatarStorage';
+import { initDiaryScheduler } from './diaryScheduler';
 
 migrateLegacyPhoneCharacterAvatars();
 
@@ -105,3 +106,7 @@ void initCharacterAnalyzer();
 initAutoSchedule();
 // 全局初始化微信线程导出监听，确保壳脚本发起世界书同步时无论当前在哪个 App 都能响应
 initExportThreadsListener();
+// 初始化日记自动生成调度器
+const cleanupDiaryScheduler = initDiaryScheduler();
+// 卸载时清理
+window.addEventListener('beforeunload', cleanupDiaryScheduler);

@@ -13,6 +13,10 @@ export const TAVERN_PHONE_MSG = {
   REQUEST_ROLE_ARCHIVE: 'tavern-phone:request-role-archive',
   /** 父窗口 → iframe：角色列表 */
   ROLE_ARCHIVE: 'tavern-phone:role-archive',
+  /** 壳脚本 → iframe：推送当前游戏日期 */
+  GAME_DATE: 'tavern-phone:game-date',
+  /** iframe → 壳脚本：请求获取当前游戏日期 */
+  REQUEST_GAME_DATE: 'tavern-phone:request-game-date',
   REQUEST_WRITE_PHONE_MEMORY: 'tavern-phone:request-write-phone-memory',
   WRITE_PHONE_MEMORY_RESULT: 'tavern-phone:write-phone-memory-result',
   /** iframe → 父窗口：将文本追加到酒馆主界面发送框 */
@@ -732,4 +736,30 @@ export function fetchModelsViaShell(): Promise<string[]> {
       reject(new Error('向壳脚本发送请求失败'));
     }
   });
+}
+
+/** 当前游戏日期 */
+let currentGameDate: string | null = null;
+
+/**
+ * 监听壳脚本推送的游戏日期变化
+ * 日记功能会自动根据游戏日期变化来生成日记
+ */
+export function subscribeGameDateChange(handler: (gameDate: string) => void): () => void {
+  const fn = (e: MessageEvent) => {
+    const d = e.data as { type?: string; gameDate?: string };
+    if (d?.type === TAVERN_PHONE_MSG.GAME_DATE && d.gameDate) {
+      currentGameDate = d.gameDate;
+      handler(d.gameDate);
+    }
+  };
+  window.addEventListener('message', fn);
+  return () => window.removeEventListener('message', fn);
+}
+
+/**
+ * 获取当前游戏日期
+ */
+export function getCurrentGameDateFromContext(): string | null {
+  return currentGameDate;
 }

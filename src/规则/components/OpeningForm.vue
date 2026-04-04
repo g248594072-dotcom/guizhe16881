@@ -629,14 +629,14 @@
 
         <!-- 三个清理选项 -->
         <div class="clear-options-list">
-          <!-- 清理头像缓存 -->
+          <!-- 清理网页缓存 -->
           <div class="clear-option-item">
             <div class="clear-option-info">
               <div class="clear-option-title">
                 <i class="fa-solid fa-image"></i>
-                <span>清理浏览器头像缓存</span>
+                <span>清理网页缓存</span>
               </div>
-              <div class="clear-option-desc">清除本地保存的角色头像自定义设置</div>
+              <div class="clear-option-desc">清除头像自定义设置和所有日记数据</div>
             </div>
             <button
               type="button"
@@ -1343,12 +1343,12 @@ async function onConfirmClearChronicle() {
   }
 }
 
-function onConfirmClearCache() {
+async function onConfirmClearCache() {
   if (clearCacheLoading.value) return;
   clearCacheLoading.value = true;
   try {
-    clearOpeningUiCache();
-    toastr.success('头像缓存已清理');
+    await clearOpeningUiCache();
+    toastr.success('浏览器缓存已清理（头像、日记）');
   } catch (e) {
     console.error('[OpeningForm] clearCache:', e);
     toastr.error('清理失败：' + String(e));

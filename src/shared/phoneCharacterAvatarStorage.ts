@@ -176,3 +176,69 @@ export function setCharacterAvatarOverride(
     broadcastCharacterAvatarSyncToParent(nameKey, u);
   }
 }
+
+/**
+ * 清除所有头像缓存（localStorage 中的头像覆盖）
+ */
+export function clearAllAvatarCaches(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new Event(PHONE_CHARACTER_AVATARS_CHANGED));
+    console.log('[phoneCharacterAvatarStorage] 已清除所有头像缓存');
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * 清除所有浏览器缓存（头像缓存 + 日记缓存 + 聊天记录等）
+ * 这是一个破坏性的操作，用于开局重置
+ */
+export async function clearAllBrowserCaches(): Promise<void> {
+  const errors: string[] = [];
+
+  // 1. 清除头像缓存
+  try {
+    clearAllAvatarCaches();
+  } catch (e) {
+    errors.push('头像缓存清除失败');
+  }
+
+  // 2. 清除日记缓存（IndexedDB）
+  try {
+    const { clearAllDiaries } = await import('../手机/src/diaryIndexedDb');
+    await clearAllDiaries();
+  } catch (e) {
+    errors.push('日记缓存清除失败');
+  }
+
+  // 3. 清除微信聊天记录（IndexedDB）
+  try {
+    const DB_NAME = 'tavern-phone-wechat';
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(new Error('删除微信数据库失败'));
+    });
+  } catch {
+    /* 可能没有聊天记录，忽略错误 */
+  }
+
+  // 4. 清除群聊记录（IndexedDB）
+  try {
+    const DB_NAME = 'tavern-phone-groupchat';
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(new Error('删除群聊数据库失败'));
+    });
+  } catch {
+    /* 可能没有群聊记录，忽略错误 */
+  }
+
+  console.log('[phoneCharacterAvatarStorage] 已清除所有浏览器缓存');
+
+  if (errors.length > 0) {
+    throw new Error(errors.join(', '));
+  }
+}

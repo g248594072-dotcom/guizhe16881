@@ -100,6 +100,10 @@ const MSG = {
   REQUEST_MODELS: 'tavern-phone:request-models',
   /** 壳脚本 → 前端：返回模型列表 */
   MODELS_RESULT: 'tavern-phone:models-result',
+  /** 壳脚本 → iframe：推送当前游戏日期 */
+  GAME_DATE: 'tavern-phone:game-date',
+  /** iframe → 壳脚本：请求获取当前游戏日期 */
+  REQUEST_GAME_DATE: 'tavern-phone:request-game-date',
 } as const;
 
 function getByPath(obj: unknown, path: string): unknown {
@@ -758,6 +762,83 @@ function readChatApiKeyFromDom(doc: Document): string | null {
       /* ignore */
     }
   }
+  return null;
+}
+
+/**
+ * 获取当前游戏日期
+ * 从变量中读取当前游戏时间，用于日记按游戏时间生成
+ * 优先顺序：聊天变量 > 最新消息楼层变量 > 角色变量 > 全局变量
+ */
+function getCurrentGameDate(): string {
+  const DEFAULT_DATE = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+  // 尝试从变量中读取游戏日期
+  const possiblePaths = [
+    { type: 'chat' as const, path: '游戏日期' },
+    { type: 'chat' as const, path: 'world.当前时间' },
+    { type: 'chat' as const, path: 'stat_data.当前日期' },
+    { type: 'chat' as const, path: 'currentDate' },
+    { type: 'chat' as const, path: 'gameDate' },
+    { type: 'message' as const, message_id: 'latest' as const, path: '游戏日期' },
+    { type: 'message' as const, message_id: 'latest' as const, path: '世界.当前时间' },
+    { type: 'character' as const, path: '游戏日期' },
+    { type: 'global' as const, path: '游戏日期' },
+    { type: 'global' as const, path: 'world.currentDate' },
+  ];
+
+  for (const cfg of possiblePaths) {
+    try {
+      const vars = getVariables(cfg);
+      if (vars && typeof vars === 'object') {
+        // 如果直接获取到了字符串日期
+        if (typeof vars === 'string') {
+          const parsed = parseGameDate(vars);
+          if (parsed) return parsed;
+        }
+        // 尝试从对象中获取路径值
+        const value = cfg.path ? getByPath(vars, cfg.path) : vars;
+        if (typeof value === 'string' && value) {
+          const parsed = parseGameDate(value);
+          if (parsed) return parsed;
+        }
+      }
+    } catch {
+      // 继续尝试下一个路径
+    }
+  }
+
+  // 返回默认日期（今天）
+  return DEFAULT_DATE;
+}
+
+/**
+ * 解析各种日期格式为 YYYY-MM-DD
+ */
+function parseGameDate(dateStr: string): string | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+
+  // 清理字符串
+  const cleaned = dateStr
+    .replace(/[年月日/-]/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+
+  // 匹配 YYYY-MM-DD 格式
+  const match = cleaned.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    const year = match[1];
+    const month = String(parseInt(match[2], 10)).padStart(2, '0');
+    const day = String(parseInt(match[3], 10)).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 尝试解析时间戳
+  const timestamp = Date.parse(dateStr);
+  if (!isNaN(timestamp)) {
+    return new Date(timestamp).toISOString().split('T')[0];
+  }
+
   return null;
 }
 
@@ -3292,12 +3373,22 @@ $(() => {
       return;
     }
 
+    // 前端请求获取游戏日期
+    if (t === MSG.REQUEST_GAME_DATE) {
+      const gameDate = getCurrentGameDate();
+      getIframeEl()?.contentWindow?.postMessage(
+        {
+          type: MSG.GAME_DATE,
+          gameDate,
+        },
+        '*',
+      );
+      return;
+    }
+
     if (t === MSG.REQUEST_CLOSE) {
       close();
     }
-
-    // ===== 游戏时间消息处理 =====
-    // 前端请求获取游戏时间
   };
 
   characterAvatarRelayHandler = (e: MessageEvent) => {

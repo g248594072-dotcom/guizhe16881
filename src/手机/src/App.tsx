@@ -55,9 +55,9 @@ const APPS: AppConfig[] = [
   { id: 'settings', name: '设置', icon: <SettingsIcon size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#8E8E93]', component: SettingsApp },
 ];
 
-/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊、设置与档案除外 */
+/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊、设置、档案与日记除外 */
 function isPlaceholderApp(id: AppId): boolean {
-  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings' && id !== 'archive';
+  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings' && id !== 'archive' && id !== 'diary';
 }
 
 export default function App() {
