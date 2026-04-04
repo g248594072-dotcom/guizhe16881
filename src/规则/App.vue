@@ -244,6 +244,11 @@
         <span>正在将本回合写入楼层并同步变量（必要时含额外模型解析），请稍候；暂勿发送新内容。</span>
       </div>
 
+      <!-- 游戏时间显示：固定在正文区域顶部 -->
+      <div class="game-time-header" :class="{ dark: isDarkMode, light: !isDarkMode }">
+        <GameTimeDisplay :is-dark-mode="isDarkMode" format="YYYY年MM月DD日 HH:mm" show-week-day />
+      </div>
+
       <div class="game-content">
         <!-- 普通模式：正文 + 选项 -->
         <template v-if="viewMode === 'normal'">
@@ -1165,6 +1170,8 @@ import ParallaxBackground from './components/ParallaxBackground.vue';
 import TerminalSnippets from './components/TerminalSnippets.vue';
 import HeaderEffects from './components/HeaderEffects.vue';
 import SidebarEffects from './components/SidebarEffects.vue';
+// 游戏时间组件
+import GameTimeDisplay from './components/GameTimeDisplay.vue';
 import {
   loadFromLatestMessage,
   parseMaintext,
@@ -5584,6 +5591,60 @@ onUnmounted(() => {
 
   .hint {
     color: #d4d4d8;
+  }
+}
+
+// 游戏时间显示条：固定在正文区域顶部
+.game-time-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+  background: rgba(10, 10, 15, 0.6);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  // 适配深色模式
+  &.dark {
+    background: rgba(10, 10, 15, 0.6);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+
+  // 适配浅色模式
+  &.light {
+    background: rgba(245, 245, 250, 0.8);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+  }
+
+  // 实际内容容器
+  :deep(.game-time-display) {
+    position: relative;
+    background: rgba(20, 20, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+
+    // 适配深色模式
+    &.dark {
+      background: rgba(20, 20, 30, 0.85);
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    // 适配浅色模式
+    &.light {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(0, 0, 0, 0.08);
+
+      .time-main {
+        color: #333;
+      }
+    }
   }
 }
 

@@ -270,3 +270,49 @@ export function bumpUpdateTime() {
   const store = useDataStore();
   store.data.元信息.最近更新时间 = Date.now();
 }
+
+/**
+ * 获取游戏内时间（响应式）
+ * 从 MVU 变量中读取，完全由剧情变量控制，非现实时间
+ * 使用方式: const gameTime = useGameTime()
+ * 在模板中使用: {{ gameTime.年 }}/{{ gameTime.月 }}/{{ gameTime.日 }}
+ */
+export function useGameTime() {
+  const store = useDataStore();
+  return computed(() => ({
+    年: store.data.游戏时间?.年 ?? 2026,
+    月: store.data.游戏时间?.月 ?? 4,
+    日: store.data.游戏时间?.日 ?? 4,
+    时: store.data.游戏时间?.时 ?? 12,
+    分: store.data.游戏时间?.分 ?? 0,
+  }));
+}
+
+/**
+ * 推进游戏内时间（修改变量）
+ * 推进指定分钟数，触发 schema 的 transform 处理进位
+ */
+export function advanceGameTime(minutes: number) {
+  const store = useDataStore();
+  const gameTime = store.data.游戏时间;
+  if (gameTime) {
+    gameTime.分 += Math.round(minutes);
+    console.log(`[Store] 游戏内时间推进 ${minutes} 分钟`, gameTime);
+  }
+}
+
+/**
+ * 设置游戏时间到指定值
+ */
+export function setGameTime(time: { 年?: number; 月?: number; 日?: number; 时?: number; 分?: number }) {
+  const store = useDataStore();
+  const gameTime = store.data.游戏时间;
+  if (gameTime) {
+    if (time.年 !== undefined) gameTime.年 = time.年;
+    if (time.月 !== undefined) gameTime.月 = time.月;
+    if (time.日 !== undefined) gameTime.日 = time.日;
+    if (time.时 !== undefined) gameTime.时 = time.时;
+    if (time.分 !== undefined) gameTime.分 = time.分;
+    console.log(`[Store] 游戏时间已设置`, gameTime);
+  }
+}

@@ -588,15 +588,11 @@
       </div>
     </div>
 
-    <!-- 左下角：清理缓存、清除编年史 -->
+    <!-- 左下角：清理按钮（展开三个选项） -->
     <div class="opening-bottom-left-stack">
-      <button type="button" class="chronicle-clear-btn" @click="clearCacheDialogOpen = true">
+      <button type="button" class="chronicle-clear-btn" @click="clearMenuOpen = true">
         <i class="fa-solid fa-broom"></i>
-        <span>清理缓存</span>
-      </button>
-      <button type="button" class="chronicle-clear-btn" @click="clearChronicleDialogOpen = true">
-        <i class="fa-solid fa-eraser"></i>
-        <span>清除编年史</span>
+        <span>清理</span>
       </button>
     </div>
 
@@ -616,63 +612,87 @@
       <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
     </button>
 
-    <!-- 清理缓存确认 -->
+    <!-- 清理菜单（包含三个选项） -->
     <div
-      v-if="clearCacheDialogOpen"
+      v-if="clearMenuOpen"
       class="chronicle-dialog-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="clear-cache-dialog-title"
-      @click.self="clearCacheDialogOpen = false"
+      aria-labelledby="clear-menu-title"
+      @click.self="clearMenuOpen = false"
     >
-      <div class="chronicle-dialog-panel">
-        <h3 id="clear-cache-dialog-title" class="chronicle-dialog-title">清理缓存</h3>
+      <div class="chronicle-dialog-panel opening-dialog-panel--wide">
+        <h3 id="clear-menu-title" class="chronicle-dialog-title">清理选项</h3>
         <p class="chronicle-dialog-desc">
-          将清除本界面保存在浏览器中的缓存数据，不影响聊天记录与酒馆变量。此操作不可撤销。
+          选择要清理的内容。这些操作仅影响浏览器缓存和世界书数据，不会删除聊天记录。
         </p>
-        <div class="chronicle-dialog-actions">
-          <button type="button" class="chronicle-dialog-btn cancel" @click="clearCacheDialogOpen = false">
-            取消
-          </button>
-          <button
-            type="button"
-            class="chronicle-dialog-btn danger"
-            :disabled="clearCacheLoading"
-            @click="onConfirmClearCache"
-          >
-            <i v-if="clearCacheLoading" class="fa-solid fa-circle-notch fa-spin"></i>
-            <span v-else>确认清理</span>
-          </button>
-        </div>
-      </div>
-    </div>
 
-    <!-- 清除编年史确认 -->
-    <div
-      v-if="clearChronicleDialogOpen"
-      class="chronicle-dialog-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="chronicle-dialog-title"
-      @click.self="clearChronicleDialogOpen = false"
-    >
-      <div class="chronicle-dialog-panel">
-        <h3 id="chronicle-dialog-title" class="chronicle-dialog-title">清除编年史</h3>
-        <p class="chronicle-dialog-desc">
-          将清空<strong>当前角色卡所绑定世界书</strong>中「编年史」条目的<strong>全部正文</strong>，此操作不可撤销。若无该条目则不会创建或修改其他条目。
-        </p>
+        <!-- 三个清理选项 -->
+        <div class="clear-options-list">
+          <!-- 清理头像缓存 -->
+          <div class="clear-option-item">
+            <div class="clear-option-info">
+              <div class="clear-option-title">
+                <i class="fa-solid fa-image"></i>
+                <span>清理浏览器头像缓存</span>
+              </div>
+              <div class="clear-option-desc">清除本地保存的角色头像自定义设置</div>
+            </div>
+            <button
+              type="button"
+              class="chronicle-dialog-btn danger"
+              :disabled="clearCacheLoading"
+              @click="onConfirmClearCache"
+            >
+              <i v-if="clearCacheLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span v-else>清理</span>
+            </button>
+          </div>
+
+          <!-- 清理编年史 -->
+          <div class="clear-option-item">
+            <div class="clear-option-info">
+              <div class="clear-option-title">
+                <i class="fa-solid fa-scroll"></i>
+                <span>清理编年史</span>
+              </div>
+              <div class="clear-option-desc">清空世界书中「编年史」条目的全部正文内容</div>
+            </div>
+            <button
+              type="button"
+              class="chronicle-dialog-btn danger"
+              :disabled="clearChronicleLoading"
+              @click="onConfirmClearChronicle"
+            >
+              <i v-if="clearChronicleLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span v-else>清理</span>
+            </button>
+          </div>
+
+          <!-- 清理额外世界书 -->
+          <div class="clear-option-item">
+            <div class="clear-option-info">
+              <div class="clear-option-title">
+                <i class="fa-solid fa-book-open"></i>
+                <span>清理额外世界书</span>
+              </div>
+              <div class="clear-option-desc">删除所有以 ms 结尾的临时世界书（如 规则模拟器V0.7 - ...ms）</div>
+            </div>
+            <button
+              type="button"
+              class="chronicle-dialog-btn danger"
+              :disabled="clearMsWorldbooksLoading"
+              @click="onConfirmClearMsWorldbooks"
+            >
+              <i v-if="clearMsWorldbooksLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span v-else>清理</span>
+            </button>
+          </div>
+        </div>
+
         <div class="chronicle-dialog-actions">
-          <button type="button" class="chronicle-dialog-btn cancel" @click="clearChronicleDialogOpen = false">
-            取消
-          </button>
-          <button
-            type="button"
-            class="chronicle-dialog-btn danger"
-            :disabled="clearChronicleLoading"
-            @click="onConfirmClearChronicle"
-          >
-            <i v-if="clearChronicleLoading" class="fa-solid fa-circle-notch fa-spin"></i>
-            <span v-else>确认清除</span>
+          <button type="button" class="chronicle-dialog-btn cancel" @click="clearMenuOpen = false">
+            关闭
           </button>
         </div>
       </div>
@@ -880,6 +900,7 @@ import ScrambleText from './ScrambleText.vue';
 import BlockProgress from './BlockProgress.vue';
 import { clearChronicle } from '../utils/chronicleUpdater';
 import { clearOpeningUiCache } from '../utils/clearUiCache';
+import { deleteAllMsWorldbooks } from '../../小手机壳/utils/worldbookMatcher';
 import {
   type RuleSnippet,
   type CharacterSnippet,
@@ -960,11 +981,10 @@ const newCharDesc = ref('');
 // 提交状态
 const isSubmitting = ref(false);
 
-const clearChronicleDialogOpen = ref(false);
+const clearMenuOpen = ref(false);
 const clearChronicleLoading = ref(false);
-
-const clearCacheDialogOpen = ref(false);
 const clearCacheLoading = ref(false);
+const clearMsWorldbooksLoading = ref(false);
 
 // —— localStorage：规则库 / 角色库 / 场景库 / 开局场景库 / 开场预设 ——
 const ruleSnippets = ref<RuleSnippet[]>([]);
@@ -1313,7 +1333,6 @@ async function onConfirmClearChronicle() {
     const ok = await clearChronicle();
     if (ok) {
       toastr.success('编年史已清空');
-      clearChronicleDialogOpen.value = false;
     } else {
       toastr.error('清除失败：当前角色卡未绑定世界书或无法写入世界书');
     }
@@ -1330,13 +1349,59 @@ function onConfirmClearCache() {
   clearCacheLoading.value = true;
   try {
     clearOpeningUiCache();
-    toastr.success('缓存已清理');
-    clearCacheDialogOpen.value = false;
+    toastr.success('头像缓存已清理');
   } catch (e) {
     console.error('[OpeningForm] clearCache:', e);
     toastr.error('清理失败：' + String(e));
   } finally {
     clearCacheLoading.value = false;
+  }
+}
+
+async function onConfirmClearMsWorldbooks() {
+  if (clearMsWorldbooksLoading.value) return;
+  clearMsWorldbooksLoading.value = true;
+
+  try {
+    // 通过 postMessage 向父窗口（脚本）请求清理世界书
+    const result = await new Promise<{ success: boolean; deleted: string[]; error?: string }>((resolve) => {
+      const requestId = `clear_ms_worldbooks_${Date.now()}`;
+
+      const handler = (event: MessageEvent) => {
+        if (event.data?.type === 'CLEAR_MS_WORLDBOOKS_RESPONSE' && event.data?.requestId === requestId) {
+          window.removeEventListener('message', handler);
+          resolve(event.data.payload);
+        }
+      };
+
+      window.addEventListener('message', handler);
+
+      // 15秒超时（给异步探测足够时间）
+      setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve({ success: false, deleted: [], error: '请求超时，脚本未响应（可能需要更多时间探测世界书）' });
+      }, 15000);
+
+      // 发送请求给父窗口
+      window.parent.postMessage({
+        type: 'CLEAR_MS_WORLDBOOKS_REQUEST',
+        requestId,
+        source: '规则-OpeningForm'
+      }, '*');
+    });
+
+    if (result.success && result.deleted.length > 0) {
+      toastr.success(`已清理 ${result.deleted.length} 个额外世界书`);
+    } else if (result.success && result.deleted.length === 0) {
+      toastr.info('没有找到需要清理的额外世界书');
+    } else {
+      toastr.error(result.error || '清理失败');
+    }
+  } catch (e) {
+    console.error('[OpeningForm] clearMsWorldbooks:', e);
+    toastr.error('清理失败：' + String(e));
+  } finally {
+    clearMsWorldbooksLoading.value = false;
   }
 }
 
@@ -3588,6 +3653,63 @@ defineExpose({
     border-color: rgba(255, 255, 255, 0.28);
     transform: translateY(-1px);
   }
+}
+
+// 清理菜单选项列表
+.clear-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.clear-option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.clear-option-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.clear-option-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+
+  i {
+    font-size: 16px;
+    color: var(--accent);
+    opacity: 0.9;
+  }
+}
+
+.clear-option-desc {
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.4;
+}
+
+// 清理菜单使用更宽的对话框
+.opening-dialog-panel--wide {
+  max-width: min(520px, var(--ui-max-width, 100%)) !important;
 }
 
 .chronicle-dialog-backdrop {

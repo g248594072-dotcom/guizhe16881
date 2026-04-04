@@ -43,6 +43,8 @@ import {
 import {
   activateMatchingRuleWorldbook,
   shouldEnableWorldbookMatcher,
+  deactivateAllRuleSimulatorWorldbooks,
+  deleteAllMsWorldbooks,
 } from './utils/worldbookMatcher';
 
 const VERSION = '1.1.0';
@@ -3294,6 +3296,52 @@ $(() => {
     if (t === MSG.REQUEST_CLOSE) {
       close();
     }
+
+    // ===== 清理世界书请求（来自规则 App）=====
+    if (t === 'CLEAR_MS_WORLDBOOKS_REQUEST') {
+      const requestId = e.data?.requestId as string | undefined;
+      const source = e.source as Window | null;
+      if (!requestId || !source) {
+        console.warn('[tavern-phone] 清理世界书请求缺少 requestId 或 source');
+        return;
+      }
+
+      console.info('[tavern-phone] 收到清理世界书请求:', requestId);
+
+      void (async () => {
+        try {
+          const deleted = await deleteAllMsWorldbooks();
+          const response = {
+            type: 'CLEAR_MS_WORLDBOOKS_RESPONSE',
+            requestId,
+            payload: {
+              success: true,
+              deleted,
+            },
+          };
+          console.info('[tavern-phone] 发送清理世界书响应:', response);
+          source.postMessage(response, '*');
+        } catch (err) {
+          console.error('[tavern-phone] 清理世界书失败:', err);
+          source.postMessage(
+            {
+              type: 'CLEAR_MS_WORLDBOOKS_RESPONSE',
+              requestId,
+              payload: {
+                success: false,
+                deleted: [],
+                error: err instanceof Error ? err.message : String(err),
+              },
+            },
+            '*',
+          );
+        }
+      })();
+      return;
+    }
+
+    // ===== 游戏时间消息处理 =====
+    // 前端请求获取游戏时间
   };
 
   characterAvatarRelayHandler = (e: MessageEvent) => {
@@ -3714,20 +3762,31 @@ $(() => {
     setupAutoAnalyzeListener();
   });
 
-  // 初始化世界书自动匹配（如果启用）
-  if (shouldEnableWorldbookMatcher()) {
-    if (worldbookMatchListener) {
-      worldbookMatchListener.stop();
-    }
-    worldbookMatchListener = eventOn(tavern_events.CHAT_CHANGED, (chat_file_name: string) => {
-      void activateMatchingRuleWorldbook(chat_file_name);
-    });
+  // 聊天切换/读档时：立即关闭旧世界书并激活新的
+  if (worldbookMatchListener) {
+    worldbookMatchListener.stop();
+  }
+  worldbookMatchListener = eventOn(tavern_events.CHAT_CHANGED, (chat_file_name: string) => {
+    console.info('[tavern-phone][worldbook] 📡 chatScopeId 变化，切换世界书:', chat_file_name);
 
-    // 初始执行一次（使用当前聊天文件名）
-    const currentChatId = getChatScopeId();
-    if (currentChatId) {
-      void activateMatchingRuleWorldbook(currentChatId);
-    }
+    // 第一步：关闭所有旧的 ms 结尾世界书
+    void deactivateAllRuleSimulatorWorldbooks().then(() => {
+      // 第二步：激活新的匹配世界书（如果启用）
+      if (shouldEnableWorldbookMatcher()) {
+        void activateMatchingRuleWorldbook(chat_file_name);
+      }
+    });
+  });
+
+  // 初始加载：清理旧的世界书并激活新的
+  const currentChatId = getChatScopeId();
+  if (currentChatId) {
+    console.info('[tavern-phone][worldbook] 初始加载，chatScopeId:', currentChatId);
+    void deactivateAllRuleSimulatorWorldbooks().then(() => {
+      if (shouldEnableWorldbookMatcher()) {
+        void activateMatchingRuleWorldbook(currentChatId);
+      }
+    });
   }
 
   wbSyncListener = eventOn(tavern_events.GENERATE_BEFORE_COMBINE_PROMPTS, () => {

@@ -113,6 +113,56 @@ const 核心结构 = z.object({
     最近更新时间: z.coerce.number().prefault(() => Date.now()),
   }).prefault({}),
 
+  // 游戏内时间系统：完全独立的年/月/日/时/分，与现实时间无关
+  // 存储于 MVU 变量中，随剧情推进而更新，不会自动流逝
+  // 每月固定31天，主角可通过"世界规则"定义月份天数来覆盖
+  游戏时间: z.object({
+    年: z.coerce.number().prefault(2026),
+    月: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 12)).prefault(4),
+    日: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 31)).prefault(4),
+    时: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 23)).prefault(12),
+    分: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 59)).prefault(0),
+  }).transform(data => {
+    // 处理日期溢出的简单逻辑（每月按31天计算，简化处理）
+    // 若需要更精确的日历，可由主角通过"世界规则"来定义月份天数
+    let { 年, 月, 日, 时, 分 } = data;
+    const 每月天数 = 31;
+
+    // 分钟溢出
+    if (分 >= 60) {
+      时 += Math.floor(分 / 60);
+      分 = 分 % 60;
+    }
+
+    // 小时溢出
+    if (时 >= 24) {
+      日 += Math.floor(时 / 24);
+      时 = 时 % 24;
+    }
+
+    // 日期溢出（简化：每月31天）
+    if (日 > 每月天数) {
+      月 += Math.floor((日 - 1) / 每月天数);
+      日 = ((日 - 1) % 每月天数) + 1;
+    }
+
+    // 月份溢出
+    if (月 > 12) {
+      年 += Math.floor((月 - 1) / 12);
+      月 = ((月 - 1) % 12) + 1;
+    }
+
+    // 重新钳制，确保数值在有效范围内
+    return {
+      ...data,
+      年,
+      月: _.clamp(Math.round(月), 1, 12),
+      日: _.clamp(Math.round(日), 1, 31),
+      时: _.clamp(Math.round(时), 0, 23),
+      分: _.clamp(Math.round(分), 0, 59),
+    };
+  }).prefault({}),
+
   游戏状态: z.record(z.string(), z.unknown()).prefault({}),
 })
   .passthrough()
