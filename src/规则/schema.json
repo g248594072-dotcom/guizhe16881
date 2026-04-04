@@ -80,17 +80,29 @@
                     }
                   },
                   "性癖": {
-                    "default": [],
-                    "type": "array",
-                    "items": {
-                      "type": "string"
+                    "default": {},
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "等级": { "type": "number" },
+                        "细节描述": { "type": "string" },
+                        "自我合理化": { "type": "string" }
+                      },
+                      "additionalProperties": true
                     }
                   },
                   "敏感部位": {
-                    "default": [],
-                    "type": "array",
-                    "items": {
-                      "type": "string"
+                    "default": {},
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "敏感等级": { "type": "number" },
+                        "生理反应": { "type": "string" },
+                        "开发细节": { "type": "string" }
+                      },
+                      "additionalProperties": true
                     }
                   },
                   "隐藏性癖": {

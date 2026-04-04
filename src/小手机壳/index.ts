@@ -999,6 +999,72 @@ function filterWeChatSnippetLines(raw: string): string {
 }
 
 /**
+ * MVU 写回时若把对象用模板字符串拼进变量，会变成 "[object Object]" 字符串。
+ * 写回前尽量 parse 为真实对象；已是对象则把每个子键再规范化一层。
+ */
+function coerceMvuNestedRecordField(val: unknown): Record<string, unknown> {
+  if (val == null) {
+    return {};
+  }
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (!s || s === '[object Object]') {
+      return {};
+    }
+    try {
+      const p = JSON.parse(s) as unknown;
+      if (typeof p === 'object' && p !== null && !Array.isArray(p)) {
+        return p as Record<string, unknown>;
+      }
+    } catch {
+      /* 非 JSON */
+    }
+    return {};
+  }
+  if (typeof val === 'object' && !Array.isArray(val)) {
+    return { ...(val as Record<string, unknown>) };
+  }
+  return {};
+}
+
+function coerceMvuRowObject(val: unknown): Record<string, unknown> {
+  return coerceMvuNestedRecordField(val);
+}
+
+/** 角色分析 / iframe 写回：保证 性癖、敏感部位 等为 object 树，避免污染 MVU */
+function sanitizeCharacterArchiveUpdatesForMvu(updates: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...updates };
+  for (const key of ['性癖', '敏感部位'] as const) {
+    if (out[key] === undefined) {
+      continue;
+    }
+    const top = coerceMvuNestedRecordField(out[key]);
+    const fixed: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(top)) {
+      fixed[k] = coerceMvuRowObject(v);
+    }
+    out[key] = fixed;
+  }
+  if (out['性格'] !== undefined) {
+    const top = coerceMvuNestedRecordField(out['性格']);
+    const fixed: Record<string, string> = {};
+    for (const [k, v] of Object.entries(top)) {
+      fixed[k] = typeof v === 'string' ? v : JSON.stringify(v);
+    }
+    out['性格'] = fixed;
+  }
+  if (out['身份标签'] !== undefined) {
+    const top = coerceMvuNestedRecordField(out['身份标签']);
+    const fixed: Record<string, string> = {};
+    for (const [k, v] of Object.entries(top)) {
+      fixed[k] = typeof v === 'string' ? v : String(v);
+    }
+    out['身份标签'] = fixed;
+  }
+  return out;
+}
+
+/**
  * 与规则前端 messageParser 一致：最后一对闭合的 <maintext> 内部（先去掉 thinking）。
  */
 function extractMaintextByLastClosePairForPhone(text: string): string {
@@ -2906,15 +2972,16 @@ $(() => {
     if (t === MSG.REQUEST_WRITE_CHARACTER_ANALYSIS) {
       console.info('[tavern-phone] 📡 收到角色分析结果写回请求（REQUEST_WRITE_CHARACTER_ANALYSIS）');
       const reqData = e.data as { requestId?: string; characterId?: string; updates?: Record<string, unknown> };
-      const { requestId, characterId, updates } = reqData;
+      const { requestId, characterId, updates: updatesRaw } = reqData;
       const source = e.source as Window | null;
-      if (!requestId || !characterId || !updates) {
+      if (!requestId || !characterId || !updatesRaw) {
         source?.postMessage(
           { type: MSG.WRITE_CHARACTER_ANALYSIS_RESULT, requestId, ok: false, error: '缺少必要参数' },
           '*',
         );
         return;
       }
+      const updates = sanitizeCharacterArchiveUpdatesForMvu(updatesRaw);
       try {
         await waitGlobalInitialized('Mvu');
         const mvuData = (Mvu as Record<string, (...args: unknown[]) => unknown>).getMvuData({ type: 'message', message_id: 'latest' });

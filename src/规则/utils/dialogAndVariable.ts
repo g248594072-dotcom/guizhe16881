@@ -8,7 +8,13 @@
 
 import type { RuleData, CharacterData, RegionData } from '../types';
 import { useDataStore, bumpUpdateTime } from '../store';
-import { parseEditableTextToTagMap } from './tagMap';
+import {
+  parseEditableTextToTagMap,
+  parseEditableTextToFetishRecord,
+  parseEditableTextToSensitiveRecord,
+  type FetishEntryZh,
+  type SensitiveEntryZh,
+} from './tagMap';
 
 /**
  * 将文本写入前端对话框输入区（不创建新楼层）
@@ -214,21 +220,43 @@ function formatTagMapLine(label: string, rec: Record<string, string> | undefined
   return `${label}：${s}`;
 }
 
+function formatFetishPsychLine(rec: Record<string, FetishEntryZh> | undefined): string | null {
+  if (rec == null || Object.keys(rec).length === 0) return null;
+  const s = Object.entries(rec)
+    .map(([k, o]) => {
+      const d = o.细节描述.trim();
+      return d ? `${k}：Lv.${o.等级} ${d}` : `${k}：Lv.${o.等级}`;
+    })
+    .join('、');
+  return `性癖：${s}`;
+}
+
+function formatSensitivePsychLine(rec: Record<string, SensitiveEntryZh> | undefined): string | null {
+  if (rec == null || Object.keys(rec).length === 0) return null;
+  const s = Object.entries(rec)
+    .map(([k, o]) => {
+      const r = o.生理反应.trim();
+      return r ? `${k}：Lv.${o.敏感等级} ${r}` : `${k}：Lv.${o.敏感等级}`;
+    })
+    .join('、');
+  return `敏感部位：${s}`;
+}
+
 export function formatEditCharacterPsychMessage(payload: {
   characterId: string;
   当前内心想法?: string;
   性格?: Record<string, string>;
-  性癖?: Record<string, string>;
-  敏感部位?: Record<string, string>;
+  性癖?: Record<string, FetishEntryZh>;
+  敏感部位?: Record<string, SensitiveEntryZh>;
   隐藏性癖?: string;
 }): string {
   const lines = ['[编辑角色心理与性癖]', `角色ID：${payload.characterId}`];
   if (payload.当前内心想法 != null) lines.push(`当前内心想法：${String(payload.当前内心想法)}`);
   const t1 = formatTagMapLine('性格', payload.性格);
   if (t1) lines.push(t1);
-  const t2 = formatTagMapLine('性癖', payload.性癖);
+  const t2 = formatFetishPsychLine(payload.性癖);
   if (t2) lines.push(t2);
-  const t3 = formatTagMapLine('敏感部位', payload.敏感部位);
+  const t3 = formatSensitivePsychLine(payload.敏感部位);
   if (t3) lines.push(t3);
   if (payload.隐藏性癖 != null) lines.push(`隐藏性癖：${String(payload.隐藏性癖)}`);
   return lines.join('\n');
@@ -239,8 +267,8 @@ export function updateCharacterPsychInChineseVariables(
   updates: {
     当前内心想法?: string;
     性格?: Record<string, string>;
-    性癖?: Record<string, string>;
-    敏感部位?: Record<string, string>;
+    性癖?: Record<string, FetishEntryZh>;
+    敏感部位?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
   },
 ): void {
@@ -270,15 +298,17 @@ export async function submitEditCharacterPsych(
   const updates: {
     当前内心想法?: string;
     性格?: Record<string, string>;
-    性癖?: Record<string, string>;
-    敏感部位?: Record<string, string>;
+    性癖?: Record<string, FetishEntryZh>;
+    敏感部位?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
   } = {};
 
   if (payload.thought !== undefined) updates.当前内心想法 = String(payload.thought ?? '');
   if (payload.traitsText !== undefined) updates.性格 = parseEditableTextToTagMap(payload.traitsText ?? '');
-  if (payload.fetishesText !== undefined) updates.性癖 = parseEditableTextToTagMap(payload.fetishesText ?? '');
-  if (payload.sensitivePartsText !== undefined) updates.敏感部位 = parseEditableTextToTagMap(payload.sensitivePartsText ?? '');
+  if (payload.fetishesText !== undefined) updates.性癖 = parseEditableTextToFetishRecord(payload.fetishesText ?? '');
+  if (payload.sensitivePartsText !== undefined) {
+    updates.敏感部位 = parseEditableTextToSensitiveRecord(payload.sensitivePartsText ?? '');
+  }
   if (payload.hiddenFetish !== undefined) updates.隐藏性癖 = String(payload.hiddenFetish ?? '');
 
   const message = formatEditCharacterPsychMessage({ characterId, ...updates });

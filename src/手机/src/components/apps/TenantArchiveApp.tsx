@@ -495,7 +495,7 @@ export default function TenantArchiveApp({
                     className="text-[11px] px-2 py-1 rounded-full"
                     style={{ backgroundColor: 'var(--accent)', color: 'white', opacity: 0.9 }}
                   >
-                    {k}：{v}
+                    {k}：{typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '')}
                   </span>
                 ))}
               </div>
@@ -588,7 +588,7 @@ export default function TenantArchiveApp({
                     className="text-[12px] px-3 py-1 rounded-full"
                     style={{ backgroundColor: 'var(--accent)', color: 'white', opacity: 0.85 }}
                   >
-                    {v || k}
+                    {typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v || k)}
                   </span>
                 ))}
               </div>

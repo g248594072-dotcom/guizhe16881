@@ -1194,7 +1194,11 @@ import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits'
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
-import { tagMapToEditableText } from './utils/tagMap';
+import {
+  fetishRecordToEditableText,
+  sensitiveRecordToEditableText,
+  tagMapToEditableText,
+} from './utils/tagMap';
 import {
   PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
   PHONE_CHARACTER_AVATAR_SYNC_TYPE,
@@ -1827,10 +1831,16 @@ async function openModal(type: string, payload?: Record<string, any>) {
       const characters = useCharacters();
       const c: any = (characters.value || []).find((x: any) => x?.id === payload.characterId);
       if (c) {
+        const store = useDataStore();
+        const rawChar = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
         modalForm.value.characterPsychThought = String(c.currentThought ?? '');
         modalForm.value.characterPsychTraits = tagMapToEditableText(c.traits);
-        modalForm.value.characterPsychFetishes = tagMapToEditableText(c.fetishes);
-        modalForm.value.characterPsychSensitiveParts = tagMapToEditableText(c.sensitiveParts);
+        modalForm.value.characterPsychFetishes = fetishRecordToEditableText(
+          rawChar?.性癖 ?? rawChar?.fetishes ?? {},
+        );
+        modalForm.value.characterPsychSensitiveParts = sensitiveRecordToEditableText(
+          rawChar?.敏感部位 ?? rawChar?.sensitiveParts ?? {},
+        );
         modalForm.value.characterPsychHiddenFetish = String(c.hiddenFetish ?? '');
 
         // 预填性癖详情
@@ -2280,6 +2290,23 @@ function extractJsonPatchFromUpdateVariable(message: string): Array<{op: string;
   }
 }
 
+/** 模型偶发把对象/数组二次编码成 JSON 字符串，写入前尝试解析 */
+function coerceJsonPatchValue(v: unknown): unknown {
+  if (typeof v !== 'string') return v;
+  const s = v.trim();
+  if (
+    (s.startsWith('{') && s.endsWith('}')) ||
+    (s.startsWith('[') && s.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(s);
+    } catch {
+      return v;
+    }
+  }
+  return v;
+}
+
 /**
  * 应用 JSON Patch 到对象（支持 replace, add, remove, move, copy）
  */
@@ -2299,7 +2326,7 @@ function applyJsonPatch(target: any, patches: Array<{op: string; path: string; v
           current = current[part];
         }
         const lastPart = pathParts[pathParts.length - 1];
-        current[lastPart] = patch.value;
+        current[lastPart] = coerceJsonPatchValue(patch.value);
         break;
       }
       case 'remove': {

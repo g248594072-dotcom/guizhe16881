@@ -161,6 +161,108 @@ interface MvuCharacterData {
   当前综合生理描述?: string;
 }
 
+/**
+ * 规则脚本若把对象误存为 "[object Object]" 或 JSON 字符串，读变量时尽量还原为 Record。
+ */
+function coerceTopLevelRecord(raw: unknown): Record<string, unknown> {
+  if (raw === null || raw === undefined) {
+    return {};
+  }
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s || s === '[object Object]') {
+      return {};
+    }
+    try {
+      const p = JSON.parse(s) as unknown;
+      if (typeof p === 'object' && p !== null && !Array.isArray(p)) {
+        return p as Record<string, unknown>;
+      }
+    } catch {
+      /* 非 JSON */
+    }
+    return {};
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
+
+function coerceNestedRow(v: unknown): Record<string, unknown> {
+  if (v === null || v === undefined) {
+    return {};
+  }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s || s === '[object Object]') {
+      return {};
+    }
+    try {
+      const p = JSON.parse(s) as unknown;
+      if (typeof p === 'object' && p !== null && !Array.isArray(p)) {
+        return p as Record<string, unknown>;
+      }
+    } catch {
+      return {};
+    }
+    return {};
+  }
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
+  return {};
+}
+
+function normalizeStringRecordField(raw: unknown): Record<string, string> {
+  const src = coerceTopLevelRecord(raw);
+  return Object.fromEntries(
+    Object.entries(src).map(([k, val]) => {
+      if (typeof val === 'string') {
+        return [k, val];
+      }
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        return [k, JSON.stringify(val as Record<string, unknown>)];
+      }
+      return [k, String(val ?? '')];
+    }),
+  );
+}
+
+function mapFetishesFromRaw(raw: unknown): PhoneCharacterArchive['fetishes'] {
+  const src = coerceTopLevelRecord(raw);
+  return Object.fromEntries(
+    Object.entries(src).map(([k, v]) => {
+      const row = coerceNestedRow(v);
+      return [
+        k,
+        {
+          level: Number(row['等级'] ?? row['level'] ?? 1) || 1,
+          description: String(row['细节描述'] ?? row['description'] ?? ''),
+          justification: String(row['自我合理化'] ?? row['justification'] ?? ''),
+        },
+      ];
+    }),
+  );
+}
+
+function mapSensitiveFromRaw(raw: unknown): PhoneCharacterArchive['sensitiveParts'] {
+  const src = coerceTopLevelRecord(raw);
+  return Object.fromEntries(
+    Object.entries(src).map(([k, v]) => {
+      const row = coerceNestedRow(v);
+      return [
+        k,
+        {
+          level: Number(row['敏感等级'] ?? row['level'] ?? 1) || 1,
+          reaction: String(row['生理反应'] ?? row['reaction'] ?? ''),
+          devDetails: String(row['开发细节'] ?? row['devDetails'] ?? ''),
+        },
+      ];
+    }),
+  );
+}
+
 /** 从 MVU 原始数据映射到 PhoneCharacterArchive（头像走本机 phoneCharacterAvatarStorage，不读变量里的头像字段） */
 function mapMvuCharacter(id: string, raw: MvuCharacterData): PhoneCharacterArchive {
   return {
@@ -181,22 +283,10 @@ function mapMvuCharacter(id: string, raw: MvuCharacterData): PhoneCharacterArchi
       fetish: raw.数值?.性癖开发值 ?? 0,
     },
     currentThought: raw.当前内心想法 || '',
-    personality: raw.性格 || {},
-    fetishes: raw.性癖 ? Object.fromEntries(
-      Object.entries(raw.性癖).map(([k, v]) => [k, {
-        level: v?.等级 ?? v?.level ?? 1,
-        description: v?.细节描述 || v?.description || '',
-        justification: v?.自我合理化 || v?.justification || '',
-      }])
-    ) : {},
-    sensitiveParts: raw.敏感部位 ? Object.fromEntries(
-      Object.entries(raw.敏感部位).map(([k, v]) => [k, {
-        level: v?.敏感等级 ?? v?.level ?? 1,
-        reaction: v?.生理反应 || v?.reaction || '',
-        devDetails: v?.开发细节 || v?.devDetails || '',
-      }])
-    ) : {},
-    identityTags: raw.身份标签 || {},
+    personality: normalizeStringRecordField(raw.性格 as unknown),
+    fetishes: mapFetishesFromRaw(raw.性癖 as unknown),
+    sensitiveParts: mapSensitiveFromRaw(raw.敏感部位 as unknown),
+    identityTags: normalizeStringRecordField(raw.身份标签 as unknown),
     currentPhysiologicalDescription: raw.当前综合生理描述 || '',
   };
 }

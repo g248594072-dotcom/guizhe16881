@@ -3,12 +3,46 @@
  * 与角色卡变量结构保持一致
  */
 
-import { normalizeTagMap, normalize三围 } from './utils/tagMap';
+import {
+  normalizeTagMap,
+  normalize三围,
+  normalizeFetishRecord,
+  normalizeSensitivePartRecord,
+} from './utils/tagMap';
 
-/** 性格/性癖/敏感部位：与《变量更新规则》一致为 Record<名, 描述>，兼容旧 string[] */
+/** 性格：Record<名, 描述>，兼容旧 string[] */
 const 标签映射 = z.preprocess(
   (raw: unknown) => normalizeTagMap(raw),
   z.record(z.string(), z.string()),
+).prefault({});
+
+const 性癖条目 = z
+  .object({
+    等级: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 10)).prefault(1),
+    细节描述: z.string().prefault(''),
+    自我合理化: z.string().prefault(''),
+  })
+  .passthrough()
+  .prefault({});
+
+/** 性癖：名 → { 等级, 细节描述, 自我合理化 }；兼容旧版名→纯字符串 */
+const 性癖映射 = z.preprocess(
+  (raw: unknown) => normalizeFetishRecord(raw),
+  z.record(z.string(), 性癖条目),
+).prefault({});
+
+const 敏感部位条目 = z
+  .object({
+    敏感等级: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 10)).prefault(1),
+    生理反应: z.string().prefault(''),
+    开发细节: z.string().prefault(''),
+  })
+  .passthrough()
+  .prefault({});
+
+const 敏感部位映射 = z.preprocess(
+  (raw: unknown) => normalizeSensitivePartRecord(raw),
+  z.record(z.string(), 敏感部位条目),
 ).prefault({});
 
 // 规则条目定义（世界规则、区域规则、个人规则共用）
@@ -47,8 +81,8 @@ const 核心结构 = z.object({
 
         当前内心想法: z.string().prefault(''),
         性格: 标签映射,
-        性癖: 标签映射,
-        敏感部位: 标签映射,
+        性癖: 性癖映射,
+        敏感部位: 敏感部位映射,
         隐藏性癖: z.string().prefault(''),
 
         身体信息: z.object({

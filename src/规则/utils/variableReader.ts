@@ -4,7 +4,12 @@
  */
 
 import type { GameData, MvuData, CharacterData, RuleData, RegionData } from '../types';
-import { normalizeTagMap, normalize三围 } from './tagMap';
+import {
+  normalizeFetishRecord,
+  normalizeSensitivePartRecord,
+  normalizeTagMap,
+  normalize三围,
+} from './tagMap';
 
 // MVU 初始化状态
 let mvuInitialized = false;
@@ -347,8 +352,8 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
 
     const 当前内心想法 = value?.['当前内心想法'] ?? value?.['currentThought'] ?? '';
     const 性格 = normalizeTagMap(value?.['性格'] ?? value?.['traits']);
-    const 性癖 = normalizeTagMap(value?.['性癖'] ?? value?.['fetishes']);
-    const 敏感部位 = normalizeTagMap(value?.['敏感部位'] ?? value?.['sensitiveParts']);
+    const fetishNorm = normalizeFetishRecord(value?.['性癖'] ?? value?.['fetishes']);
+    const sensitiveNorm = normalizeSensitivePartRecord(value?.['敏感部位'] ?? value?.['sensitiveParts']);
     const 隐藏性癖 = value?.['隐藏性癖'] ?? value?.['hiddenFetish'] ?? '';
 
     const 身体 = value?.['身体信息'] ?? {};
@@ -400,35 +405,35 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
 
     const 生理描述 = value?.['当前综合生理描述'] ?? value?.['currentPhysiologicalDesc'] ?? '';
 
-    // 性癖详情
     const fetishDetails: Record<string, { level: number; description: string; justification: string }> = {};
-    const rawFetishes = value?.['性癖'] ?? value?.['fetishes'] ?? {};
-    if (rawFetishes && typeof rawFetishes === 'object') {
-      for (const [key, val] of Object.entries(rawFetishes)) {
-        if (val && typeof val === 'object') {
-          fetishDetails[key] = {
-            level: val['等级'] ?? val['level'] ?? 1,
-            description: val['细节描述'] ?? val['description'] ?? '',
-            justification: val['自我合理化'] ?? val['justification'] ?? '',
-          };
-        }
-      }
+    for (const [key, o] of Object.entries(fetishNorm)) {
+      fetishDetails[key] = {
+        level: o.等级,
+        description: o.细节描述,
+        justification: o.自我合理化,
+      };
     }
+    const 性癖 = Object.fromEntries(
+      Object.entries(fetishDetails).map(([k, v]) => [
+        k,
+        v.description.trim() ? v.description : `${k}（等级${v.level}）`,
+      ]),
+    );
 
-    // 敏感部位详情
     const sensitivePartDetails: Record<string, { level: number; reaction: string; devDetails: string }> = {};
-    const rawSensitiveParts = value?.['敏感部位'] ?? value?.['sensitiveParts'] ?? {};
-    if (rawSensitiveParts && typeof rawSensitiveParts === 'object') {
-      for (const [key, val] of Object.entries(rawSensitiveParts)) {
-        if (val && typeof val === 'object') {
-          sensitivePartDetails[key] = {
-            level: val['敏感等级'] ?? val['level'] ?? 1,
-            reaction: val['生理反应'] ?? val['reaction'] ?? '',
-            devDetails: val['开发细节'] ?? val['devDetails'] ?? '',
-          };
-        }
-      }
+    for (const [key, o] of Object.entries(sensitiveNorm)) {
+      sensitivePartDetails[key] = {
+        level: o.敏感等级,
+        reaction: o.生理反应,
+        devDetails: o.开发细节,
+      };
     }
+    const 敏感部位 = Object.fromEntries(
+      Object.entries(sensitivePartDetails).map(([k, v]) => [
+        k,
+        v.reaction.trim() ? v.reaction : `${k}（敏感等级${v.level}）`,
+      ]),
+    );
 
     // 身份标签
     const identityTags = value?.['身份标签'] ?? value?.['identityTags'] ?? {};
