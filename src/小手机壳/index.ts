@@ -44,7 +44,6 @@ import {
   activateMatchingRuleWorldbook,
   shouldEnableWorldbookMatcher,
   deactivateAllRuleSimulatorWorldbooks,
-  deleteAllMsWorldbooks,
 } from './utils/worldbookMatcher';
 
 const VERSION = '1.1.0';
@@ -3295,49 +3294,6 @@ $(() => {
 
     if (t === MSG.REQUEST_CLOSE) {
       close();
-    }
-
-    // ===== 清理世界书请求（来自规则 App）=====
-    if (t === 'CLEAR_MS_WORLDBOOKS_REQUEST') {
-      const requestId = e.data?.requestId as string | undefined;
-      const source = e.source as Window | null;
-      if (!requestId || !source) {
-        console.warn('[tavern-phone] 清理世界书请求缺少 requestId 或 source');
-        return;
-      }
-
-      console.info('[tavern-phone] 收到清理世界书请求:', requestId);
-
-      void (async () => {
-        try {
-          const deleted = await deleteAllMsWorldbooks();
-          const response = {
-            type: 'CLEAR_MS_WORLDBOOKS_RESPONSE',
-            requestId,
-            payload: {
-              success: true,
-              deleted,
-            },
-          };
-          console.info('[tavern-phone] 发送清理世界书响应:', response);
-          source.postMessage(response, '*');
-        } catch (err) {
-          console.error('[tavern-phone] 清理世界书失败:', err);
-          source.postMessage(
-            {
-              type: 'CLEAR_MS_WORLDBOOKS_RESPONSE',
-              requestId,
-              payload: {
-                success: false,
-                deleted: [],
-                error: err instanceof Error ? err.message : String(err),
-              },
-            },
-            '*',
-          );
-        }
-      })();
-      return;
     }
 
     // ===== 游戏时间消息处理 =====

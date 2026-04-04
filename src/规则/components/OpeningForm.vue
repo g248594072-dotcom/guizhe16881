@@ -900,7 +900,6 @@ import ScrambleText from './ScrambleText.vue';
 import BlockProgress from './BlockProgress.vue';
 import { clearChronicle } from '../utils/chronicleUpdater';
 import { clearOpeningUiCache } from '../utils/clearUiCache';
-import { deleteAllMsWorldbooks } from '../../小手机壳/utils/worldbookMatcher';
 import {
   type RuleSnippet,
   type CharacterSnippet,
@@ -1358,44 +1357,105 @@ function onConfirmClearCache() {
   }
 }
 
+/**
+ * 获取所有世界书名称列表
+ * SillyTavern 中完整列表在 /api/settings/get 的 world_names 字段；
+ * /api/worldinfo/get 仅接受 { name } 用于加载单本书，误用会得到 400。
+ */
+async function fetchAllWorldbookNames(): Promise<string[]> {
+  try {
+    let baseUrl = '';
+    try { baseUrl = window.parent.location.origin; } catch { baseUrl = window.location.origin; }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const h = SillyTavern.getRequestHeaders?.();
+      if (h && typeof h === 'object') {
+        Object.assign(headers, h as Record<string, string>);
+      }
+    } catch {
+      /* */
+    }
+
+    const response = await fetch(`${baseUrl}/api/settings/get`, {
+      method: 'POST',
+      headers,
+      credentials: 'same-origin',
+      body: JSON.stringify({}),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.world_names && Array.isArray(data.world_names)) {
+        console.info('[OpeningForm] 通过 /api/settings/get 获取所有世界书:', data.world_names);
+        return data.world_names as string[];
+      }
+    } else {
+      console.warn('[OpeningForm] /api/settings/get 失败:', response.status, response.statusText);
+    }
+  } catch (e) {
+    console.warn('[OpeningForm] 通过 API 获取世界书失败:', e);
+  }
+
+  // 方法2：尝试从 STScript 获取（仅能获取已绑定的，作为兜底）
+  const allNames = new Set<string>();
+  try {
+    const raw = await triggerSlash('/getglobalbooks');
+    const parsed = JSON.parse(raw || '[]');
+    if (Array.isArray(parsed)) parsed.forEach((n: string) => allNames.add(n));
+  } catch { /* */ }
+  try {
+    const raw = await triggerSlash('/getcharbook type=all');
+    const parsed = JSON.parse(raw || '[]');
+    if (Array.isArray(parsed)) parsed.forEach((n: string) => allNames.add(n));
+    else if (typeof parsed === 'string' && parsed) allNames.add(parsed);
+  } catch { /* */ }
+
+  console.info('[OpeningForm] STScript 兜底获取的世界书:', Array.from(allNames));
+  return Array.from(allNames);
+}
+
 async function onConfirmClearMsWorldbooks() {
   if (clearMsWorldbooksLoading.value) return;
   clearMsWorldbooksLoading.value = true;
 
   try {
-    // 通过 postMessage 向父窗口（脚本）请求清理世界书
-    const result = await new Promise<{ success: boolean; deleted: string[]; error?: string }>((resolve) => {
-      const requestId = `clear_ms_worldbooks_${Date.now()}`;
+    // 1. 获取所有世界书名称
+    const allWorldbooks = await fetchAllWorldbookNames();
+    console.info('[OpeningForm] 所有世界书名称:', allWorldbooks);
 
-      const handler = (event: MessageEvent) => {
-        if (event.data?.type === 'CLEAR_MS_WORLDBOOKS_RESPONSE' && event.data?.requestId === requestId) {
-          window.removeEventListener('message', handler);
-          resolve(event.data.payload);
+    // 2. 筛选出以 "ms" 结尾的世界书
+    const msBooks = allWorldbooks.filter(name => name.trim().endsWith('ms'));
+    console.info('[OpeningForm] ms 结尾的世界书:', msBooks);
+
+    if (msBooks.length === 0) {
+      toastr.info('没有找到以 ms 结尾的额外世界书');
+      return;
+    }
+
+    toastr.info(`找到 ${msBooks.length} 个额外世界书，开始清理...`);
+
+    // 3. 逐个删除
+    const deletedBooks: string[] = [];
+    for (const bookName of msBooks) {
+      try {
+        console.info('[OpeningForm] 尝试删除世界书:', bookName);
+        const success = await deleteWorldbook(bookName);
+        if (success) {
+          deletedBooks.push(bookName);
+          console.info('[OpeningForm] 已删除:', bookName);
+        } else {
+          console.warn('[OpeningForm] 删除返回失败:', bookName);
         }
-      };
+      } catch (e) {
+        console.warn('[OpeningForm] 删除异常:', bookName, e);
+      }
+    }
 
-      window.addEventListener('message', handler);
-
-      // 15秒超时（给异步探测足够时间）
-      setTimeout(() => {
-        window.removeEventListener('message', handler);
-        resolve({ success: false, deleted: [], error: '请求超时，脚本未响应（可能需要更多时间探测世界书）' });
-      }, 15000);
-
-      // 发送请求给父窗口
-      window.parent.postMessage({
-        type: 'CLEAR_MS_WORLDBOOKS_REQUEST',
-        requestId,
-        source: '规则-OpeningForm'
-      }, '*');
-    });
-
-    if (result.success && result.deleted.length > 0) {
-      toastr.success(`已清理 ${result.deleted.length} 个额外世界书`);
-    } else if (result.success && result.deleted.length === 0) {
-      toastr.info('没有找到需要清理的额外世界书');
+    if (deletedBooks.length > 0) {
+      toastr.success(`已清理 ${deletedBooks.length} 个额外世界书`);
     } else {
-      toastr.error(result.error || '清理失败');
+      toastr.warning('未能删除任何世界书');
     }
   } catch (e) {
     console.error('[OpeningForm] clearMsWorldbooks:', e);
