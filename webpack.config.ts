@@ -3,7 +3,11 @@ import HtmlInlineScriptWebpackPlugin from 'html-inline-script-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import _ from 'lodash';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
+<<<<<<< HEAD
 import { ChildProcess, exec, execSync, spawn } from 'node:child_process';
+=======
+import { ChildProcess, exec, spawn } from 'node:child_process';
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -20,6 +24,7 @@ import WebpackObfuscator from 'webpack-obfuscator';
 const require = createRequire(import.meta.url);
 const HTMLInlineCSSWebpackPlugin = require('html-inline-css-webpack-plugin').default;
 
+<<<<<<< HEAD
 const WEBPACK_ROOT = import.meta.dirname;
 
 /** 供前端角标：优先展示 Git 标签（git describe），避免用分支名 master/main 盖住 tag */
@@ -52,6 +57,8 @@ function getBuildVersion(): string {
 
 const BUILD_VERSION = getBuildVersion();
 
+=======
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
 interface Config {
   port: number;
   entries: Entry[];
@@ -84,11 +91,14 @@ function glob_script_files() {
   const results: string[] = [];
 
   fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
+<<<<<<< HEAD
     .filter(file => {
       const n = file.replace(/\\/g, '/');
       // 勿匹配 node_modules 内包的 index.js；勿匹配 Vite 子项目 src/手机（由 pnpm build:phone 单独构建）
       return !n.includes('/node_modules/') && !n.startsWith('src/手机/');
     })
+=======
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
     .filter(
       file => process.env.CI !== 'true' || !fs.readFileSync(path.join(import.meta.dirname, file)).includes('@no-ci'),
     )
@@ -231,7 +241,11 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
     },
     devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
     watchOptions: {
+<<<<<<< HEAD
       ignored: ['**/dist', '**/node_modules', '**/src/手机/**'],
+=======
+      ignored: ['**/dist', '**/node_modules'],
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
     },
     entry: path.join(import.meta.dirname, entry.script),
     target: 'browserslist',
@@ -336,11 +350,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             {
               resourceQuery: /url/,
               type: 'asset/inline',
+<<<<<<< HEAD
               exclude: [/(node_modules|\.ttf|\.otf|\.woff|\.woff2)$/],
             },
             {
               test: /\.(ttf|otf|woff|woff2)(\?url)?$/,
               type: 'asset/inline',
+=======
+              exclude: /node_modules/,
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
             },
             {
               test: /\.tsx?$/,
@@ -386,6 +404,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               test: /\.ya?ml$/,
               loader: 'yaml-loader',
             },
+<<<<<<< HEAD
             {
               test: /\.(ttf|otf|woff|woff2)$/,
               type: 'asset/resource',
@@ -393,6 +412,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 filename: 'fonts/[name][ext]',
               },
             },
+=======
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
           ].concat(
             entry.html === undefined
               ? ([
@@ -513,7 +534,10 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           __VUE_OPTIONS_API__: false,
           __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+<<<<<<< HEAD
           __APP_VERSION__: JSON.stringify(BUILD_VERSION),
+=======
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
         }),
       )
       .concat(
@@ -606,6 +630,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       if (request in global) {
         return callback(null, 'var ' + global[request as keyof typeof global]);
       }
+<<<<<<< HEAD
 
       // 处理 @types/ 开头的类型定义模块
       // 这些是 TypeScript 类型声明，运行时不需要，返回空对象即可
@@ -613,6 +638,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         return callback(null, 'var {}');
       }
 
+=======
+>>>>>>> f538e79657e2c9a15aa14642adc83ec4c804dd21
       const cdn = {
         sass: 'https://jspm.dev/sass',
       };
