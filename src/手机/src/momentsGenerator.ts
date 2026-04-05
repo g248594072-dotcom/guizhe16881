@@ -229,13 +229,35 @@ function buildMomentPrompt(
 - 如果是未说出的好感：对谁有好感，为什么不敢说`;
   }
 
+  // 强化人设约束提示词
+  const characterConstraintPrompt = `
+【人设强制约束 - 必须严格遵守】
+
+你是${safeName}，正在以自己的身份发布一条朋友圈动态。
+
+**性格特点分析**：
+${safePersonality}
+
+**当前状态**：
+- 内心想法：${safeThought}
+- 生理状态：${safePhysio}
+
+**人设符合性检查清单**（生成前必须确认）：
+1. 这条动态是否符合上述性格特点？
+2. 这个语气、用词是否是${safeName}会说的话？
+3. 内容是否反映了${safeName}当前的心理状态？
+4. 如果性格中有矛盾点（如表面温柔内心阴暗），这次动态是否体现了这种反差？
+
+**强制要求**：
+- 绝对禁止：使用不符合角色性格的用词、语气、关注点
+- 绝对禁止：说出角色不会说的话、关注角色不会关注的事
+- 必须体现：角色当前内心想法的影响（如内心焦虑则动态可能暗示不安）
+- 必须体现：性格特点中的至少1-2个核心特质
+- 语言风格必须与性格匹配（如傲娇角色可能口是心非，腹黑角色话里有话）`;
+
   return `${JAILBREAK_PROMPT}
 
-【角色档案】
-姓名：${safeName}
-当前内心想法：${safeThought}
-性格特点：${safePersonality}
-当前生理状态：${safePhysio}
+${characterConstraintPrompt}
 
 【当前剧情上下文】
 ${context}
@@ -248,50 +270,57 @@ ${specificGuidance}
 2. **具体子类型**：${subtypeDesc}
 3. **可见性**：${visibility} - ${visibilityDescriptions[visibility]}
 
-4. **配文风格（根据类型变化）**：
+4. **配文风格（必须严格符合人设）**：
    ${contentType === 'dark_thought' ? `
-   - 这是"仅本人可见"的动态，展现角色最真实、最阴暗的内心
+   - 这是"仅本人可见"的动态，展现${safeName}最真实、最阴暗的内心
    - 针对本次子类型「${subtypeDesc}」深入挖掘
-   - 包含自我辩解：角色如何合理化自己的阴暗想法
-   - 语言风格：私密、raw、未经审查、可能混乱或充满张力
-   - 这是给主角（玩家）的特权视角，窥探角色的隐藏面
+   - 必须体现${safeName}的性格特点如何影响这个想法
+   - 包含自我辩解：${safeName}如何用自己的逻辑合理化阴暗想法
+   - 语言风格：私密、raw、未经审查、必须符合${safeName}的说话方式
+   - 这是给主角（玩家）的特权视角，窥探${safeName}的隐藏面
    ` : contentType === 'secret_hint' ? `
-   - 用含蓄、隐喻的方式表达对某人或某事的看法
-   - 话里有话，让看得懂的人懂，看不懂的人不会觉得异常
-   - 可以是讽刺、暗示关系、暗示不满等
-   - 朋友圈配文风格，简短但有深意
+   - 用含蓄、隐喻的方式表达${safeName}对某人或某事的看法
+   - 话里有话，体现${safeName}的性格（如直率的人可能更直接，含蓄的人更隐晦）
+   - 必须让看得懂的人懂，看不懂的人不会觉得异常
+   - 朋友圈配文风格，但必须符合${safeName}的表达习惯
    ` : contentType === 'observation' ? `
-   - 对某个生活细节的观察和感悟
-   - 类似随笔风格，有点小文艺或小犀利
-   - 体现角色的思考方式和价值观
+   - ${safeName}对某个生活细节的观察和感悟
+   - 必须体现${safeName}的思考方式和价值观
+   - 类似随笔风格，但语气必须是${safeName}的
    ` : contentType === 'mood_share' ? `
-   - 直接分享当下的心情状态
-   - 可以是开心、emo、迷茫、期待、焦虑等
-   - 配合emoji表达情绪
-   - 简短有力，不解释太多
+   - ${safeName}直接分享当下的心情状态
+   - 体现${safeName}表达情绪的方式（有人直白有人含蓄）
+   - 配合emoji表达情绪（如果${safeName}的性格适合用emoji）
+   - 简短有力，符合${safeName}的风格
    ` : `
-   - 符合微信朋友圈的简短、自然风格
+   - ${safeName}发布的朋友圈，必须符合${safeName}的说话习惯
    - 针对本次具体子类型「${subtypeDesc}」展开
-   - 可以带有emoji、口语化表达
-   - 真实自然，符合角色的性格
+   - 用词、语气、关注点必须是${safeName}的风格
+   - 可以带有emoji（如果符合人设）、口语化表达
+   - 真实自然，必须是${safeName}会发的内容
    `}
-5. **定位信息（可选）**：可以通过位置暗示角色的秘密行踪或谎言
+5. **定位信息（可选）**：可以通过位置暗示${safeName}的秘密行踪或谎言
 
 【输出格式】
 必须返回严格的JSON格式：
 {
-  "content": "朋友圈文字内容（50-250字，保持简短真实）",
+  "content": "朋友圈文字内容（50-250字，必须是${safeName}的口吻）",
   "contentType": "${contentType}",
   "visibility": "${visibility}",
   "location": "定位信息（可选）",
-  "selfJustification": "角色的自我辩解心理活动（可选）"
+  "selfJustification": "${safeName}的自我辩解心理活动（可选）"
 }
+
+【人设符合性自检】（生成后确认）
+- 这条动态读起来像是${safeName}发的吗？
+- 用词习惯符合${safeName}的性格档案吗？
+- 如果${safeName}的朋友看到这条动态，会觉得"这很${safeName}"吗？
 
 【多样性要求】
 - 每次生成必须是不同的子类型和角度
 - 避免连续生成相似的日常或相似的情绪
-- 结合角色当前状态（内心想法、生理状态）来创作
-- 保持角色性格的连贯性但内容要有变化`;
+- 结合${safeName}当前状态（内心想法、生理状态）来创作
+- 保持${safeName}性格的连贯性但内容要有变化`;
 }
 
 /**
@@ -353,15 +382,28 @@ export async function generateMoment(
       throw new Error('API返回内容为空');
     }
 
-    // 解析JSON
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    // 解析JSON - 使用更健壮的解析逻辑
+    const generated = parseMomentResult(content);
+    if (!generated) {
       throw new Error('无法从API响应中提取JSON');
     }
 
-    const generated = JSON.parse(jsonMatch[0]) as GeneratedMoment;
+    // 人设符合性检查日志
+    const personalityKeys = Object.keys(archive?.personality || {});
+    const contentLower = generated.content.toLowerCase();
+
+    // 检查是否包含性格关键词（简单的启发式检查）
+    const matchingTraits = personalityKeys.filter(key => {
+      const value = String(archive?.personality?.[key as keyof typeof archive.personality] || '').toLowerCase();
+      // 检查性格关键词是否出现在内容中，或者内容风格是否匹配
+      return contentLower.includes(key.toLowerCase()) ||
+             contentLower.includes(value.slice(0, 10)); // 匹配前10个字符
+    });
 
     console.log(`[momentsGenerator] ✅ 生成成功: ${characterName}, 类型: ${generated.contentType}`);
+    console.log(`[momentsGenerator] 📋 人设符合性检查: 性格特质[${personalityKeys.join(', ')}], 匹配[${matchingTraits.length > 0 ? matchingTraits.join(', ') : '无显式匹配'}]`);
+    console.log(`[momentsGenerator] 📝 内容预览: ${generated.content.slice(0, 50)}...`);
+
     return generated;
 
   } catch (e) {
@@ -390,12 +432,27 @@ function buildCommentPrompt(
     })
     .join('\n') || '无';
 
+  // 评论者人设约束
+  const commenterConstraintPrompt = `
+【人设强制约束 - 评论者身份】
+
+你是${safeName}，正在评论${moment.characterName}的朋友圈动态。
+
+**性格特点分析**：
+${safePersonality}
+
+**当前状态**：
+- 内心想法：${safeThought}
+
+**人设符合性检查清单**：
+1. 这个评论的语气、用词是否是${safeName}会用的？
+2. 评论方式是否符合${safeName}的性格（如傲娇可能嘴硬心软，温柔的人用词柔和）？
+3. 与${moment.characterName}的关系(${relationship || '普通朋友'})如何影响${safeName}的评论风格？
+4. 评论是否反映了${safeName}当前的心理状态？`;
+
   return `${JAILBREAK_PROMPT}
 
-【角色档案（评论者）】
-姓名：${safeName}
-当前内心想法：${safeThought}
-性格特点：${safePersonality}
+${commenterConstraintPrompt}
 
 【评论目标动态】
 作者：${moment.characterName}
@@ -406,17 +463,23 @@ ${moment.location ? `定位：${moment.location}` : ''}
 【关系信息】
 ${relationship ? `评论者与作者的关系：${relationship}` : '关系未知或普通朋友'}
 
-【生成要求】
-1. 评论应该符合评论者的性格和说话风格
-2. 考虑评论者与作者的关系，评论的语气和内容会不同
-3. 朋友圈评论通常简短、口语化、带有emoji
-4. 可以是：点赞式评论、关心式评论、调侃式评论、共鸣式评论等
-5. 评论内容应该与动态内容相关
+【生成要求 - 必须严格符合人设】
+1. **绝对禁止**：使用不符合${safeName}性格的用词、语气
+2. **必须体现**：${safeName}的性格特点如何影响评论内容
+3. **关系影响**：根据与${moment.characterName}的关系调整评论的亲疏程度
+4. **语言风格**：朋友圈评论通常简短、口语化，但必须是${safeName}的说话方式
+5. **评论类型**：可以是点赞式、关心式、调侃式、共鸣式等，但必须符合${safeName}性格
+6. **相关原则**：评论内容必须与动态内容相关
+
+【人设符合性自检】（生成后确认）
+- 这个评论读起来像是${safeName}会发的吗？
+- 如果是${safeName}的朋友看到，会觉得"这很${safeName}"吗？
+- 用词习惯符合${safeName}的性格档案吗？
 
 【输出格式】
 返回严格的JSON格式：
 {
-  "content": "评论内容（20-100字）"
+  "content": "评论内容（20-100字，必须是${safeName}的口吻）"
 }`;
 }
 
@@ -484,15 +547,29 @@ export async function generateMomentComment(
       return null;
     }
 
-    // 解析JSON
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const generated = JSON.parse(jsonMatch[0]) as { content: string };
-      return generated.content;
+    // 解析JSON - 使用更健壮的解析
+    const commentContent = parseCommentResult(content);
+    if (commentContent) {
+      // 人设符合性检查日志
+      const commenterPersonality = Object.keys(authorArchive?.personality || {});
+      const contentLower = commentContent.toLowerCase();
+
+      // 检查是否包含性格关键词
+      const matchingTraits = commenterPersonality.filter(key => {
+        const value = String(authorArchive?.personality?.[key as keyof typeof authorArchive.personality] || '').toLowerCase();
+        return contentLower.includes(key.toLowerCase()) ||
+               contentLower.includes(value.slice(0, 8));
+      });
+
+      console.log(`[momentsGenerator] ✅ 评论生成成功: ${authorName} -> ${moment.characterName}`);
+      console.log(`[momentsGenerator] 📋 评论者人设检查: 性格特质[${commenterPersonality.join(', ')}], 匹配[${matchingTraits.length > 0 ? matchingTraits.join(', ') : '无显式匹配'}]`);
+      console.log(`[momentsGenerator] 💬 评论内容: ${commentContent.slice(0, 40)}...`);
+
+      return commentContent;
     }
 
-    // 如果没有JSON格式，直接返回内容
-    return content.trim();
+    // 如果没有JSON格式，直接返回内容（清理markdown标记）
+    return content.replace(/```json|```/g, '').trim();
 
   } catch (e) {
     console.error('[momentsGenerator] 生成评论失败:', e);
@@ -629,4 +706,161 @@ export async function generateBatchMoments(
   }
 
   return results;
+}
+
+/**
+ * 解析AI生成的朋友圈动态结果
+ * 健壮的JSON解析，处理各种边界情况
+ */
+function parseMomentResult(raw: string): GeneratedMoment | null {
+  try {
+    // 尝试提取 JSON 代码块
+    let jsonStr = '';
+    const codeBlockMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1];
+    } else {
+      const braceMatch = raw.match(/(\{[\s\S]*\})/);
+      if (braceMatch) {
+        jsonStr = braceMatch[1];
+      } else {
+        jsonStr = raw;
+      }
+    }
+
+    // 清理 JSON
+    jsonStr = jsonStr.trim();
+    // 移除尾随逗号
+    jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+
+    // 修复字符串内的换行（避免JSON解析错误）
+    let fixedJson = '';
+    let inString = false;
+    let escapeNext = false;
+    for (let i = 0; i < jsonStr.length; i++) {
+      const char = jsonStr[i];
+      if (escapeNext) {
+        fixedJson += char;
+        escapeNext = false;
+        continue;
+      }
+      if (char === '\\') {
+        fixedJson += char;
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"' && !inString) {
+        inString = true;
+        fixedJson += char;
+        continue;
+      }
+      if (char === '"' && inString) {
+        inString = false;
+        fixedJson += char;
+        continue;
+      }
+      if (inString && (char === '\n' || char === '\r')) {
+        fixedJson += '\\n';
+        continue;
+      }
+      fixedJson += char;
+    }
+    jsonStr = fixedJson;
+
+    const parsed = JSON.parse(jsonStr) as GeneratedMoment;
+
+    // 验证必要字段
+    if (!parsed.content || typeof parsed.content !== 'string') {
+      console.warn('[momentsGenerator] 解析结果缺少content字段');
+      return null;
+    }
+
+    return parsed;
+  } catch (e) {
+    console.warn('[momentsGenerator] JSON解析失败:', e);
+    // 尝试最后一次：直接返回整个内容作为content
+    try {
+      // 如果AI只是返回了纯文本内容，尝试包装成正确格式
+      const fallback: GeneratedMoment = {
+        content: raw.replace(/```json|```/g, '').trim(),
+        contentType: 'daily_life',
+        visibility: 'friends_only',
+      };
+      return fallback;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * 解析AI生成的评论结果
+ */
+function parseCommentResult(raw: string): string | null {
+  try {
+    // 尝试提取 JSON 代码块
+    let jsonStr = '';
+    const codeBlockMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1];
+    } else {
+      const braceMatch = raw.match(/(\{[\s\S]*\})/);
+      if (braceMatch) {
+        jsonStr = braceMatch[1];
+      } else {
+        jsonStr = raw;
+      }
+    }
+
+    // 清理 JSON
+    jsonStr = jsonStr.trim();
+    jsonStr = jsonStr.replace(/,(\s*[}\]])/g, '$1');
+
+    // 修复字符串内的换行
+    let fixedJson = '';
+    let inString = false;
+    let escapeNext = false;
+    for (let i = 0; i < jsonStr.length; i++) {
+      const char = jsonStr[i];
+      if (escapeNext) {
+        fixedJson += char;
+        escapeNext = false;
+        continue;
+      }
+      if (char === '\\') {
+        fixedJson += char;
+        escapeNext = true;
+        continue;
+      }
+      if (char === '"' && !inString) {
+        inString = true;
+        fixedJson += char;
+        continue;
+      }
+      if (char === '"' && inString) {
+        inString = false;
+        fixedJson += char;
+        continue;
+      }
+      if (inString && (char === '\n' || char === '\r')) {
+        fixedJson += '\\n';
+        continue;
+      }
+      fixedJson += char;
+    }
+    jsonStr = fixedJson;
+
+    const parsed = JSON.parse(jsonStr) as { content?: string; comment?: string };
+
+    // 支持content或comment字段
+    const text = parsed.content || parsed.comment;
+    if (text && typeof text === 'string') {
+      return text.trim();
+    }
+
+    return null;
+  } catch (e) {
+    console.warn('[momentsGenerator] 评论JSON解析失败:', e);
+    return null;
+  }
 }
