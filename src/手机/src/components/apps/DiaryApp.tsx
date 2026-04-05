@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, Plus, Search, MoreHorizontal, Sparkles, Calendar, User, Trash2, Eye, EyeOff, RefreshCw, X } from 'lucide-react';
-import type { DiaryEntry } from '../../diaryIndexedDb';
+import { ChevronLeft, Plus, Search, Sparkles, Calendar, User, Trash2, Eye, EyeOff, RefreshCw, X, Settings, Clock } from 'lucide-react';
+import type { DiaryEntry, DiaryGlobalSettings } from '../../diaryIndexedDb';
 import {
   getAllDiaries,
   getDiariesByCharacter,
@@ -9,6 +9,8 @@ import {
   getUnreadDiaryCount,
   toggleAutoGenerate,
   getDiaryMeta,
+  getDiaryGlobalSettings,
+  saveDiaryGlobalSettings,
 } from '../../diaryIndexedDb';
 import {
   manualGenerateDiary,
@@ -81,6 +83,116 @@ function DiaryDetailModal({
         <p className="text-xs text-gray-500 text-center">
           这篇日记记录了{entry.characterName}最真实的内心独白
         </p>
+      </div>
+    </div>
+  );
+}
+
+/** 日记自动更新设置（与微信共用的小手机 API 在「设置」里配置，此处只管日记调度） */
+function SettingsModal({
+  isOpen,
+  onClose,
+  settings,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  settings: DiaryGlobalSettings | null;
+  onSave: (s: { autoUpdateEnabled: boolean; intervalDays: number }) => void;
+}) {
+  const [enabled, setEnabled] = useState(false);
+  const [days, setDays] = useState(1);
+
+  useEffect(() => {
+    if (settings) {
+      setEnabled(settings.autoUpdateEnabled);
+      setDays(settings.intervalDays);
+    }
+  }, [settings]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="absolute inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center animate-in fade-in duration-200">
+      <div className="bg-white w-full max-h-[80vh] rounded-t-2xl sm:rounded-2xl overflow-hidden animate-in slide-in-from-bottom duration-300">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Settings size={20} className="text-gray-600" />
+            <h3 className="text-lg font-semibold text-gray-900">日记设置</h3>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 -mr-2 rounded-full hover:bg-gray-100">
+            <X size={20} className="text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-6">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock size={18} className="text-amber-500" />
+                <span className="font-medium text-gray-900">自动更新日记</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnabled(!enabled)}
+                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                  enabled ? 'bg-amber-500' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">开启后按游戏日期与间隔天数自动为出场中角色生成日记</p>
+          </div>
+
+          {enabled && (
+            <div className="space-y-3 p-4 bg-amber-50 rounded-xl">
+              <label className="block">
+                <span className="text-sm font-medium text-gray-700">更新间隔（天）</span>
+                <div className="flex items-center gap-3 mt-2">
+                  <input
+                    type="range"
+                    min={1}
+                    max={7}
+                    value={days}
+                    onChange={e => setDays(parseInt(e.target.value, 10))}
+                    className="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
+                  <span className="w-12 text-center font-semibold text-amber-700">{days}天</span>
+                </div>
+              </label>
+              <p className="text-xs text-gray-500">每隔 {days} 天、游戏日期推进时触发自动检查</p>
+            </div>
+          )}
+
+          <p className="text-xs text-gray-400">
+            API 与模型请在主界面「设置」中配置，与微信、群聊相同。
+          </p>
+        </div>
+
+        <div className="p-5 border-t border-gray-100 flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-3 px-4 rounded-xl font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onSave({ autoUpdateEnabled: enabled, intervalDays: days });
+              onClose();
+            }}
+            className="flex-1 py-3 px-4 rounded-xl font-medium text-white bg-amber-500 hover:bg-amber-600 transition-colors"
+          >
+            保存
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -194,19 +306,23 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
   const [filterCharacter, setFilterCharacter] = useState<string>('all');
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [globalSettings, setGlobalSettings] = useState<DiaryGlobalSettings | null>(null);
 
   /** 加载日记和角色数据 */
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [diaries, chars, unread] = await Promise.all([
+      const [diaries, chars, unread, gSettings] = await Promise.all([
         getAllDiaries(),
         loadCharacterArchive(),
         getUnreadDiaryCount(),
+        getDiaryGlobalSettings(),
       ]);
       setEntries(diaries);
       setCharacters(chars);
       setUnreadCount(unread);
+      setGlobalSettings(gSettings);
     } catch (e) {
       console.error('[DiaryApp] 加载数据失败:', e);
     } finally {
@@ -331,6 +447,15 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
     return stats;
   }, [entries]);
 
+  const handleSaveGlobalSettings = async (s: { autoUpdateEnabled: boolean; intervalDays: number }) => {
+    try {
+      await saveDiaryGlobalSettings(s);
+      setGlobalSettings(prev => (prev ? { ...prev, ...s } : null));
+    } catch (e) {
+      console.error('[DiaryApp] 保存设置失败:', e);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#F8F9FA]">
       {/* Header */}
@@ -341,18 +466,32 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
           </button>
           <span className="text-amber-600 font-medium text-lg">返回</span>
         </div>
-        <button
-          onClick={() => setShowGenerate(true)}
-          disabled={isGenerating}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-full text-sm font-medium hover:bg-amber-600 active:scale-95 transition-all disabled:opacity-50"
-        >
-          {isGenerating ? (
-            <RefreshCw size={16} className="animate-spin" />
-          ) : (
-            <Sparkles size={16} />
-          )}
-          {isGenerating ? '生成中...' : '生成'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors relative"
+            aria-label="日记设置"
+          >
+            <Settings size={20} />
+            {globalSettings?.autoUpdateEnabled ? (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full" />
+            ) : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowGenerate(true)}
+            disabled={isGenerating}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-full text-sm font-medium hover:bg-amber-600 active:scale-95 transition-all disabled:opacity-50"
+          >
+            {isGenerating ? (
+              <RefreshCw size={16} className="animate-spin" />
+            ) : (
+              <Sparkles size={16} />
+            )}
+            {isGenerating ? '生成中...' : '生成'}
+          </button>
+        </div>
       </div>
 
       <div className="px-4 pb-2 pt-2">
@@ -537,6 +676,13 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
         onGenerateAll={handleBatchGenerate}
         isGenerating={isGenerating}
         progress={generateProgress}
+      />
+
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        settings={globalSettings}
+        onSave={handleSaveGlobalSettings}
       />
     </div>
   );

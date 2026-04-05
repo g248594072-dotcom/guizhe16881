@@ -4,12 +4,16 @@
  */
 
 const DB_NAME = 'tavern-phone-diary';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // 升级到v2添加全局设置表
 const STORE_DIARIES = 'diaries';
 const STORE_META = 'meta';
+const STORE_SETTINGS = 'settings';
 
 /** 本地离线 scope */
 const LOCAL_OFFLINE_SCOPE = 'local-offline';
+
+/** 全局设置键名 */
+const GLOBAL_SETTINGS_KEY = 'global';
 
 export interface DiaryEntry {
   id: string;
@@ -57,6 +61,10 @@ function openDb(): Promise<IDBDatabase> {
         }
         if (!db.objectStoreNames.contains(STORE_META)) {
           db.createObjectStore(STORE_META, { keyPath: 'characterId' });
+        }
+        // v2: 添加全局设置表
+        if (!db.objectStoreNames.contains(STORE_SETTINGS)) {
+          db.createObjectStore(STORE_SETTINGS, { keyPath: 'key' });
         }
       };
     });
@@ -258,6 +266,94 @@ export async function toggleAutoGenerate(characterId: string, enabled: boolean):
 export async function getUnreadDiaryCount(): Promise<number> {
   const all = await getAllDiaries();
   return all.filter(d => !d.isRead).length;
+}
+
+// ==================== 全局自动更新设置 ====================
+
+/** 全局自动更新设置 */
+export interface DiaryGlobalSettings {
+  key: 'global';
+  /** 自动更新是否启用 */
+  autoUpdateEnabled: boolean;
+  /** 间隔天数（1-30天） */
+  intervalDays: number;
+  /** 上次检查的游戏日期 */
+  lastCheckedGameDate: string;
+  /** 最后更新时间戳 */
+  updatedAt: number;
+}
+
+/**
+ * 获取全局设置
+ */
+export async function getDiaryGlobalSettings(): Promise<DiaryGlobalSettings> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_SETTINGS, 'readonly');
+    const req = tx.objectStore(STORE_SETTINGS).get(GLOBAL_SETTINGS_KEY);
+    req.onsuccess = () => {
+      const result = req.result as DiaryGlobalSettings | undefined;
+      resolve(result ?? {
+        key: 'global',
+        autoUpdateEnabled: false,
+        intervalDays: 1,
+        lastCheckedGameDate: '',
+        updatedAt: 0,
+      });
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/**
+ * 保存全局设置
+ */
+export async function saveDiaryGlobalSettings(settings: Omit<DiaryGlobalSettings, 'key' | 'updatedAt'>): Promise<void> {
+  const db = await openDb();
+  const fullSettings: DiaryGlobalSettings = {
+    ...settings,
+    key: 'global',
+    updatedAt: Date.now(),
+  };
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_SETTINGS, 'readwrite');
+    tx.objectStore(STORE_SETTINGS).put(fullSettings);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * 切换自动更新功能
+ */
+export async function toggleAutoUpdate(enabled: boolean): Promise<void> {
+  const settings = await getDiaryGlobalSettings();
+  await saveDiaryGlobalSettings({
+    ...settings,
+    autoUpdateEnabled: enabled,
+  });
+}
+
+/**
+ * 设置更新间隔天数
+ */
+export async function setAutoUpdateIntervalDays(days: number): Promise<void> {
+  const settings = await getDiaryGlobalSettings();
+  await saveDiaryGlobalSettings({
+    ...settings,
+    intervalDays: Math.max(1, Math.min(30, days)),
+  });
+}
+
+/**
+ * 更新最后检查日期
+ */
+export async function updateLastCheckedDate(gameDate: string): Promise<void> {
+  const settings = await getDiaryGlobalSettings();
+  await saveDiaryGlobalSettings({
+    ...settings,
+    lastCheckedGameDate: gameDate,
+  });
 }
 
 /**
