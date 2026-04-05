@@ -2295,6 +2295,17 @@ function extractJsonPatchFromUpdateVariable(message: string): Array<{op: string;
   }
 }
 
+/** JSON Patch 成功写入 stat_data 后，若触及世界/区域/个人规则则异步触发生成「世界大势 / 居民生活」 */
+function scheduleWorldLifeAfterJsonPatchIfNeeded(
+  patches: ReturnType<typeof extractJsonPatchFromUpdateVariable>,
+  statData: unknown,
+): void {
+  if (!patches?.length || !statData || typeof statData !== 'object') return;
+  void import('./utils/worldLifeFromPatch').then(({ scheduleWorldLifeTriggersFromJsonPatches }) => {
+    scheduleWorldLifeTriggersFromJsonPatches(patches, statData as Record<string, unknown>);
+  });
+}
+
 /** 模型偶发把对象/数组二次编码成 JSON 字符串，写入前尝试解析 */
 function coerceJsonPatchValue(v: unknown): unknown {
   if (typeof v !== 'string') return v;
@@ -2419,6 +2430,7 @@ async function applyMvuParseToMessageFloor(
       await replaceVariables(parsed, { type: 'message', message_id: messageId });
       console.log('✅ [App] MVU 已通过 replaceVariables 写入楼层:', messageId);
     }
+    scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
   } catch (e) {
     console.warn('⚠️ [App] 解析消息中 <UpdateVariable> 失败:', e);
   }
@@ -3149,20 +3161,21 @@ async function confirmVariableRerollApply() {
     // 构建包含新 UpdateVariable 的消息内容
     const withoutOld = pending.filteredMessage.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
     const updatedMessage = `${withoutOld}\n\n<UpdateVariable>\n${patchText}\n</UpdateVariable>`;
+    const jsonPatchesForWorldLife = extractJsonPatchFromUpdateVariable(updatedMessage);
 
     // 使用 MVU 方式直接更新变量数据（不修改消息内容，避免楼层重新渲染）
+    let appliedParsed: Mvu.MvuData | null = null;
     try {
       await waitGlobalInitialized('Mvu');
       const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
 
       // 首先尝试手动解析 <JSONPatch> 格式
       let parsed: Mvu.MvuData | null = null;
-      const jsonPatches = extractJsonPatchFromUpdateVariable(updatedMessage);
-      if (jsonPatches && base) {
+      if (jsonPatchesForWorldLife && base) {
         console.log('🔄 [App] 检测到 <JSONPatch> 格式，手动应用变量更新...');
         parsed = JSON.parse(JSON.stringify(base));
         if (!parsed.stat_data) parsed.stat_data = {};
-        applyJsonPatch(parsed.stat_data, jsonPatches);
+        applyJsonPatch(parsed.stat_data, jsonPatchesForWorldLife);
         console.log('✅ [App] JSON Patch 已手动应用');
       } else if (typeof Mvu?.parseMessage === 'function') {
         // 回退到 MVU 的 parseMessage
@@ -3175,6 +3188,7 @@ async function confirmVariableRerollApply() {
         // 关键修改：使用 Mvu.replaceMvuData 直接替换变量数据，不修改消息内容
         await Mvu.replaceMvuData(parsed, { type: 'message', message_id: pending.messageId });
         console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', pending.messageId);
+        appliedParsed = parsed;
       } else {
         console.warn('⚠️ [App] MVU 解析返回空，跳过写回变量');
       }
@@ -3187,11 +3201,10 @@ async function confirmVariableRerollApply() {
 
         // 降级方案也先尝试 JSON Patch
         let parsed: Mvu.MvuData | null = null;
-        const jsonPatches = extractJsonPatchFromUpdateVariable(updatedMessage);
-        if (jsonPatches && base) {
+        if (jsonPatchesForWorldLife && base) {
           parsed = JSON.parse(JSON.stringify(base));
           if (!parsed.stat_data) parsed.stat_data = {};
-          applyJsonPatch(parsed.stat_data, jsonPatches);
+          applyJsonPatch(parsed.stat_data, jsonPatchesForWorldLife);
         } else if (typeof Mvu?.parseMessage === 'function') {
           parsed = await Mvu.parseMessage(updatedMessage, base);
         }
@@ -3199,12 +3212,15 @@ async function confirmVariableRerollApply() {
         if (parsed) {
           await replaceVariables(parsed, { type: 'message', message_id: pending.messageId });
           console.log('✅ [App] 变量已通过 replaceVariables 降级方案应用到楼层');
+          appliedParsed = parsed;
         }
       } catch (e2) {
         console.error('❌ [App] 降级方案也失败:', e2);
         throw e2;
       }
     }
+
+    scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatchesForWorldLife, appliedParsed?.stat_data);
 
     closeVariableRerollDialog();
     // 使用轻量级刷新，避免界面闪烁
@@ -3625,6 +3641,7 @@ async function onTagDialogIgnore() {
         if (parsed) {
           await Mvu.replaceMvuData(parsed, { type: 'message', message_id: messageId });
           console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', messageId);
+          scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
         }
       } catch (e) {
         console.warn('⚠️ [App] 单独重roll变量时应用变量更新失败:', e);
@@ -3826,6 +3843,7 @@ async function refineOpeningAssistantWithSecondaryApi(
 
     if (parsed) {
       await replaceVariables(parsed, { type: 'message', message_id: assistantMessageId });
+      scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
     }
     console.log('✅ [App] 开局精炼变量：已应用第二遍第二 API');
   } catch (e) {
@@ -3850,17 +3868,17 @@ async function recordAssistantMessage(message: string) {
       }
 
       // 关键：解析 <UpdateVariable>，把 JSONPatch 应用到 MVU 数据中
+      const jsonPatchesForAssistantRecord = extractJsonPatchFromUpdateVariable(message);
       try {
         await waitGlobalInitialized('Mvu');
 
         // 首先尝试解析 <JSONPatch> 格式（本界面使用的格式）
-        const jsonPatches = extractJsonPatchFromUpdateVariable(message);
-        if (jsonPatches && baseData) {
+        if (jsonPatchesForAssistantRecord && baseData) {
           console.log('✅ [App] 检测到 <JSONPatch> 格式，手动应用变量更新...');
           // 确保 stat_data 结构存在
           if (!finalData.stat_data) finalData.stat_data = {};
           // 应用 JSON Patch 到 stat_data
-          applyJsonPatch(finalData.stat_data, jsonPatches);
+          applyJsonPatch(finalData.stat_data, jsonPatchesForAssistantRecord);
           console.log('✅ [App] JSON Patch 已手动应用到变量数据');
         } else if (typeof Mvu?.parseMessage === 'function' && baseData) {
           // 回退到 MVU 的 parseMessage（处理 _.set() 格式）
@@ -3871,6 +3889,10 @@ async function recordAssistantMessage(message: string) {
         }
       } catch (e) {
         console.warn('⚠️ [App] 解析 <UpdateVariable> 失败，将使用原始变量数据写入:', e);
+      }
+
+      if (jsonPatchesForAssistantRecord?.length && baseData && finalData.stat_data) {
+        scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatchesForAssistantRecord, finalData.stat_data);
       }
 
       await createChatMessages(

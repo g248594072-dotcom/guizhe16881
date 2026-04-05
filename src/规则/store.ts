@@ -6,7 +6,7 @@
 import { defineMvuDataStore } from '@util/mvu';
 import { Schema } from './schema';
 import type { CharacterData, RuleData, RegionData } from './types';
-import { normalizeTagMap } from './utils/tagMap';
+import { normalizeFetishRecord, normalizeSensitivePartRecord, normalizeTagMap } from './utils/tagMap';
 
 /**
  * 主数据存储
@@ -46,43 +46,27 @@ export function useCharacters() {
 
       // 性癖详情（含等级、细节描述、自我合理化）
       const fetishDetails: Record<string, { level: number; description: string; justification: string }> = {};
-      const rawFetishes = char.性癖 || char.fetishes || {};
+      const rawFetishes = normalizeFetishRecord(char.性癖 || char.fetishes || {});
       if (rawFetishes && typeof rawFetishes === 'object') {
         for (const [key, val] of Object.entries(rawFetishes)) {
-          if (val && typeof val === 'object') {
-            fetishDetails[key] = {
-              level: (val as any).等级 ?? (val as any).level ?? 1,
-              description: (val as any).细节描述 ?? (val as any).description ?? '',
-              justification: (val as any).自我合理化 ?? (val as any).justification ?? '',
-            };
-          } else if (typeof val === 'string') {
-            fetishDetails[key] = {
-              level: 1,
-              description: val,
-              justification: '',
-            };
-          }
+          fetishDetails[key] = {
+            level: val.等级 ?? 1,
+            description: val.细节描述 ?? '',
+            justification: val.自我合理化 ?? '',
+          };
         }
       }
 
       // 敏感部位详情（含敏感等级、生理反应、开发细节）
       const sensitivePartDetails: Record<string, { level: number; reaction: string; devDetails: string }> = {};
-      const rawSensitiveParts = char.敏感部位 || char.sensitiveParts || {};
+      const rawSensitiveParts = normalizeSensitivePartRecord(char.敏感部位 || char.sensitiveParts || {});
       if (rawSensitiveParts && typeof rawSensitiveParts === 'object') {
         for (const [key, val] of Object.entries(rawSensitiveParts)) {
-          if (val && typeof val === 'object') {
-            sensitivePartDetails[key] = {
-              level: (val as any).敏感等级 ?? (val as any).level ?? 1,
-              reaction: (val as any).生理反应 ?? (val as any).reaction ?? '',
-              devDetails: (val as any).开发细节 ?? (val as any).devDetails ?? '',
-            };
-          } else if (typeof val === 'string') {
-            sensitivePartDetails[key] = {
-              level: 1,
-              reaction: val,
-              devDetails: '',
-            };
-          }
+          sensitivePartDetails[key] = {
+            level: val.敏感等级 ?? 1,
+            reaction: val.生理反应 ?? '',
+            devDetails: val.开发细节 ?? '',
+          };
         }
       }
 

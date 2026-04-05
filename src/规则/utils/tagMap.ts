@@ -19,6 +19,16 @@ function isCorruptObjectString(s: string): boolean {
   return s === '[object Object]' || s.startsWith('[object ');
 }
 
+/**
+ * MVU 常见存盘形态：叶子为 [实际值, "描述字符串"]，若不拆包会被当成数组或错误解析。
+ */
+export function unwrapMvuTaggedValue(v: unknown): unknown {
+  if (Array.isArray(v) && v.length >= 2 && typeof v[1] === 'string') {
+    return v[0];
+  }
+  return v;
+}
+
 /** 性癖单条（中文键，与 MVU / 详情编辑一致） */
 export interface FetishEntryZh {
   等级: number;
@@ -34,24 +44,30 @@ export interface SensitiveEntryZh {
 }
 
 function coerceFetishEntry(v: Record<string, unknown>): FetishEntryZh {
-  const level = v['等级'] ?? v['level'];
-  const n = typeof level === 'number' && Number.isFinite(level) ? level : Number(level);
+  const levelRaw = unwrapMvuTaggedValue(v['等级'] ?? v['level']);
+  const n =
+    typeof levelRaw === 'number' && Number.isFinite(levelRaw) ? levelRaw : Number(levelRaw);
   const 等级 = Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : 1;
+  const 细节Raw = unwrapMvuTaggedValue(v['细节描述'] ?? v['description']);
+  const 自我Raw = unwrapMvuTaggedValue(v['自我合理化'] ?? v['justification']);
   return {
     等级,
-    细节描述: String(v['细节描述'] ?? v['description'] ?? ''),
-    自我合理化: String(v['自我合理化'] ?? v['justification'] ?? ''),
+    细节描述: 细节Raw == null ? '' : String(细节Raw),
+    自我合理化: 自我Raw == null ? '' : String(自我Raw),
   };
 }
 
 function coerceSensitiveEntry(v: Record<string, unknown>): SensitiveEntryZh {
-  const level = v['敏感等级'] ?? v['level'];
-  const n = typeof level === 'number' && Number.isFinite(level) ? level : Number(level);
+  const levelRaw = unwrapMvuTaggedValue(v['敏感等级'] ?? v['level']);
+  const n =
+    typeof levelRaw === 'number' && Number.isFinite(levelRaw) ? levelRaw : Number(levelRaw);
   const 敏感等级 = Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : 1;
+  const 反应Raw = unwrapMvuTaggedValue(v['生理反应'] ?? v['reaction']);
+  const 开发Raw = unwrapMvuTaggedValue(v['开发细节'] ?? v['devDetails']);
   return {
     敏感等级,
-    生理反应: String(v['生理反应'] ?? v['reaction'] ?? ''),
-    开发细节: String(v['开发细节'] ?? v['devDetails'] ?? ''),
+    生理反应: 反应Raw == null ? '' : String(反应Raw),
+    开发细节: 开发Raw == null ? '' : String(开发Raw),
   };
 }
 
@@ -87,21 +103,22 @@ export function normalizeFetishRecord(raw: unknown): Record<string, FetishEntryZ
   for (const [k, v] of Object.entries(obj)) {
     const key = String(k);
     if (v == null) continue;
-    if (typeof v === 'string') {
-      if (isCorruptObjectString(v)) {
+    const vUn = unwrapMvuTaggedValue(v);
+    if (typeof vUn === 'string') {
+      if (isCorruptObjectString(vUn)) {
         out[key] = { 等级: 1, 细节描述: '', 自我合理化: '' };
         continue;
       }
-      const jp = tryParseJsonObject(v);
+      const jp = tryParseJsonObject(vUn);
       if (jp) {
         out[key] = coerceFetishEntry(jp);
         continue;
       }
-      out[key] = { 等级: 1, 细节描述: v, 自我合理化: '' };
+      out[key] = { 等级: 1, 细节描述: vUn, 自我合理化: '' };
       continue;
     }
-    if (typeof v === 'object' && !Array.isArray(v)) {
-      out[key] = coerceFetishEntry(v as Record<string, unknown>);
+    if (typeof vUn === 'object' && vUn !== null && !Array.isArray(vUn)) {
+      out[key] = coerceFetishEntry(vUn as Record<string, unknown>);
     }
   }
   return out;
@@ -136,24 +153,49 @@ export function normalizeSensitivePartRecord(raw: unknown): Record<string, Sensi
   for (const [k, v] of Object.entries(obj)) {
     const key = String(k);
     if (v == null) continue;
-    if (typeof v === 'string') {
-      if (isCorruptObjectString(v)) {
+    const vUn = unwrapMvuTaggedValue(v);
+    if (typeof vUn === 'string') {
+      if (isCorruptObjectString(vUn)) {
         out[key] = { 敏感等级: 1, 生理反应: '', 开发细节: '' };
         continue;
       }
-      const jp = tryParseJsonObject(v);
+      const jp = tryParseJsonObject(vUn);
       if (jp) {
         out[key] = coerceSensitiveEntry(jp);
         continue;
       }
-      out[key] = { 敏感等级: 1, 生理反应: v, 开发细节: '' };
+      out[key] = { 敏感等级: 1, 生理反应: vUn, 开发细节: '' };
       continue;
     }
-    if (typeof v === 'object' && !Array.isArray(v)) {
-      out[key] = coerceSensitiveEntry(v as Record<string, unknown>);
+    if (typeof vUn === 'object' && vUn !== null && !Array.isArray(vUn)) {
+      out[key] = coerceSensitiveEntry(vUn as Record<string, unknown>);
     }
   }
   return out;
+}
+
+/**
+ * 写入 MVU 前对 stat_data 做一次浅修正：保证「角色档案」内 性癖/敏感部位 为规范嵌套对象，
+ * 避免 MVU 变量树把子项显示成 [object Object] 或脏字符串长期残留。
+ */
+export function sanitizeStatDataRoleArchivesNestedMaps(statData: unknown): unknown {
+  if (statData == null || typeof statData !== 'object' || Array.isArray(statData)) {
+    return statData;
+  }
+  const sd = statData as Record<string, unknown>;
+  const 角色档案 = sd['角色档案'];
+  if (角色档案 == null || typeof 角色档案 !== 'object' || Array.isArray(角色档案)) {
+    return statData;
+  }
+  const chars = { ...(角色档案 as Record<string, unknown>) };
+  for (const [id, ch] of Object.entries(chars)) {
+    if (ch == null || typeof ch !== 'object' || Array.isArray(ch)) continue;
+    const c = { ...(ch as Record<string, unknown>) };
+    if ('性癖' in c) c['性癖'] = normalizeFetishRecord(c['性癖']);
+    if ('敏感部位' in c) c['敏感部位'] = normalizeSensitivePartRecord(c['敏感部位']);
+    chars[id] = c;
+  }
+  return { ...sd, 角色档案: chars };
 }
 
 /** 性癖嵌套对象 → 多行文案（供弹窗编辑） */
@@ -235,26 +277,71 @@ export function parseEditableTextToSensitiveRecord(text: string): Record<string,
   return normalizeSensitivePartRecord(parseEditableTextToTagMap(text));
 }
 
-/** 变量 / Record → 弹窗多行文案 */
+/** 变量 / Record → 弹窗多行文案（主要用于性格等「名→字符串」；遇嵌套对象时用 JSON，避免 [object Object]） */
 export function tagMapToEditableText(field: unknown): string {
   if (field == null) return '';
   if (Array.isArray(field)) return field.join('\n');
   if (typeof field === 'object') {
-    return Object.entries(field as Record<string, string>)
-      .map(([k, v]) => (String(v).trim() ? `${k}：${v}` : k))
+    return Object.entries(field as Record<string, unknown>)
+      .map(([k, v]) => {
+        if (v == null) return k;
+        if (typeof v === 'string') return String(v).trim() ? `${k}：${v}` : k;
+        if (typeof v === 'object' && !Array.isArray(v)) {
+          try {
+            return `${k}：${JSON.stringify(v)}`;
+          } catch {
+            return k;
+          }
+        }
+        const sv = String(v).trim();
+        return sv && !isCorruptObjectString(sv) ? `${k}：${sv}` : k;
+      })
       .join('\n');
   }
   return '';
 }
 
-/** Badge 列表：对象展平为「键：值」，数组保持原样字符串 */
-export function tagFieldToBadgeLines(field: unknown): string[] {
+export type TagFieldBadgeNested = 'none' | 'fetish' | 'sensitive';
+
+/** Badge 列表：对象展平为「键：值」；嵌套对象勿用 String(v)，避免 [object Object] */
+export function tagFieldToBadgeLines(field: unknown, nested: TagFieldBadgeNested = 'none'): string[] {
   if (field == null) return [];
   if (Array.isArray(field)) return field.map(s => String(s));
   if (typeof field === 'object') {
-    return Object.entries(field as Record<string, string>).map(([k, v]) =>
-      String(v).trim() ? `${k}：${v}` : k,
-    );
+    return Object.entries(field as Record<string, unknown>).map(([k, v]) => {
+      if (v == null) return k;
+      if (typeof v === 'string') {
+        return String(v).trim() ? `${k}：${v}` : k;
+      }
+      if (nested === 'fetish' && typeof v === 'object' && !Array.isArray(v)) {
+        const one = normalizeFetishRecord({ [k]: unwrapMvuTaggedValue(v) });
+        const e = one[k];
+        if (e) {
+          const d = e.细节描述.trim();
+          const j = e.自我合理化.trim();
+          let s = `${k}：Lv.${e.等级}`;
+          if (d) s += ` ${d}`;
+          if (j) s += `｜${j}`;
+          return s;
+        }
+        return k;
+      }
+      if (nested === 'sensitive' && typeof v === 'object' && !Array.isArray(v)) {
+        const one = normalizeSensitivePartRecord({ [k]: unwrapMvuTaggedValue(v) });
+        const e = one[k];
+        if (e) {
+          const r = e.生理反应.trim();
+          const d = e.开发细节.trim();
+          let s = `${k}：Lv.${e.敏感等级}`;
+          if (r) s += ` ${r}`;
+          if (d) s += `｜${d}`;
+          return s;
+        }
+        return k;
+      }
+      const sv = String(v).trim();
+      return sv && !isCorruptObjectString(sv) ? `${k}：${sv}` : k;
+    });
   }
   return [];
 }

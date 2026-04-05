@@ -1,4 +1,5 @@
 import { StoreDefinition } from 'pinia';
+import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
 function normalizeMessageVariableOption(option: VariableOption): VariableOption {
   const o = _.cloneDeep(option);
@@ -89,7 +90,7 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       }
 
       const rawVariables = getVariables(resolvedOption);
-      const statData = getStatData(rawVariables);
+      const statData = sanitizeStatDataRoleArchivesNestedMaps(getStatData(rawVariables)) as Record<string, unknown>;
       const data = ref(
         schema.parse(statData, { reportInput: true }),
       ) as Ref<z.infer<T>>;
@@ -99,7 +100,9 @@ export function defineMvuDataStore<T extends z.ZodObject>(
 
       useIntervalFn(() => {
         const variables = getVariables(resolvedOption);
-        const stat_data = getStatData(variables);
+        const rawStatData = getStatData(variables);
+        const stat_data = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
+        const hadCorruption = !_.isEqual(rawStatData, stat_data);
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;
@@ -108,9 +111,12 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ignoreUpdates(() => {
             data.value = result.data;
           });
-          if (!_.isEqual(stat_data, result.data)) {
+          if (!_.isEqual(stat_data, result.data) || hadCorruption) {
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
           }
+        } else if (hadCorruption) {
+          console.warn('[mvu] 检测到嵌套对象污染 ([object Object])，强制写回修复');
+          updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
         }
       }, 2000);
 

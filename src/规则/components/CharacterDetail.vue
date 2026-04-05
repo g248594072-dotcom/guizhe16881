@@ -481,8 +481,8 @@ const displayThought = computed(() => {
   return '暂无';
 });
 const displayTraits = computed(() => tagFieldToBadgeLines(currentExtra.value.traits));
-const displayFetishes = computed(() => tagFieldToBadgeLines(currentExtra.value.fetishes));
-const displaySensitiveParts = computed(() => tagFieldToBadgeLines(currentExtra.value.sensitiveParts));
+const displayFetishes = computed(() => tagFieldToBadgeLines(currentExtra.value.fetishes, 'fetish'));
+const displaySensitiveParts = computed(() => tagFieldToBadgeLines(currentExtra.value.sensitiveParts, 'sensitive'));
 const displayHiddenFetish = computed(() => {
   const v = currentExtra.value.hiddenFetish;
   if (typeof v === 'string' && v.trim().length > 0) return v;

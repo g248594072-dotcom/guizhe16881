@@ -2696,6 +2696,8 @@ defineExpose({
   max-height: min(80vh, calc(640px * var(--ui-scale, 1)));
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .opening-dialog-input {
@@ -3753,12 +3755,18 @@ defineExpose({
   }
 }
 
-// 清理菜单选项列表
+// 清理菜单选项列表（条目多时限制高度，框内滚轮滚动）
 .clear-options-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
   margin: 16px 0;
+  max-height: min(50vh, calc(360px * var(--ui-scale, 1)));
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: calc(6px * var(--ui-scale, 1));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .clear-option-item {
@@ -4829,6 +4837,10 @@ defineExpose({
 
   .opening-dialog-list--scroll {
     max-height: min(48vh, calc(320px * var(--ui-scale, 1)));
+  }
+
+  .clear-options-list {
+    max-height: min(46dvh, calc(300px * var(--ui-scale, 1)));
   }
 
   .opening-dialog-list-item {
