@@ -176,13 +176,10 @@
                 @update-worldbook="onUpdateWorldbook"
                 @layout-change="onLayoutChange"
               />
-              <div
+              <WorldLifePanel
                 v-else-if="activeTab === 'world_life'"
-                class="phone-placeholder-panel"
-                :class="{ dark: isDarkMode, light: !isDarkMode }"
-              >
-                <p class="phone-placeholder-text">暂时未更新</p>
-              </div>
+                :is-dark-mode="isDarkMode"
+              />
             </div>
           </Transition>
         </div>
@@ -1164,6 +1161,7 @@ import RegionalRulesPanel from './components/RegionalRulesPanel.vue';
 import PersonalRulesPanel from './components/PersonalRulesPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import OpeningForm from './components/OpeningForm.vue';
+import WorldLifePanel from './components/WorldLifePanel.vue';
 
 // 赛博朋克特效组件
 import ParallaxBackground from './components/ParallaxBackground.vue';

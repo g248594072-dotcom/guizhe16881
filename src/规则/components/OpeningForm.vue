@@ -688,6 +688,26 @@
               <span v-else>清理</span>
             </button>
           </div>
+
+          <!-- 清理世界&生活记录 -->
+          <div class="clear-option-item">
+            <div class="clear-option-info">
+              <div class="clear-option-title">
+                <i class="fa-solid fa-earth-americas"></i>
+                <span>清理世界&生活记录</span>
+              </div>
+              <div class="clear-option-desc">清空世界大势和居民生活记录数据</div>
+            </div>
+            <button
+              type="button"
+              class="chronicle-dialog-btn danger"
+              :disabled="clearWorldLifeLoading"
+              @click="onConfirmClearWorldLife"
+            >
+              <i v-if="clearWorldLifeLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+              <span v-else>清理</span>
+            </button>
+          </div>
         </div>
 
         <div class="chronicle-dialog-actions">
@@ -900,18 +920,21 @@ import ScrambleText from './ScrambleText.vue';
 import BlockProgress from './BlockProgress.vue';
 import { clearChronicle } from '../utils/chronicleUpdater';
 import { clearOpeningUiCache } from '../utils/clearUiCache';
+import { clearAllWorldLifeRecords } from '../utils/worldLifeStorage';
 import {
-  type RuleSnippet,
-  type CharacterSnippet,
-  type SceneSnippet,
-  type OpeningSceneSnippet,
-  type OpeningPreset,
-  type OpeningPresetPayload,
   createStorageId,
   loadOpeningStorage,
   saveOpeningStorage,
   downloadOpeningStorageJson,
   parseOpeningStorageJson,
+} from '../utils/openingStorage';
+import type {
+  RuleSnippet,
+  CharacterSnippet,
+  SceneSnippet,
+  OpeningSceneSnippet,
+  OpeningPreset,
+  OpeningPresetPayload,
 } from '../utils/openingStorage';
 
 const emit = defineEmits<{
@@ -984,6 +1007,7 @@ const clearMenuOpen = ref(false);
 const clearChronicleLoading = ref(false);
 const clearCacheLoading = ref(false);
 const clearMsWorldbooksLoading = ref(false);
+const clearWorldLifeLoading = ref(false);
 
 // —— localStorage：规则库 / 角色库 / 场景库 / 开局场景库 / 开场预设 ——
 const ruleSnippets = ref<RuleSnippet[]>([]);
@@ -1462,6 +1486,20 @@ async function onConfirmClearMsWorldbooks() {
     toastr.error('清理失败：' + String(e));
   } finally {
     clearMsWorldbooksLoading.value = false;
+  }
+}
+
+async function onConfirmClearWorldLife() {
+  if (clearWorldLifeLoading.value) return;
+  clearWorldLifeLoading.value = true;
+  try {
+    clearAllWorldLifeRecords();
+    toastr.success('世界大势和居民生活记录已清空');
+  } catch (e) {
+    console.error('[OpeningForm] clearWorldLife:', e);
+    toastr.error('清理失败：' + String(e));
+  } finally {
+    clearWorldLifeLoading.value = false;
   }
 }
 

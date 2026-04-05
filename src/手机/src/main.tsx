@@ -16,6 +16,8 @@ import {
 } from '../../shared/phoneCharacterAvatarStorage';
 import { initDiaryScheduler } from './diaryScheduler';
 import { initForumScheduler } from './forumScheduler';
+import { initMomentsScheduler } from './momentsScheduler';
+import { initNewsScheduler } from './newsScheduler';
 
 migrateLegacyPhoneCharacterAvatars();
 
@@ -111,8 +113,14 @@ initExportThreadsListener();
 const cleanupDiaryScheduler = initDiaryScheduler();
 // 初始化论坛自动生成调度器
 const cleanupForumScheduler = initForumScheduler();
+// 初始化朋友圈自动生成调度器
+const cleanupMomentsScheduler = initMomentsScheduler();
+// 初始化新闻自动生成调度器
+const cleanupNewsScheduler = initNewsScheduler();
 // 卸载时清理
 window.addEventListener('beforeunload', () => {
   cleanupDiaryScheduler();
   cleanupForumScheduler();
+  cleanupMomentsScheduler();
+  cleanupNewsScheduler();
 });

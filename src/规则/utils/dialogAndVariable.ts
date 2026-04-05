@@ -15,6 +15,7 @@ import {
   type FetishEntryZh,
   type SensitiveEntryZh,
 } from './tagMap';
+import { generateWorldTrend, generateResidentLife } from './worldLifeGenerator';
 
 /**
  * 将文本写入前端对话框输入区（不创建新楼层）
@@ -545,6 +546,16 @@ export async function submitAddWorldRule(name: string, detail: string): Promise<
   }
   const message = formatWorldRuleMessage('add', n, detail.trim());
   addWorldRuleToVariables(n, detail.trim());
+
+  // 异步触发世界大势生成（不阻塞主流程）
+  setTimeout(() => {
+    generateWorldTrend(n, 'world', detail.trim()).then((success) => {
+      if (success) {
+        toastr.success(`已生成世界大势说明：${n}`);
+      }
+    }).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -556,6 +567,12 @@ export async function submitEditWorldRule(idOrTitle: string, name: string, detai
   }
   const message = formatWorldRuleMessage('edit', n, detail.trim());
   updateWorldRuleInVariables(idOrTitle, { title: n, desc: detail.trim() });
+
+  // 异步触发世界大势生成（不阻塞主流程）
+  setTimeout(() => {
+    generateWorldTrend(n, 'world', detail.trim()).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -849,6 +866,16 @@ export async function submitAddRegion(name: string, detail: string, firstRuleNam
   const ruleTitle = (firstRuleName ?? '').trim();
   const message = formatRegionRuleMessage('add', n, detail.trim(), ruleTitle || undefined);
   addRegionToVariables(n, detail.trim(), ruleTitle || undefined);
+
+  // 异步触发世界大势生成（区域级别）
+  setTimeout(() => {
+    generateWorldTrend(n, 'regional', detail.trim(), [n]).then((success) => {
+      if (success) {
+        toastr.success(`已生成世界大势说明：${n}`);
+      }
+    }).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -861,6 +888,16 @@ export async function submitAddRegionalRule(regionIdOrName: string, regionName: 
   const detail = ruleDetail.trim();
   const message = `[新增区域规则]\n区域：${regionName}\n规则：${n}\n细节：${detail}`;
   addRegionalRuleToVariables(regionIdOrName, n, detail);
+
+  // 异步触发世界大势生成（区域级别）
+  setTimeout(() => {
+    generateWorldTrend(n, 'regional', detail, [regionName]).then((success) => {
+      if (success) {
+        toastr.success(`已生成世界大势说明：${n}`);
+      }
+    }).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -879,6 +916,12 @@ export async function submitEditRegionalRule(
   const detail = ruleDetail.trim();
   const message = `[编辑区域规则]\n区域：${regionName}\n规则：${n}\n细节：${detail}`;
   updateRegionalRuleInVariables(regionIdOrName, ruleIdOrTitle, { title: n, desc: detail });
+
+  // 异步触发世界大势生成（区域级别）
+  setTimeout(() => {
+    generateWorldTrend(n, 'regional', detail, [regionName]).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -890,6 +933,12 @@ export async function submitEditRegion(idOrName: string, name: string, detail: s
   }
   const message = formatRegionRuleMessage('edit', n, detail.trim());
   updateRegionInVariables(idOrName, { name: n, description: detail.trim() });
+
+  // 异步触发世界大势生成（区域级别）
+  setTimeout(() => {
+    generateWorldTrend(n, 'regional', detail.trim(), [n]).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -1009,6 +1058,22 @@ export async function submitAddPersonalRule(characterName: string, detail: strin
   }
   const message = formatPersonalRuleMessage('add', c, detail.trim());
   addPersonalRuleToVariables(c, detail.trim());
+
+  // 获取未出场角色列表（用于居民生活生成）
+  const store = useDataStore();
+  const inactiveChars = Object.entries(store.data.角色档案 || {})
+    .filter(([_, char]) => char.状态 !== '出场中')
+    .map(([id, char]) => char.姓名 || id);
+
+  // 异步触发居民生活生成
+  setTimeout(() => {
+    generateResidentLife(c, c, detail.trim(), inactiveChars).then((success) => {
+      if (success) {
+        toastr.success(`已生成居民生活说明：${c}`);
+      }
+    }).catch(console.error);
+  }, 100);
+
   return message;
 }
 
@@ -1020,6 +1085,18 @@ export async function submitEditPersonalRule(idOrTitle: string, characterName: s
   }
   const message = formatPersonalRuleMessage('edit', c, detail.trim());
   updatePersonalRuleInVariables(idOrTitle, { title: c, desc: detail.trim() });
+
+  // 获取未出场角色列表（用于居民生活生成）
+  const store = useDataStore();
+  const inactiveChars = Object.entries(store.data.角色档案 || {})
+    .filter(([_, char]) => char.状态 !== '出场中')
+    .map(([id, char]) => char.姓名 || id);
+
+  // 异步触发居民生活生成
+  setTimeout(() => {
+    generateResidentLife(c, c, detail.trim(), inactiveChars).catch(console.error);
+  }, 100);
+
   return message;
 }
 

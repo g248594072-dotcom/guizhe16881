@@ -5,10 +5,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Minimize2, Maximize2, X, Loader2, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen } from 'lucide-react';
+import { Minimize2, Maximize2, X, Loader2, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen, Newspaper } from 'lucide-react';
 
 /** 任务类型 */
-export type TaskType = 'character_analysis' | 'diary_generation' | 'forum_generation' | 'chat_generation';
+export type TaskType = 'character_analysis' | 'diary_generation' | 'forum_generation' | 'chat_generation' | 'moment_generation' | 'news_generation';
 
 /** 任务状态 */
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'error';
@@ -48,6 +48,16 @@ const TASK_TYPE_CONFIG: Record<TaskType, { label: string; icon: React.ReactNode;
     label: '群聊生成',
     icon: <FileText size={14} />,
     color: 'text-orange-500',
+  },
+  moment_generation: {
+    label: '朋友圈生成',
+    icon: <MessageSquare size={14} />,
+    color: 'text-pink-500',
+  },
+  news_generation: {
+    label: '新闻生成',
+    icon: <Newspaper size={14} />,
+    color: 'text-red-500',
   },
 };
 

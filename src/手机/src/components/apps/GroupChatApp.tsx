@@ -10,7 +10,9 @@ import {
   Trash2,
   Edit3,
   MoreVertical,
+  Camera,
 } from 'lucide-react';
+import CharacterProfileModal from '../CharacterProfileModal';
 
 // ==================== 气泡样式系统 ====================
 // 20+ 种独特气泡风格：圆角、光泽、毛玻璃、霓虹、科技感、羊皮纸、便签等
@@ -298,6 +300,10 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
   });
   const longPressTimerRef = useRef<number | null>(null);
   const [retractingIds, setRetractingIds] = useState<Set<string>>(new Set());
+
+  // 角色详情弹窗状态
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileModalCharacterId, setProfileModalCharacterId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const contextFetchGenRef = useRef(0);
@@ -602,6 +608,12 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
     }
   }, []);
 
+  // 打开角色详情弹窗
+  const openCharacterProfile = useCallback((characterId: string) => {
+    setProfileModalCharacterId(characterId);
+    setProfileModalOpen(true);
+  }, []);
+
   // 撤回消息
   const handleRetractMessage = useCallback(async () => {
     const messageId = longPressMenu.messageId;
@@ -870,28 +882,30 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 <p className="text-[14px] text-gray-500 truncate pr-4">{sessionInfo.lastPreview}</p>
               </div>
             </div>
-          ) : allGroupChats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <Users size={48} className="mb-4 opacity-30" />
-              <p className="text-sm mb-4">还没有群聊</p>
-              <button
-                type="button"
-                onClick={() => setView('create')}
-                className="px-4 py-2 bg-[#07C160] text-white rounded-lg text-sm"
-              >
-                创建群聊
-              </button>
-            </div>
-          ) : (
-            allGroupChats.map((group, index) => (
-              <div
-                key={group.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openGroupChatById(group.id)}
-                onKeyDown={e => { if (e.key === 'Enter') openGroupChatById(group.id); }}
-                className={`w-full flex items-center px-4 py-4 active:bg-gray-100 transition-colors cursor-pointer ${index !== allGroupChats.length - 1 ? 'border-b border-gray-100' : ''}`}
-              >
+          ) : (() => {
+            const validGroups = allGroupChats.filter(g => g.members.length >= 2);
+            return validGroups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <Users size={48} className="mb-4 opacity-30" />
+                <p className="text-sm mb-4">还没有群聊</p>
+                <button
+                  type="button"
+                  onClick={() => setView('create')}
+                  className="px-4 py-2 bg-[#07C160] text-white rounded-lg text-sm"
+                >
+                  创建群聊
+                </button>
+              </div>
+            ) : (
+              validGroups.map((group, index) => (
+                <div
+                  key={group.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openGroupChatById(group.id)}
+                  onKeyDown={e => { if (e.key === 'Enter') openGroupChatById(group.id); }}
+                  className={`w-full flex items-center px-4 py-4 active:bg-gray-100 transition-colors cursor-pointer ${index !== validGroups.length - 1 ? 'border-b border-gray-100' : ''}`}
+                >
                 <div className="shrink-0 mr-3">
                   <div className="h-12 w-12 rounded-lg bg-[#07C160] flex items-center justify-center">
                     <Users size={24} color="white" />
@@ -946,9 +960,10 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                     </button>
                   </div>
                 )}
-              </div>
-            ))
-          )}
+                </div>
+              ))
+            );
+          })()}
 
           {/* 点击空白处关闭菜单 */}
           {showGroupOptions && (
@@ -983,16 +998,23 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 <ul className="divide-y divide-gray-100">
                   {groupMembers.map(member => (
                     <li key={member.id} className="flex items-center gap-3 px-2 py-3">
-                      <GroupMemberAvatar
-                        member={member}
-                        avatarSrc={resolveRoleAvatarDisplay(
-                          member.id,
-                          member.avatarUrl,
-                          avatarOverrides,
-                          member.displayName,
-                        )}
-                        size="list"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => openCharacterProfile(member.id)}
+                        className="rounded-lg overflow-hidden hover:opacity-80 transition-opacity"
+                        title={`查看 ${member.displayName} 的资料`}
+                      >
+                        <GroupMemberAvatar
+                          member={member}
+                          avatarSrc={resolveRoleAvatarDisplay(
+                            member.id,
+                            member.avatarUrl,
+                            avatarOverrides,
+                            member.displayName,
+                          )}
+                          size="list"
+                        />
+                      </button>
                       <div className="min-w-0 flex-1">
                         <p className="text-[15px] font-medium text-gray-900 truncate">{member.displayName}</p>
                         {member.personality && (
@@ -1220,17 +1242,23 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
                 }}
               >
                 {!isUser && (
-                  <GroupMemberAvatar
-                    member={gm}
-                    avatarSrc={resolveRoleAvatarDisplay(
-                      gm.id,
-                      gm.avatarUrl,
-                      avatarOverrides,
-                      gm.displayName,
-                    )}
-                    size="bubble"
-                    className="mt-0.5 shrink-0"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => openCharacterProfile(gm.id)}
+                    className="mt-0.5 shrink-0 rounded-md overflow-hidden hover:opacity-80 transition-opacity"
+                    title={`查看 ${gm.displayName} 的资料`}
+                  >
+                    <GroupMemberAvatar
+                      member={gm}
+                      avatarSrc={resolveRoleAvatarDisplay(
+                        gm.id,
+                        gm.avatarUrl,
+                        avatarOverrides,
+                        gm.displayName,
+                      )}
+                      size="bubble"
+                    />
+                  </button>
                 )}
                 <div className={`max-w-[75%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
                   {!isUser && senderName && (
@@ -1363,16 +1391,23 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
               <ul className="divide-y divide-gray-100">
                 {groupMembers.map(member => (
                   <li key={member.id} className="flex items-center gap-3 px-2 py-3">
-                    <GroupMemberAvatar
-                      member={member}
-                      avatarSrc={resolveRoleAvatarDisplay(
-                        member.id,
-                        member.avatarUrl,
-                        avatarOverrides,
-                        member.displayName,
-                      )}
-                      size="list"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => openCharacterProfile(member.id)}
+                      className="rounded-lg overflow-hidden hover:opacity-80 transition-opacity"
+                      title={`查看 ${member.displayName} 的资料`}
+                    >
+                      <GroupMemberAvatar
+                        member={member}
+                        avatarSrc={resolveRoleAvatarDisplay(
+                          member.id,
+                          member.avatarUrl,
+                          avatarOverrides,
+                          member.displayName,
+                        )}
+                        size="list"
+                      />
+                    </button>
                     <div className="min-w-0 flex-1">
                       <p className="text-[15px] font-medium text-gray-900 truncate">{member.displayName}</p>
                       {member.personality && (
@@ -1386,6 +1421,29 @@ export default function GroupChatApp({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
+
+      {/* 角色详情弹窗 */}
+      <CharacterProfileModal
+        isOpen={profileModalOpen}
+        characterId={profileModalCharacterId}
+        onClose={() => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+        }}
+        onViewMoments={(characterId) => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+          // 跳转到朋友圈 - 通过全局事件通知 App.tsx
+          window.dispatchEvent(new CustomEvent('groupchat:open-moments', {
+            detail: { characterId }
+          }));
+        }}
+        onSendMessage={(characterId) => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+          // 在群聊中，发消息功能不适用，可以提示用户
+        }}
+      />
     </div>
   );
 }

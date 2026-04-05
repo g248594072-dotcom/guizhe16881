@@ -9,7 +9,9 @@ import {
   User,
   Send,
   Plus,
+  Camera,
 } from 'lucide-react';
+import CharacterProfileModal from '../CharacterProfileModal';
 import {
   requestTavernPhoneContext,
   requestRoleArchiveList,
@@ -392,6 +394,9 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
   const longPressTimerRef = useRef<number | null>(null);
   const [retractingIds, setRetractingIds] = useState<Set<string>>(new Set());
   const [contextPulledAt, setContextPulledAt] = useState<number | null>(null);
+  /** 角色详情弹窗状态 */
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileModalCharacterId, setProfileModalCharacterId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const phoneMemoryTimerRef = useRef<number | null>(null);
   const avatarPickTargetRef = useRef<AvatarPickTarget | null>(null);
@@ -834,6 +839,12 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     window.setTimeout(() => setMeSavedHint(false), 2000);
   };
 
+  /** 打开角色详情弹窗 */
+  const openCharacterProfile = useCallback((characterId: string) => {
+    setProfileModalCharacterId(characterId);
+    setProfileModalOpen(true);
+  }, []);
+
   const refreshPhoneContext = useCallback(async () => {
     const gen = ++contextFetchGenRef.current;
     setDebugCtxBusy(true);
@@ -1013,9 +1024,17 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             <button type="button" onClick={backToList} className="p-1 text-gray-900">
               <ChevronLeft size={28} />
             </button>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 text-center">
               <h1 className="text-[17px] font-semibold text-gray-900 truncate">{selectedContact.displayName}</h1>
             </div>
+            <button
+              type="button"
+              onClick={() => openCharacterProfile(selectedContact.id)}
+              className="p-1 text-gray-600 hover:text-gray-900"
+              title={`查看 ${selectedContact.displayName} 的资料`}
+            >
+              <User size={24} />
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto bg-[#EDEDED] px-3 py-2 min-h-0">
@@ -1047,17 +1066,22 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                   className={`flex gap-2 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   {m.role === 'assistant' ? (
-                    <ContactAvatar
-                      contact={selectedContact}
-                      avatarSrc={resolveCharacterAvatarFromBrowserOnly(
-                        selectedContact.id,
-                        avatarOverrides,
-                        selectedContact.displayName,
-                      )}
-                      size="bubble"
-                      className="mt-0.5"
-                      onPickClick={() => startAvatarPick({ kind: 'contact', contact: selectedContact })}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => openCharacterProfile(selectedContact.id)}
+                      className="shrink-0 mt-0.5 rounded-md overflow-hidden hover:opacity-80 transition-opacity"
+                      title={`查看 ${selectedContact.displayName} 的资料`}
+                    >
+                      <ContactAvatar
+                        contact={selectedContact}
+                        avatarSrc={resolveCharacterAvatarFromBrowserOnly(
+                          selectedContact.id,
+                          avatarOverrides,
+                          selectedContact.displayName,
+                        )}
+                        size="bubble"
+                      />
+                    </button>
                   ) : null}
                   {m.role === 'assistant' ? (
                     <div className="flex items-start gap-1 max-w-[78%] min-w-0">
@@ -1220,12 +1244,21 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
                         className="w-full flex items-center px-4 py-3 active:bg-gray-100 transition-colors text-left cursor-pointer"
                       >
                         <div className="relative shrink-0">
-                          <ContactAvatar
-                            contact={c}
-                            avatarSrc={resolveCharacterAvatarFromBrowserOnly(c.id, avatarOverrides, c.displayName)}
-                            size="list"
-                            onPickClick={() => startAvatarPick({ kind: 'contact', contact: c })}
-                          />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCharacterProfile(c.id);
+                            }}
+                            className="rounded-lg overflow-hidden hover:opacity-80 transition-opacity"
+                            title={`查看 ${c.displayName} 的资料`}
+                          >
+                            <ContactAvatar
+                              contact={c}
+                              avatarSrc={resolveCharacterAvatarFromBrowserOnly(c.id, avatarOverrides, c.displayName)}
+                              size="list"
+                            />
+                          </button>
                         </div>
                         <div className="ml-3 flex-1 border-b border-gray-100 pb-3 pt-1">
                           <div className="flex justify-between items-center mb-1">
@@ -1534,6 +1567,30 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
+
+      {/* 角色详情弹窗 */}
+      <CharacterProfileModal
+        isOpen={profileModalOpen}
+        characterId={profileModalCharacterId}
+        currentViewerId={meProfile?.id || null}
+        onClose={() => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+        }}
+        onViewMoments={(characterId) => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+          // 跳转到朋友圈 - 通过全局事件通知 App.tsx
+          window.dispatchEvent(new CustomEvent('wechat:open-moments', {
+            detail: { characterId }
+          }));
+        }}
+        onSendMessage={(characterId) => {
+          setProfileModalOpen(false);
+          setProfileModalCharacterId(null);
+          // 已经在聊天界面，关闭弹窗即可
+        }}
+      />
     </div>
   );
 }

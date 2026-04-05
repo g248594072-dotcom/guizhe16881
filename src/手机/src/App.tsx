@@ -56,9 +56,9 @@ const APPS: AppConfig[] = [
   { id: 'settings', name: '设置', icon: <SettingsIcon size={34} color="white" strokeWidth={1.5} />, color: 'bg-[#8E8E93]', component: SettingsApp },
 ];
 
-/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊、设置、档案、日记、论坛除外 */
+/** 未实现完整功能的应用：显示「待更新」遮罩，微信、群聊、设置、档案、日记、论坛、朋友圈、新闻除外 */
 function isPlaceholderApp(id: AppId): boolean {
-  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings' && id !== 'archive' && id !== 'diary' && id !== 'forum';
+  return id !== null && id !== 'wechat' && id !== 'groupchat' && id !== 'settings' && id !== 'archive' && id !== 'diary' && id !== 'forum' && id !== 'moments' && id !== 'news';
 }
 
 export default function App() {
@@ -66,6 +66,7 @@ export default function App() {
   const [activeApp, setActiveApp] = useState<AppId>(null);
   const [wallpaper, setWallpaper] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop');
   const [currentTheme, setCurrentTheme] = useState<PhoneTheme>(() => loadTheme());
+  const [momentsInitialCharacterId, setMomentsInitialCharacterId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     // 初始化时注入主题变量
@@ -82,6 +83,27 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // 监听从微信和群聊跳转朋友圈的事件
+  useEffect(() => {
+    const handleOpenMoments = (e: Event) => {
+      const customEvent = e as CustomEvent<{ characterId: string }>;
+      const characterId = customEvent.detail?.characterId;
+      console.log('[App] 收到跳转朋友圈事件, characterId:', characterId);
+
+      // 设置要显示的角色ID，然后切换到朋友圈应用
+      setMomentsInitialCharacterId(characterId);
+      setActiveApp('moments');
+    };
+
+    window.addEventListener('wechat:open-moments', handleOpenMoments);
+    window.addEventListener('groupchat:open-moments', handleOpenMoments);
+
+    return () => {
+      window.removeEventListener('wechat:open-moments', handleOpenMoments);
+      window.removeEventListener('groupchat:open-moments', handleOpenMoments);
+    };
   }, []);
 
   const timeString = currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
@@ -211,15 +233,32 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <ActiveAppComponent
-                      onClose={() => setActiveApp(null)}
-                      setWallpaper={activeApp === 'settings' ? setWallpaper : undefined}
-                      switchTheme={activeApp === 'settings' ? switchTheme : undefined}
-                      currentTheme={currentTheme}
-                    />
+                    {activeApp === 'moments' ? (
+                      <MomentsApp
+                        onClose={() => {
+                          setActiveApp(null);
+                          setMomentsInitialCharacterId(undefined);
+                        }}
+                        initialCharacterId={momentsInitialCharacterId}
+                        onViewCharacterProfile={(characterId) => {
+                          // 在朋友圈中查看角色资料，这里可以扩展为打开角色详情
+                          console.log('[App] 查看角色资料:', characterId);
+                        }}
+                      />
+                    ) : (
+                      <ActiveAppComponent
+                        onClose={() => setActiveApp(null)}
+                        setWallpaper={activeApp === 'settings' ? setWallpaper : undefined}
+                        switchTheme={activeApp === 'settings' ? switchTheme : undefined}
+                        currentTheme={currentTheme}
+                      />
+                    )}
                     <div
                       className="absolute bottom-0 inset-x-0 z-50 flex h-8 cursor-pointer items-end justify-center bg-linear-to-t from-white/80 to-transparent pb-1.5"
-                      onClick={() => setActiveApp(null)}
+                      onClick={() => {
+                        setActiveApp(null);
+                        setMomentsInitialCharacterId(undefined);
+                      }}
                     >
                       <div className="h-1 w-1/3 rounded-full bg-black" />
                     </div>
