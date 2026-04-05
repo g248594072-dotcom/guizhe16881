@@ -15,6 +15,7 @@ import {
 } from './diaryIndexedDb';
 import { loadCharacterArchive, type PhoneCharacterArchive } from './characterArchive/bridge';
 import { subscribeGameDateChange } from './tavernPhoneBridge';
+import { getTaskManager } from './components/BackgroundTaskManager';
 
 /** 当前游戏日期缓存 */
 let currentGameDate: string | null = null;
@@ -323,6 +324,103 @@ export function onNewDiariesGenerated(callback: (entries: DiaryEntry[]) => void)
     const idx = manualTriggerCallbacks.indexOf(callback);
     if (idx > -1) manualTriggerCallbacks.splice(idx, 1);
   };
+}
+
+/**
+ * 后台批量生成日记
+ * 使用任务管理器在后台执行，支持进度追踪
+ */
+export async function backgroundBatchGenerateDiaries(
+  options: {
+    characterIds?: string[];
+    todayEvents?: string;
+  },
+  onComplete?: (entries: DiaryEntry[]) => void,
+): Promise<string> {
+  const taskManager = getTaskManager();
+  const gameDate = currentGameDate || (await fetchCurrentGameDate()) || new Date().toISOString().split('T')[0];
+
+  const { characterIds = [], todayEvents } = options;
+
+  // 如果没有指定角色，获取所有出场中的角色
+  let targetChars: PhoneCharacterArchive[] = [];
+  if (characterIds.length > 0) {
+    const allChars = await loadCharacterArchive();
+    targetChars = allChars.filter(c => characterIds.includes(c.id) && c.status === '出场中');
+  } else {
+    const allChars = await loadCharacterArchive();
+    targetChars = allChars.filter(c => c.status === '出场中');
+  }
+
+  if (targetChars.length === 0) {
+    throw new Error('没有可生成日记的角色');
+  }
+
+  // 添加任务
+  const taskId = taskManager.addTask({
+    type: 'diary_generation',
+    name: `生成${targetChars.length}个角色的日记`,
+    progress: 0,
+    current: 0,
+    total: targetChars.length,
+  });
+
+  // 在后台执行
+  setTimeout(async () => {
+    taskManager.updateTask(taskId, { status: 'running' });
+    const newEntries: DiaryEntry[] = [];
+
+    for (let i = 0; i < targetChars.length; i++) {
+      const character = targetChars[i];
+
+      try {
+        taskManager.updateTask(taskId, {
+          name: `生成日记: ${character.name}`,
+        });
+
+        const generated = await generateDiary({
+          characterId: character.id,
+          characterName: character.name,
+          gameDate,
+          todayEvents,
+        });
+
+        if (generated) {
+          // 保存到数据库
+          const entry = await saveDiary({
+            characterId: character.id,
+            characterName: character.name,
+            gameDate,
+            title: generated.title,
+            content: generated.content,
+            moodTags: generated.moodTags,
+            isRead: false,
+          });
+
+          // 更新元数据
+          await updateLastGeneratedDate(character.id, gameDate);
+
+          newEntries.push(entry);
+          console.log(`[backgroundDiary] ✅ 日记生成成功: ${entry.title}`);
+        }
+      } catch (e) {
+        console.error(`[backgroundDiary] 生成日记失败:`, e);
+      }
+
+      taskManager.setTaskProgress(taskId, i + 1, targetChars.length);
+    }
+
+    if (newEntries.length > 0) {
+      taskManager.completeTask(taskId);
+      onComplete?.(newEntries);
+      // 触发回调通知UI刷新
+      manualTriggerCallbacks.forEach(cb => cb(newEntries));
+    } else {
+      taskManager.errorTask(taskId, '没有成功生成任何日记');
+    }
+  }, 0);
+
+  return taskId;
 }
 
 /**

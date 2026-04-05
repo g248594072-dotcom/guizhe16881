@@ -3,6 +3,8 @@
  * 管理分析任务队列，支持 HIGH（手动）/ NORMAL（自动）优先级
  */
 
+import { getTaskManager } from '../components/BackgroundTaskManager';
+
 export type TaskPriority = 'HIGH' | 'NORMAL';
 export type TaskType = 'ANALYZE_CHARACTER' | 'ANALYZE_DYNAMICS';
 
@@ -93,14 +95,38 @@ class AnalysisScheduler {
       nextTask.status = 'running';
       this.notifyListeners();
 
+      // 同步到全局任务管理器
+      const taskManager = getTaskManager();
+      let bgTaskId: string | undefined;
+
       try {
+        // 创建全局后台任务
+        bgTaskId = taskManager.addTask({
+          type: 'character_analysis',
+          name: `分析角色: ${nextTask.characterName}`,
+          progress: 0,
+          current: 0,
+          total: 1,
+          status: 'running',
+        });
+
         await this.processFn(nextTask);
         nextTask.status = 'done';
         console.log(`[scheduler] 任务完成: ${nextTask.characterName}`);
+
+        // 更新全局任务状态
+        if (bgTaskId) {
+          taskManager.completeTask(bgTaskId);
+        }
       } catch (e) {
         nextTask.status = 'error';
         nextTask.errorMessage = e instanceof Error ? e.message : String(e);
         console.error(`[scheduler] 任务失败: ${nextTask.characterName}, 错误:`, nextTask.errorMessage);
+
+        // 更新全局任务状态
+        if (bgTaskId) {
+          taskManager.errorTask(bgTaskId, nextTask.errorMessage);
+        }
       }
 
       this.notifyListeners();

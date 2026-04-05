@@ -14,11 +14,12 @@ import {
 } from '../../diaryIndexedDb';
 import {
   manualGenerateDiary,
-  batchManualGenerateDiaries,
+  backgroundBatchGenerateDiaries,
   setCurrentGameDate,
   onNewDiariesGenerated,
 } from '../../diaryScheduler';
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
+import { getTaskManager } from '../BackgroundTaskManager';
 
 interface DiaryAppProps {
   onClose: () => void;
@@ -205,16 +206,12 @@ function GenerateOptionsModal({
   characters,
   onGenerateSingle,
   onGenerateAll,
-  isGenerating,
-  progress,
 }: {
   isOpen: boolean;
   onClose: () => void;
   characters: PhoneCharacterArchive[];
   onGenerateSingle: (char: PhoneCharacterArchive) => void;
   onGenerateAll: () => void;
-  isGenerating: boolean;
-  progress: { current: number; total: number; name: string } | null;
 }) {
   if (!isOpen) return null;
 
@@ -231,32 +228,20 @@ function GenerateOptionsModal({
           </button>
         </div>
 
-        {/* Progress */}
-        {isGenerating && progress && (
-          <div className="px-5 py-4 bg-amber-50">
-            <div className="flex items-center gap-3">
-              <RefreshCw size={18} className="text-amber-600 animate-spin" />
-              <div className="flex-1">
-                <p className="text-sm text-amber-800">
-                  正在为 {progress.name} 生成日记... ({progress.current}/{progress.total})
-                </p>
-                <div className="mt-2 h-1.5 bg-amber-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                    style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Hint */}
+        <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+          <p className="text-sm text-amber-800 flex items-center gap-2">
+            <Sparkles size={16} />
+            任务将在后台运行，可在右下角查看进度
+          </p>
+        </div>
 
         {/* Options */}
         <div className="p-5 space-y-4">
           {/* 批量生成 */}
           <button
             onClick={onGenerateAll}
-            disabled={isGenerating || activeChars.length === 0}
+            disabled={activeChars.length === 0}
             className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={24} />
@@ -276,8 +261,7 @@ function GenerateOptionsModal({
                 <button
                   key={char.id}
                   onClick={() => onGenerateSingle(char)}
-                  disabled={isGenerating}
-                  className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-50 text-left"
+                  className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors text-left"
                 >
                   <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 text-sm font-medium">
                     {char.name[0]}
@@ -301,8 +285,6 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
   const [showDetail, setShowDetail] = useState(false);
   const [showGenerate, setShowGenerate] = useState(false);
   const [characters, setCharacters] = useState<PhoneCharacterArchive[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generateProgress, setGenerateProgress] = useState<{ current: number; total: number; name: string } | null>(null);
   const [filterCharacter, setFilterCharacter] = useState<string>('all');
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -385,44 +367,42 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
     setShowDetail(false);
   };
 
-  /** 批量生成日记 */
+  /** 批量生成日记 - 后台执行 */
   const handleBatchGenerate = async () => {
-    setIsGenerating(true);
     setShowGenerate(false);
 
-    try {
-      const newEntries = await batchManualGenerateDiaries(undefined, (current, total, name) => {
-        setGenerateProgress({ current, total, name });
-      });
-
-      if (newEntries.length > 0) {
-        setEntries(prev => [...newEntries, ...prev]);
-        setUnreadCount(prev => prev + newEntries.length);
-      }
-    } catch (e) {
-      console.error('[DiaryApp] 批量生成失败:', e);
-    } finally {
-      setIsGenerating(false);
-      setGenerateProgress(null);
-    }
+    // 提交后台任务
+    await backgroundBatchGenerateDiaries(
+      {
+        // 不指定角色，默认所有出场中的角色
+      },
+      (newEntries) => {
+        // 完成后刷新列表
+        if (newEntries.length > 0) {
+          setEntries(prev => [...newEntries, ...prev]);
+          setUnreadCount(prev => prev + newEntries.length);
+        }
+      },
+    );
   };
 
-  /** 单个生成日记 */
+  /** 单个生成日记 - 后台执行 */
   const handleSingleGenerate = async (char: PhoneCharacterArchive) => {
-    setIsGenerating(true);
     setShowGenerate(false);
 
-    try {
-      const entry = await manualGenerateDiary(char.id, char.name);
-      if (entry) {
-        setEntries(prev => [entry, ...prev]);
-        setUnreadCount(prev => prev + 1);
-      }
-    } catch (e) {
-      console.error('[DiaryApp] 单一生成失败:', e);
-    } finally {
-      setIsGenerating(false);
-    }
+    // 提交后台任务
+    await backgroundBatchGenerateDiaries(
+      {
+        characterIds: [char.id],
+      },
+      (newEntries) => {
+        // 完成后刷新列表
+        if (newEntries.length > 0) {
+          setEntries(prev => [...newEntries, ...prev]);
+          setUnreadCount(prev => prev + newEntries.length);
+        }
+      },
+    );
   };
 
   /** 切换角色自动生成设置 */
@@ -481,15 +461,10 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
           <button
             type="button"
             onClick={() => setShowGenerate(true)}
-            disabled={isGenerating}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-full text-sm font-medium hover:bg-amber-600 active:scale-95 transition-all disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-full text-sm font-medium hover:bg-amber-600 active:scale-95 transition-all"
           >
-            {isGenerating ? (
-              <RefreshCw size={16} className="animate-spin" />
-            ) : (
-              <Sparkles size={16} />
-            )}
-            {isGenerating ? '生成中...' : '生成'}
+            <Sparkles size={16} />
+            生成
           </button>
         </div>
       </div>
@@ -674,8 +649,6 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
         characters={characters}
         onGenerateSingle={handleSingleGenerate}
         onGenerateAll={handleBatchGenerate}
-        isGenerating={isGenerating}
-        progress={generateProgress}
       />
 
       <SettingsModal

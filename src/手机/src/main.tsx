@@ -15,6 +15,7 @@ import {
   applyCharacterAvatarOverrideLocal,
 } from '../../shared/phoneCharacterAvatarStorage';
 import { initDiaryScheduler } from './diaryScheduler';
+import { initForumScheduler } from './forumScheduler';
 
 migrateLegacyPhoneCharacterAvatars();
 
@@ -108,5 +109,10 @@ initAutoSchedule();
 initExportThreadsListener();
 // 初始化日记自动生成调度器
 const cleanupDiaryScheduler = initDiaryScheduler();
+// 初始化论坛自动生成调度器
+const cleanupForumScheduler = initForumScheduler();
 // 卸载时清理
-window.addEventListener('beforeunload', cleanupDiaryScheduler);
+window.addEventListener('beforeunload', () => {
+  cleanupDiaryScheduler();
+  cleanupForumScheduler();
+});
