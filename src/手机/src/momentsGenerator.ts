@@ -767,19 +767,69 @@ function parseMomentResult(raw: string): GeneratedMoment | null {
     }
     jsonStr = fixedJson;
 
-    const parsed = JSON.parse(jsonStr) as GeneratedMoment;
+    const parsed = JSON.parse(jsonStr) as GeneratedMoment | { content?: unknown };
+
+    // 智能提取content - 处理嵌套情况
+    let content = parsed.content;
+
+    // 如果content不是字符串，尝试深度提取
+    if (typeof content !== 'string') {
+      // 可能是嵌套的JSON对象
+      if (content && typeof content === 'object') {
+        const nestedContent = (content as Record<string, unknown>).content;
+        if (typeof nestedContent === 'string') {
+          content = nestedContent;
+        }
+      }
+    }
+
+    // 最后一次尝试：如果整个parsed对象有一个字符串content字段
+    if (typeof content !== 'string') {
+      // 遍历所有可能的内容字段
+      const possibleFields = ['content', 'text', 'message', 'body', '正文'];
+      for (const field of possibleFields) {
+        const val = (parsed as Record<string, unknown>)[field];
+        if (typeof val === 'string') {
+          content = val;
+          break;
+        }
+      }
+    }
 
     // 验证必要字段
-    if (!parsed.content || typeof parsed.content !== 'string') {
-      console.warn('[momentsGenerator] 解析结果缺少content字段');
+    if (!content || typeof content !== 'string') {
+      console.warn('[momentsGenerator] 解析结果缺少content字段, parsed:', JSON.stringify(parsed).slice(0, 200));
       return null;
     }
 
-    return parsed;
+    // 构建返回对象
+    const result: GeneratedMoment = {
+      content,
+      contentType: parsed.contentType || 'daily_life',
+      visibility: parsed.visibility || 'friends_only',
+      location: parsed.location,
+      selfJustification: parsed.selfJustification,
+    };
+
+    return result;
   } catch (e) {
     console.warn('[momentsGenerator] JSON解析失败:', e);
-    // 尝试最后一次：直接返回整个内容作为content
+    // 尝试最后一次：智能提取content
     try {
+      // 尝试找到JSON结构中的content字段
+      const contentMatch = raw.match(/"content"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/);
+      if (contentMatch) {
+        // 处理转义字符
+        let extractedContent = contentMatch[1]!.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        const fallback: GeneratedMoment = {
+          content: extractedContent,
+          contentType: 'daily_life',
+          visibility: 'friends_only',
+        };
+        console.log('[momentsGenerator] 使用正则提取content成功');
+        return fallback;
+      }
+
       // 如果AI只是返回了纯文本内容，尝试包装成正确格式
       const fallback: GeneratedMoment = {
         content: raw.replace(/```json|```/g, '').trim(),
