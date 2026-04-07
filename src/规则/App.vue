@@ -180,6 +180,10 @@
                 v-else-if="activeTab === 'world_life'"
                 :is-dark-mode="isDarkMode"
               />
+              <RandomRulesPanel
+                v-else-if="activeTab === 'random_rules'"
+                :is-dark-mode="isDarkMode"
+              />
             </div>
           </Transition>
         </div>
@@ -1162,6 +1166,7 @@ import PersonalRulesPanel from './components/PersonalRulesPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import OpeningForm from './components/OpeningForm.vue';
 import WorldLifePanel from './components/WorldLifePanel.vue';
+import RandomRulesPanel from './components/RandomRulesPanel.vue';
 
 // 赛博朋克特效组件
 import ParallaxBackground from './components/ParallaxBackground.vue';
@@ -1673,6 +1678,11 @@ const navItems = [
     icon: 'fa-solid fa-earth-americas',
     label: '世界和生活的变化',
   },
+  {
+    id: 'random_rules',
+    icon: 'fa-solid fa-dice',
+    label: '随机规则生成',
+  },
 ];
 
 const panelTitles: Record<string, string> = {
@@ -1682,6 +1692,7 @@ const panelTitles: Record<string, string> = {
   personal_rules: '个人规则管理',
   phone: '手机',
   world_life: '世界和生活的变化',
+  random_rules: '随机规则生成器',
   settings: '系统设置',
 };
 

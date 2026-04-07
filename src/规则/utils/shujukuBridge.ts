@@ -1,5 +1,5 @@
 /**
- * 神·数据库（AutoCardUpdater / shujuku）可选联动：未安装插件时全部静默跳过。
+ * 数据库（AutoCardUpdater / shujuku）可选联动：未安装插件时全部静默跳过。
  */
 import { getOtherSettings } from './otherSettings';
 
@@ -59,7 +59,7 @@ export async function runShujukuManualUpdateAfterAssistantSaved(): Promise<void>
   }
   const api = resolveAutoCardUpdaterApi();
   if (!api) {
-    console.info('[规则] 已开启神·数据库联动，但未检测到 AutoCardUpdaterAPI，已跳过');
+    console.info('[规则] 已开启数据库联动，但未检测到 AutoCardUpdaterAPI，已跳过');
     return;
   }
   try {
@@ -81,6 +81,10 @@ export async function runShujukuManualUpdateAfterAssistantSaved(): Promise<void>
  * 使用 pointerup（非 click）可避免意外触发 SillyTavern 的发送逻辑。
  */
 export function notifyShujukuUserSendIntent(): boolean {
+  if (!getOtherSettings().enableShujukuPlotAdvance) {
+    console.log('[shujukuBridge] ⚠️ 剧情推进已关闭，跳过 notifyShujukuUserSendIntent');
+    return false;
+  }
   try {
     const parentDoc = (window.parent || window).document;
     const sendBtn = parentDoc.getElementById('send_but');

@@ -38,7 +38,54 @@
 
     <!-- 输出模式 / 双 API -->
     <div v-show="settingsTab === 'output'" class="settings-tab-panel">
-    <div class="mode-cards mode-cards--standalone">
+      <!-- 数据库：剧情推进 / 自动填表（独立开关） -->
+      <div
+        class="shujuku-master-toggle"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="shujuku-master-section-head">
+          <div class="shujuku-master-icon">
+            <i class="fa-solid fa-database"></i>
+          </div>
+          <div class="shujuku-master-section-titles">
+            <span class="shujuku-master-section-title">数据库联动（可选）</span>
+            <p class="shujuku-master-section-lead">未安装扩展时不会产生实际调用。</p>
+          </div>
+        </div>
+
+        <div class="shujuku-toggle-row">
+          <div class="shujuku-toggle-label">
+            <span class="shujuku-toggle-title">剧情推进</span>
+            <span class="shujuku-toggle-hint">发送消息前标记意图，供数据库写入规划数据</span>
+          </div>
+          <label class="toggle-switch">
+            <input
+              type="checkbox"
+              v-model="enableShujukuPlotAdvance"
+              @change="persistShujukuPlotAdvance"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="shujuku-toggle-row">
+          <div class="shujuku-toggle-label">
+            <span class="shujuku-toggle-title">自动填表</span>
+            <span class="shujuku-toggle-hint">确认标签并写入楼层后调用「立即手动更新」</span>
+          </div>
+          <label class="toggle-switch">
+            <input
+              type="checkbox"
+              v-model="enableShujukuManualUpdateAfterConfirm"
+              @change="persistShujukuManualUpdateOption"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- API 模式选择卡片 -->
+      <div class="mode-cards mode-cards--standalone">
       <div
         class="mode-card"
         :class="{ active: outputMode === 'single', dark: isDarkMode, light: !isDarkMode }"
@@ -276,27 +323,9 @@
         </div>
       </div>
 
-      <div
-        class="shujuku-bridge-block"
-        :class="{ dark: isDarkMode, light: !isDarkMode }"
-      >
-        <h4 class="shujuku-bridge-title">
-          <i class="fa-solid fa-database"></i>
-          神·数据库（可选）
-        </h4>
-        <p class="option-behavior-hint shujuku-bridge-lead">
-          安装「神·数据库」扩展后，可在本界面确认标签并写入 AI 楼层后，自动调用插件的「立即手动更新」以同步表格（与
-          <code>manualUpdate()</code> 一致）。未安装扩展时不会执行任何操作。
-        </p>
-        <label class="field-row checkbox-row">
-          <input
-            v-model="enableShujukuManualUpdateAfterConfirm"
-            type="checkbox"
-            @change="persistShujukuManualUpdateOption"
-          />
-          <span>确认标签后触发神·数据库「立即手动更新」</span>
-        </label>
-      </div>
+      <p class="option-behavior-hint shujuku-options-hint" :class="{ dark: isDarkMode, light: !isDarkMode }">
+        数据库的<strong>剧情推进</strong>与<strong>自动填表</strong>开关在<strong>输出与 API</strong>页顶部「数据库联动」区域。
+      </p>
     </div>
 
     <!-- 界面缩放与主区域长宽（与开局页、游戏主界面共用 localStorage uiLayout） -->
@@ -425,7 +454,10 @@ const outputMode = ref<OutputMode>('dual');
 
 const inputActionMode = ref<InputActionMode>('append');
 
-/** 标签确认写入楼层后是否调用神·数据库 manualUpdate（默认开；未装插件时静默跳过） */
+/** 发送前是否标记意图以触发数据库剧情推进 */
+const enableShujukuPlotAdvance = ref(true);
+
+/** 标签确认写入楼层后是否调用数据库 manualUpdate（默认开；未装插件时静默跳过） */
 const enableShujukuManualUpdateAfterConfirm = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
@@ -530,6 +562,7 @@ function loadSettings() {
     secondaryApi.value = loaded;
     const other = getOtherSettings();
     inputActionMode.value = other.inputActionMode;
+    enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
     enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
@@ -537,6 +570,8 @@ function loadSettings() {
       outputMode: outputMode.value,
       secondaryApi: { ...secondaryApi.value, key: '***' },
       inputActionMode: inputActionMode.value,
+      enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
+      enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
       fontSettings: fontSettings.value,
     });
   } catch (error) {
@@ -600,6 +635,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
     saveUiLayout(layout);
     saveOtherSettings({
       inputActionMode: inputActionMode.value,
+      enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
       enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
     });
     showSaveSuccess.value = true;
@@ -612,6 +648,19 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
   }
 }
 
+function persistShujukuPlotAdvance() {
+  saveOtherSettings({
+    enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
+  });
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+  toastr.success(
+    enableShujukuPlotAdvance.value ? '已开启：剧情推进' : '已关闭：剧情推进',
+  );
+}
+
 function persistShujukuManualUpdateOption() {
   saveOtherSettings({
     enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
@@ -622,8 +671,8 @@ function persistShujukuManualUpdateOption() {
   }, 2000);
   toastr.success(
     enableShujukuManualUpdateAfterConfirm.value
-      ? '已开启：确认标签后将尝试调用神·数据库'
-      : '已关闭：确认标签后不再调用神·数据库',
+      ? '已开启：自动填表（确认标签后 manualUpdate）'
+      : '已关闭：自动填表',
   );
 }
 
@@ -759,6 +808,198 @@ async function selectMode(mode: OutputMode) {
 
 .light .shujuku-bridge-block {
   background: rgba(255, 255, 255, 0.6);
+}
+
+/* 数据库联动区域 */
+.shujuku-master-toggle {
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.dark .shujuku-master-toggle {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.light .shujuku-master-toggle {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+.shujuku-master-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.shujuku-master-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  color: white;
+  font-size: 16px;
+}
+
+.shujuku-master-section-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.shujuku-master-section-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.shujuku-master-section-lead {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.dark .shujuku-master-section-lead {
+  color: #a1a1aa;
+}
+
+.light .shujuku-master-section-lead {
+  color: #52525b;
+}
+
+.shujuku-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dark .shujuku-toggle-row {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.shujuku-master-section-head + .shujuku-toggle-row {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.shujuku-toggle-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shujuku-toggle-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shujuku-toggle-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.dark .shujuku-toggle-hint {
+  color: #a1a1aa;
+}
+
+.light .shujuku-toggle-hint {
+  color: #52525b;
+}
+
+.shujuku-options-hint {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dark .shujuku-options-hint {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d4d4d8;
+}
+
+.light .shujuku-options-hint {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #3f3f46;
+}
+
+/* 开关样式 */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 24px;
+  transition: 0.2s;
+}
+
+.dark .toggle-slider {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: '';
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+input:checked + .toggle-slider {
+  background-color: #3b82f6;
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* 禁用的子选项 */
+.checkbox-row.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.checkbox-row .muted {
+  color: #71717a;
 }
 
 .shujuku-bridge-title {

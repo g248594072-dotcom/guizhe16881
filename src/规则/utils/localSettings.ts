@@ -143,6 +143,7 @@ export function saveOtherSettingsLocal(settings: OtherSettings): void {
 /** 与 `types.DEFAULT_OTHER_SETTINGS` 保持一致（此处不引用 types 默认值，避免与 apiSettings 的循环依赖） */
 const DEFAULT_OTHER_LOCAL: OtherSettings = {
   inputActionMode: 'append',
+  enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
 };
 
@@ -151,8 +152,15 @@ export function loadOtherSettings(): OtherSettings {
     const saved = localStorage.getItem(STORAGE_KEYS.otherSettings);
     if (saved) {
       const parsed = JSON.parse(saved);
+      const plotAdvance =
+        typeof parsed.enableShujukuPlotAdvance === 'boolean'
+          ? parsed.enableShujukuPlotAdvance
+          : typeof parsed.enableShujukuIntegration === 'boolean'
+            ? parsed.enableShujukuIntegration
+            : DEFAULT_OTHER_LOCAL.enableShujukuPlotAdvance;
       return {
         inputActionMode: (parsed.inputActionMode as InputActionMode) || DEFAULT_OTHER_LOCAL.inputActionMode,
+        enableShujukuPlotAdvance: plotAdvance,
         enableShujukuManualUpdateAfterConfirm:
           typeof parsed.enableShujukuManualUpdateAfterConfirm === 'boolean'
             ? parsed.enableShujukuManualUpdateAfterConfirm

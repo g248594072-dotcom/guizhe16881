@@ -6,6 +6,46 @@
 import type { OpeningFormData, SceneEra } from '../types';
 
 /**
+ * 根据场景时代获取默认区域名称
+ */
+function getDefaultRegionNameByEra(era?: SceneEra): string {
+  switch (era) {
+    case 'modern':
+      return '现代都市街区';
+    case 'medieval':
+      return '中世纪城堡';
+    case 'fantasy':
+      return '幻想世界初始地';
+    case 'future':
+      return '未来空间站';
+    case 'ancient':
+      return '古代城镇';
+    default:
+      return '初始场景';
+  }
+}
+
+/**
+ * 根据场景时代获取默认区域描述
+ */
+function getDefaultRegionDescByEra(era?: SceneEra): string {
+  switch (era) {
+    case 'modern':
+      return '繁华的都市街道，高楼林立，人来人往。这里是一切故事的开始。';
+    case 'medieval':
+      return '古老的石制城堡，厚重的城墙见证了无数历史。旗帜在风中飘扬。';
+    case 'fantasy':
+      return '神秘的异世界初始之地，魔法气息弥漫，未知的冒险等待着。';
+    case 'future':
+      return '高科技的未来空间站，金属走廊延伸至远方，全息屏幕闪烁。';
+    case 'ancient':
+      return '古朴的古代城镇，青石板路，传统建筑，时光仿佛在这里静止。';
+    default:
+      return '故事开始的场所，一切冒险的起点。';
+  }
+}
+
+/**
  * 根据场景时代计算初始游戏时间
  * - modern: 现代，使用当前年份（2026年左右）
  * - medieval: 中世纪，约1000-1400年
@@ -201,6 +241,39 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
         const initialGameTime = getInitialGameTimeByEra(formData.sceneEra);
         vars.stat_data.游戏时间 = initialGameTime;
         console.log(`✅ [gameInitializer] 游戏时间已初始化为 ${initialGameTime.年}年${initialGameTime.月}月${initialGameTime.日}日（时代：${formData.sceneEra || '默认'})`);
+
+        // 初始化默认区域（使用开局选择的场景）
+        // formData.sceneDescription 格式: "场景名称：场景描述"
+        let defaultRegionName: string;
+        let defaultRegionDesc: string;
+
+        if (formData.sceneDescription?.trim()) {
+          // 解析场景描述，格式是 "名称：描述"
+          const sceneDesc = formData.sceneDescription.trim();
+          const colonIndex = sceneDesc.indexOf('：');
+          if (colonIndex > 0) {
+            defaultRegionName = sceneDesc.substring(0, colonIndex);
+            defaultRegionDesc = sceneDesc.substring(colonIndex + 1);
+          } else {
+            // 如果没有分隔符，就用整个描述作为名称
+            defaultRegionName = sceneDesc;
+            defaultRegionDesc = '故事开始的场所';
+          }
+        } else {
+          // 回退：根据时代生成默认区域
+          defaultRegionName = getDefaultRegionNameByEra(formData.sceneEra);
+          defaultRegionDesc = getDefaultRegionDescByEra(formData.sceneEra);
+        }
+
+        vars.stat_data.区域规则 = {
+          ['初始区域']: {
+            名称: defaultRegionName,
+            效果描述: defaultRegionDesc,
+            状态: '生效中',
+            细分规则: {},
+          },
+        };
+        console.log(`✅ [gameInitializer] 默认区域已创建：${defaultRegionName}`);
 
         console.log('✅ [gameInitializer] 0层变量初始化完成');
         return vars;

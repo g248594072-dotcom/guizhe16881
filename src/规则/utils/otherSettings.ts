@@ -31,6 +31,14 @@ export function getOtherSettings(): OtherSettings {
         settings?.inputActionMode ??
         local?.inputActionMode ??
         DEFAULT_OTHER_SETTINGS.inputActionMode,
+      enableShujukuPlotAdvance:
+        typeof settings?.enableShujukuPlotAdvance === 'boolean'
+          ? settings.enableShujukuPlotAdvance
+          : typeof (settings as { enableShujukuIntegration?: boolean })?.enableShujukuIntegration === 'boolean'
+            ? (settings as { enableShujukuIntegration: boolean }).enableShujukuIntegration
+            : typeof local?.enableShujukuPlotAdvance === 'boolean'
+              ? local.enableShujukuPlotAdvance
+              : DEFAULT_OTHER_SETTINGS.enableShujukuPlotAdvance,
       enableShujukuManualUpdateAfterConfirm:
         typeof settings?.enableShujukuManualUpdateAfterConfirm === 'boolean'
           ? settings.enableShujukuManualUpdateAfterConfirm
@@ -83,7 +91,12 @@ export function setInputActionMode(mode: InputActionMode): boolean {
   return saveOtherSettings({ inputActionMode: mode });
 }
 
-/** 是否在本界面确认标签并写入 AI 楼层后调用神·数据库「立即手动更新」 */
+/** 是否启用数据库剧情推进（发送前标记意图） */
+export function getEnableShujukuPlotAdvance(): boolean {
+  return getOtherSettings().enableShujukuPlotAdvance;
+}
+
+/** 是否在本界面确认标签并写入 AI 楼层后调用数据库「立即手动更新」 */
 export function getEnableShujukuManualUpdateAfterConfirm(): boolean {
   return getOtherSettings().enableShujukuManualUpdateAfterConfirm;
 }

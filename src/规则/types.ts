@@ -296,7 +296,11 @@ export interface OtherSettings {
   /** 输入框行为模式：'send' 直接发送，'append' 追加到输入框 */
   inputActionMode: InputActionMode;
   /**
-   * 标签验证确认并将 AI 楼层写入后，调用神·数据库 `manualUpdate()`（与插件「立即手动更新」一致）。
+   * 发送消息前是否向数据库标记用户意图，以触发剧情推进（与 #send_but 监听一致）。
+   */
+  enableShujukuPlotAdvance: boolean;
+  /**
+   * 标签验证确认并将 AI 楼层写入后，调用数据库 `manualUpdate()`（与插件「立即手动更新」一致）。
    * 未安装插件时自动跳过，无影响。
    */
   enableShujukuManualUpdateAfterConfirm: boolean;
@@ -304,5 +308,6 @@ export interface OtherSettings {
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   inputActionMode: 'append', // 默认使用追加模式（更安全，不自动发送）
+  enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
 };
