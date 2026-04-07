@@ -26,6 +26,12 @@ importers:
       async-wait-until:
         specifier: ^2.0.31
         version: 2.0.31
+<<<<<<< HEAD
+=======
+      axios:
+        specifier: 1.14.0
+        version: 1.14.0
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
       compare-versions:
         specifier: ^6.1.1
         version: 6.1.1
@@ -271,8 +277,13 @@ importers:
         specifier: ^6.0.1
         version: 6.0.1(webpack@5.105.4)
       webpack-obfuscator:
+<<<<<<< HEAD
         specifier: ^3.6.1
         version: 3.6.1(javascript-obfuscator@4.2.2)(webpack@5.105.4)
+=======
+        specifier: ^3.6.0
+        version: 3.6.0(javascript-obfuscator@4.2.2)(webpack@5.105.4)
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
       yaml-loader:
         specifier: ^0.9.0
         version: 0.9.0
@@ -3986,8 +3997,13 @@ packages:
     resolution: {integrity: sha512-hXXvrjtx2PLYx4qruKl+kyRSLc52V+cCvMxRjmKwoA+CBbbF5GfIBtR6kCvl0fYGqTUPKB+1ktVmTHqMOzgCBg==}
     engines: {node: '>=18.0.0'}
 
+<<<<<<< HEAD
   webpack-obfuscator@3.6.1:
     resolution: {integrity: sha512-73swcDcQ+Ukejny8cMfUPZjw/rRCKeQbBVDTUNK0umEQSX8yVuWDIceKQO5579ftmOXwokrobUsNC0rQrkOuWQ==}
+=======
+  webpack-obfuscator@3.6.0:
+    resolution: {integrity: sha512-Y/jRICYe08S6okfsL6UnC7PTwdumhYpXvwLdw4soGmVbQ0jldFjVDqRbPZnOc4PdOQSMDrnQNQB+b7Fc4rpx+A==}
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
     peerDependencies:
       javascript-obfuscator: ^4.0.0 || ^5.0.0
       webpack: ^5.1.0
@@ -8156,7 +8172,11 @@ snapshots:
       flat: 5.0.2
       wildcard: 2.0.1
 
+<<<<<<< HEAD
   webpack-obfuscator@3.6.1(javascript-obfuscator@4.2.2)(webpack@5.105.4):
+=======
+  webpack-obfuscator@3.6.0(javascript-obfuscator@4.2.2)(webpack@5.105.4):
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
     dependencies:
       javascript-obfuscator: 4.2.2
       multi-stage-sourcemap: 0.3.1

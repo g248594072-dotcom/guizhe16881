@@ -1,4 +1,5 @@
 import { StoreDefinition } from 'pinia';
+<<<<<<< HEAD
 import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
 function normalizeMessageVariableOption(option: VariableOption): VariableOption {
@@ -93,16 +94,44 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       const statData = sanitizeStatDataRoleArchivesNestedMaps(getStatData(rawVariables)) as Record<string, unknown>;
       const data = ref(
         schema.parse(statData, { reportInput: true }),
+=======
+
+export function defineMvuDataStore<T extends z.ZodObject>(
+  schema: T,
+  variable_option: VariableOption,
+  additional_setup?: (data: Ref<z.infer<T>>) => void,
+): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
+  if (
+    variable_option.type === 'message' &&
+    (variable_option.message_id === undefined || variable_option.message_id === 'latest')
+  ) {
+    variable_option.message_id = -1;
+  }
+
+  return defineStore(
+    `mvu_data.${_(variable_option)
+      .entries()
+      .sortBy(entry => entry[0])
+      .map(entry => entry[1])
+      .join('.')}`,
+    errorCatched(() => {
+      const data = ref(
+        schema.parse(_.get(getVariables(variable_option), 'stat_data', {}), { reportInput: true }),
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
       ) as Ref<z.infer<T>>;
       if (additional_setup) {
         additional_setup(data);
       }
 
       useIntervalFn(() => {
+<<<<<<< HEAD
         const variables = getVariables(resolvedOption);
         const rawStatData = getStatData(variables);
         const stat_data = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
         const hadCorruption = !_.isEqual(rawStatData, stat_data);
+=======
+        const stat_data = _.get(getVariables(variable_option), 'stat_data', {});
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;
@@ -111,12 +140,18 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ignoreUpdates(() => {
             data.value = result.data;
           });
+<<<<<<< HEAD
           if (!_.isEqual(stat_data, result.data) || hadCorruption) {
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
           }
         } else if (hadCorruption) {
           console.warn('[mvu] 检测到嵌套对象污染 ([object Object])，强制写回修复');
           updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+=======
+          if (!_.isEqual(stat_data, result.data)) {
+            updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+          }
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
         }
       }, 2000);
 
@@ -132,7 +167,11 @@ export function defineMvuDataStore<T extends z.ZodObject>(
               data.value = result.data;
             });
           }
+<<<<<<< HEAD
           updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+=======
+          updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+>>>>>>> f759a3e3f10c9abb6086ecf76222f35268e80cf1
         },
         { deep: true },
       );
