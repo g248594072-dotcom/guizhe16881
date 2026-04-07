@@ -244,7 +244,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useDataStore, useCharacters, bumpUpdateTime } from '../store';
 import type { CharacterData, RegionData } from '../types';
 import {
@@ -252,6 +252,7 @@ import {
   randomRulesSessionCurrentTheme as currentTheme,
   randomRulesSessionIsApplied,
   randomRulesSessionMarkApplied,
+  reloadRandomRulesSessionFromStorage,
 } from '../utils/randomRulesPanelSession';
 
 interface GeneratedRule {
@@ -293,6 +294,29 @@ const themeInput = ref('');
 function isRuleApplied(id: string): boolean {
   return randomRulesSessionIsApplied(id);
 }
+
+let stopChatChangeListener: (() => void) | null = null;
+
+onMounted(() => {
+  reloadRandomRulesSessionFromStorage();
+  try {
+    if (typeof eventOn === 'function' && typeof tavern_events !== 'undefined') {
+      const ret = eventOn(tavern_events.CHAT_CHANGED, () => {
+        reloadRandomRulesSessionFromStorage();
+      });
+      stopChatChangeListener = () => {
+        ret.stop?.();
+      };
+    }
+  } catch (e) {
+    console.warn('[RandomRulesPanel] 无法监听 CHAT_CHANGED:', e);
+  }
+});
+
+onUnmounted(() => {
+  stopChatChangeListener?.();
+  stopChatChangeListener = null;
+});
 
 // 应用前编辑弹窗
 const showEditDialog = ref(false);
