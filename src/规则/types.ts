@@ -13,6 +13,9 @@ export enum GamePhase {
 
 // ==================== 开局表单数据 ====================
 
+// 场景时代类型
+export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
+
 export interface OpeningFormData {
   playerName: string;           // 玩家名称
   gameDifficulty: 'easy' | 'normal' | 'hard';  // 游戏难度
@@ -25,6 +28,7 @@ export interface OpeningFormData {
   openingSceneDetail?: string; // 开场白场景详细描述（追加到首次生成提示词）
   selectedRules?: Array<{ name: string; desc: string }>;  // 选中的规则列表
   characters?: Array<{ name: string; gender: string; desc: string }>;  // 角色列表
+  sceneEra?: SceneEra;          // 场景时代/世界观类型（影响初始时间设定）
   [key: string]: any;
 }
 

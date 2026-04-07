@@ -966,13 +966,19 @@ const getRandomHeight = () => Math.floor(Math.random() * 30) + 10;
 const currentPage = ref<'cover' | 'scene' | 'rules' | 'characters' | 'opening_detail' | 'confirm'>('cover');
 const isFlipping = ref(false);
 
+// 场景时代类型
+export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
+
 // 场景选项
 const sceneOptions = [
-  { id: 'school', name: '圣华女子学院', desc: '一所 prestigious 的贵族女子学校，学生们都在这里接受精英教育', icon: 'fa-solid fa-school' },
-  { id: 'office', name: '未来科技公司', desc: '一家高科技公司，员工们在这里开发着改变世界的技术', icon: 'fa-solid fa-building' },
-  { id: 'hospital', name: '圣玛利亚医院', desc: '一家大型综合医院，各种离奇的故事在这里发生', icon: 'fa-solid fa-hospital' },
-  { id: 'apartment', name: '樱庄公寓', desc: '一栋普通的公寓楼，住着形形色色的租客', icon: 'fa-solid fa-house-chimney' },
-  { id: 'castle', name: '夜之城堡', desc: '一座神秘的古老城堡，传说中住着吸血鬼', icon: 'fa-solid fa-chess-rook' },
+  { id: 'school', name: '圣华女子学院', desc: '一所 prestigious 的贵族女子学校，学生们都在这里接受精英教育', icon: 'fa-solid fa-school', era: 'modern' as SceneEra },
+  { id: 'office', name: '未来科技公司', desc: '一家高科技公司，员工们在这里开发着改变世界的技术', icon: 'fa-solid fa-building', era: 'modern' as SceneEra },
+  { id: 'hospital', name: '圣玛利亚医院', desc: '一家大型综合医院，各种离奇的故事在这里发生', icon: 'fa-solid fa-hospital', era: 'modern' as SceneEra },
+  { id: 'apartment', name: '樱庄公寓', desc: '一栋普通的公寓楼，住着形形色色的租客', icon: 'fa-solid fa-house-chimney', era: 'modern' as SceneEra },
+  { id: 'castle', name: '夜之城堡', desc: '一座神秘的古老城堡，传说中住着吸血鬼', icon: 'fa-solid fa-chess-rook', era: 'medieval' as SceneEra },
+  { id: 'fantasy_tavern', name: '异世界冒险者酒馆', desc: '位于异世界的冒险者聚集地，各种族在此交汇', icon: 'fa-solid fa-wine-glass', era: 'fantasy' as SceneEra },
+  { id: 'cyberpunk_city', name: '霓虹城', desc: '2077年的赛博朋克都市，高科技与低生活的交汇点', icon: 'fa-solid fa-city', era: 'future' as SceneEra },
+  { id: 'ancient_palace', name: '大唐宫廷', desc: '盛唐时期的皇家宫殿，繁华与权谋交织', icon: 'fa-solid fa-landmark', era: 'ancient' as SceneEra },
 ];
 
 // 预设规则
@@ -1060,6 +1066,7 @@ function capturePresetPayload(): OpeningPresetPayload {
     customRules: customRules.value.map(r => ({ name: r.name, desc: r.desc })),
     characters: characters.value.map(c => ({ name: c.name, gender: c.gender, desc: c.desc })),
     openingSceneDetail: openingSceneDetail.value,
+    sceneEra: selectedScene.value?.era, // 保存场景时代信息
   };
 }
 
@@ -1615,6 +1622,7 @@ async function handleSubmit() {
     openingSceneDetail: openingSceneDetail.value.trim(),
     selectedRules: rules,
     characters: characters.value,
+    sceneEra: selectedScene.value?.era, // 传递场景时代信息
   };
 
   console.log('🎮 [OpeningForm] 提交:', formData);

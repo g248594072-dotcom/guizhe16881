@@ -23,6 +23,9 @@ export type SceneSnippet = RuleSnippet;
 /** 开局场景细化文案（对应「开局场景描述」） */
 export type OpeningSceneSnippet = RuleSnippet;
 
+// 场景时代类型（与 types.ts 保持一致）
+export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
+
 export interface OpeningPresetPayload {
   sceneMode: 'preset' | 'custom';
   sceneId: string | null;
@@ -31,6 +34,7 @@ export interface OpeningPresetPayload {
   customRules: { name: string; desc: string }[];
   characters: { name: string; gender: string; desc: string }[];
   openingSceneDetail: string;
+  sceneEra?: SceneEra; // 场景时代/世界观类型
 }
 
 export interface OpeningPreset {
@@ -115,6 +119,9 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
         })
         .filter(Boolean) as { name: string; gender: string; desc: string }[]
     : [];
+  // 解析 sceneEra 字段
+  const validEras: SceneEra[] = ['modern', 'medieval', 'fantasy', 'future', 'ancient'];
+  const sceneEra = validEras.includes(o.sceneEra as SceneEra) ? (o.sceneEra as SceneEra) : undefined;
   return {
     sceneMode,
     sceneId,
@@ -123,6 +130,7 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
     customRules,
     characters,
     openingSceneDetail,
+    sceneEra,
   };
 }
 

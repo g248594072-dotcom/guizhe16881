@@ -3,7 +3,107 @@
  * 负责初始化游戏变量、创建开局楼层、管理世界书条目
  */
 
-import type { OpeningFormData } from '../types';
+import type { OpeningFormData, SceneEra } from '../types';
+
+/**
+ * 根据场景时代计算初始游戏时间
+ * - modern: 现代，使用当前年份（2026年左右）
+ * - medieval: 中世纪，约1000-1400年
+ * - fantasy: 异世界，使用奇幻风格的日期（如幻想历、精灵历等）
+ * - future: 未来，约2077年及以后
+ * - ancient: 古代，约公元前或公元初期
+ */
+function getInitialGameTimeByEra(era?: SceneEra) {
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+  const currentDay = new Date().getDate();
+  const currentHour = new Date().getHours();
+  const currentMinute = new Date().getMinutes();
+
+  switch (era) {
+    case 'modern':
+      // 现代：使用当前年份，月份日期可以随机一些变化
+      return {
+        年: currentYear,
+        月: currentMonth,
+        日: currentDay,
+        时: 12,
+        分: 0,
+      };
+
+    case 'medieval':
+      // 中世纪：约1000-1400年，随机选择
+      return {
+        年: 1000 + Math.floor(Math.random() * 400),
+        月: Math.floor(Math.random() * 12) + 1,
+        日: Math.floor(Math.random() * 28) + 1,
+        时: 12,
+        分: 0,
+      };
+
+    case 'fantasy':
+      // 异世界：使用奇幻历法，如"幻想历"或自定义年份
+      // 可以是类似"星历"、"魔法历"的年份格式
+      return {
+        年: 784 + Math.floor(Math.random() * 200), // 幻想历784年，一个典型的奇幻年份
+        月: Math.floor(Math.random() * 12) + 1,
+        日: Math.floor(Math.random() * 28) + 1,
+        时: 12,
+        分: 0,
+      };
+
+    case 'future':
+      // 未来：2077年及以后
+      return {
+        年: 2077 + Math.floor(Math.random() * 50),
+        月: Math.floor(Math.random() * 12) + 1,
+        日: Math.floor(Math.random() * 28) + 1,
+        时: 12,
+        分: 0,
+      };
+
+    case 'ancient':
+      // 古代：约公元前或公元初期（使用负数或较小数字表示）
+      // 如大唐时期约为公元600-900年
+      return {
+        年: 600 + Math.floor(Math.random() * 300),
+        月: Math.floor(Math.random() * 12) + 1,
+        日: Math.floor(Math.random() * 28) + 1,
+        时: 12,
+        分: 0,
+      };
+
+    default:
+      // 默认使用现代时间
+      return {
+        年: currentYear,
+        月: currentMonth,
+        日: currentDay,
+        时: 12,
+        分: 0,
+      };
+  }
+}
+
+/**
+ * 获取时代的中文描述，用于在提示词中说明时间背景
+ */
+function getEraDescription(era?: SceneEra): string {
+  switch (era) {
+    case 'modern':
+      return '现代（公元21世纪）';
+    case 'medieval':
+      return '中世纪（约公元10-14世纪）';
+    case 'fantasy':
+      return '异世界（幻想历）';
+    case 'future':
+      return '未来（2077年后）';
+    case 'ancient':
+      return '古代（约公元6-9世纪）';
+    default:
+      return '现代';
+  }
+}
 
 /** 开局 <maintext> 正文写作要求（与清单、变量约束配合使用） */
 const OPENING_MAINTEXT_REQUEST = `<request>
@@ -97,6 +197,11 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
         // 保存开局配置
         vars.stat_data.openingConfig = formData;
 
+        // 根据场景时代初始化游戏时间
+        const initialGameTime = getInitialGameTimeByEra(formData.sceneEra);
+        vars.stat_data.游戏时间 = initialGameTime;
+        console.log(`✅ [gameInitializer] 游戏时间已初始化为 ${initialGameTime.年}年${initialGameTime.月}月${initialGameTime.日}日（时代：${formData.sceneEra || '默认'})`);
+
         console.log('✅ [gameInitializer] 0层变量初始化完成');
         return vars;
       },
@@ -117,6 +222,11 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
 function buildOpeningPromptContent(formData: OpeningFormData): string {
   const sceneDesc = formData.sceneDescription || '神秘的未知场所';
   const openingDetail = String(formData.openingSceneDetail ?? '').trim();
+
+  // 获取场景时代的时间背景描述
+  const eraDesc = getEraDescription(formData.sceneEra);
+  const initialGameTime = getInitialGameTimeByEra(formData.sceneEra);
+  const timeDescription = `${initialGameTime.年}年${initialGameTime.月}月${initialGameTime.日}日`;
 
   const rules = (formData.selectedRules ?? []) as Array<{ name: string; desc: string; isCustom?: boolean }>;
   const presetRules = rules.filter(r => !r.isCustom);
@@ -145,6 +255,13 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   let n = 1;
   checklist.push(`${n}. 开局地点与整体氛围必须与下列场景设定一致：${sceneDesc}`);
   n += 1;
+
+  // 添加时代/时间背景要求
+  if (formData.sceneEra) {
+    checklist.push(`${n}. 故事必须发生在${eraDesc}，时间设定为${timeDescription}，场景中的元素、人物着装、技术/魔法水平、语言风格必须与该时代背景一致`);
+    n += 1;
+  }
+
   if (openingDetail) {
     checklist.push(`${n}. 开场时刻、空间与情节须体现以下补充（不可省略）：${openingDetail}`);
     n += 1;
@@ -169,9 +286,16 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   if (formData.enablePersonalRules) enableBits.push('个人规则已启用');
   const enableLine = enableBits.length > 0 ? enableBits.join('；') : '规则开关按表单默认';
 
+  // 构建包含时代信息的时间描述
+  const timeInfoLines = formData.sceneEra
+    ? [`【时代背景】${eraDesc}`, `【故事时间】${timeDescription}`]
+    : [];
+
   const narrativeBlock = [
     `【规则开关】${enableLine}`,
     '',
+    ...timeInfoLines,
+    ...(timeInfoLines.length > 0 ? [''] : []),
     '—— 以下为配置摘要（清单见下节；<maintext> 须用现场叙事落实，写法遵守「二（续）」）——',
     ...ruleLinesForNarrative,
     ...charLinesForNarrative,
