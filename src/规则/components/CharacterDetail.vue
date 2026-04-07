@@ -41,10 +41,16 @@
         </div>
         <p class="meta">ID: {{ characterId }} | 状态: {{ characterStatusText }}</p>
       </div>
-      <button v-if="!isEditingBasic" id="btn-edit-basic" class="edit-btn" @click="startEditBasic">
-        <i class="fa-solid fa-pen"></i>
-        <span>编辑基础信息</span>
-      </button>
+      <div v-if="!isEditingBasic" class="header-actions">
+        <button id="btn-delete-character" class="delete-btn" @click="onDeleteCharacter">
+          <i class="fa-solid fa-trash"></i>
+          <span>删除角色</span>
+        </button>
+        <button id="btn-edit-basic" class="edit-btn" @click="startEditBasic">
+          <i class="fa-solid fa-pen"></i>
+          <span>编辑基础信息</span>
+        </button>
+      </div>
     </div>
 
     <div class="detail-grid">
@@ -646,6 +652,35 @@ async function onFinishEditBasic() {
   }
 }
 
+async function onDeleteCharacter() {
+  // 确认对话框
+  const result = await Swal.fire({
+    title: '确认删除角色？',
+    html: `即将删除角色「<strong>${name.value}</strong>」及其所有相关数据（包括个人规则、头像缓存等），<br>此操作<strong>不可恢复</strong>。`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '确认删除',
+    cancelButtonText: '取消',
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#6b7280',
+    reverseButtons: true,
+  });
+
+  if (!result.isConfirmed) return;
+
+  try {
+    const { submitDeleteCharacter } = await import('../utils/dialogAndVariable');
+    const messageText = await submitDeleteCharacter(props.characterId, name.value);
+
+    // 删除成功后返回列表
+    emit('back');
+    if (messageText) emit('copyToInput', messageText);
+  } catch (e) {
+    console.error('删除角色失败', e);
+    toastr.error('删除失败，请查看控制台');
+  }
+}
+
 const emit = defineEmits<{
   (e: 'back'): void;
   (e: 'openModal', type: string, payload?: Record<string, any>): void;
@@ -842,6 +877,40 @@ const emit = defineEmits<{
 
   &:hover {
     background: rgba(0, 0, 0, 0.1);
+  }
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.2);
+  }
+}
+
+:global(.light) .delete-btn {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.15);
   }
 }
 

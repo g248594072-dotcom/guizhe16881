@@ -7366,6 +7366,14 @@ body.has-dragging-fab {
   }
 }
 
+// 规则类弹窗：设置最大高度和滚动
+.rule-modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: min(90vh, 800px);
+  width: 100%;
+}
+
 // 规则类弹窗：窄屏标题独占一行（正文区 min-height 见 .modal-body 后的覆盖）
 @media (max-width: 768px) {
   .modal-overlay {
@@ -7373,10 +7381,7 @@ body.has-dragging-fab {
   }
 
   .rule-modal-content {
-    display: flex;
-    flex-direction: column;
     max-height: min(92dvh, 100vh);
-    width: 100%;
   }
 }
 
@@ -7524,6 +7529,9 @@ body.has-dragging-fab {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .detail-edit-row {
@@ -7701,12 +7709,17 @@ body.has-dragging-fab {
   min-height: 300px;
 }
 
+.rule-modal-content .modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: calc(min(90vh, 800px) - 80px); // 减去 header 高度
+}
+
 @media (max-width: 768px) {
   .rule-modal-content .modal-body {
     min-height: 0;
-    flex: 1 1 auto;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    max-height: none;
     padding: 16px 14px;
   }
 }

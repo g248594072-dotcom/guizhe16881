@@ -1140,3 +1140,65 @@ export async function syncGameStoryToWorldbook(): Promise<void> {
     console.warn('⚠️ [dialogAndVariable] 同步剧情到世界书失败:', e);
   }
 }
+
+// ---------- 删除角色 ----------
+
+/**
+ * 格式化删除角色消息
+ */
+export function formatDeleteCharacterMessage(characterId: string, characterName: string): string {
+  return `[删除角色]\n角色ID：${characterId}\n姓名：${characterName}`;
+}
+
+/**
+ * 从变量中删除角色
+ * 同时删除与该角色相关的个人规则和头像缓存
+ */
+export function deleteCharacterFromVariables(characterId: string): void {
+  const store = useDataStore();
+
+  // 获取角色名称（用于匹配个人规则）
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+
+  const characterName = char.姓名 || characterId;
+
+  // 1. 删除角色档案
+  delete store.data.角色档案[characterId];
+
+  // 2. 删除与该角色相关的个人规则（通过适用对象匹配）
+  const personalRules = store.data.个人规则 || {};
+  const rulesToDelete: string[] = [];
+
+  for (const [ruleId, rule] of Object.entries(personalRules)) {
+    if (rule.适用对象 === characterId || rule.适用对象 === characterName) {
+      rulesToDelete.push(ruleId);
+    }
+  }
+
+  for (const ruleId of rulesToDelete) {
+    delete personalRules[ruleId];
+  }
+
+  // 3. 删除头像缓存
+  const { setCharacterAvatarOverride } = require('../../shared/phoneCharacterAvatarStorage');
+  setCharacterAvatarOverride(characterId, '');
+  // 同时清除同名键的头像缓存
+  if (characterName && characterName !== characterId) {
+    const { normalizeCharacterNameForAvatar } = require('../../shared/phoneCharacterAvatarStorage');
+    const nameKey = `__byname__:${normalizeCharacterNameForAvatar(characterName)}`;
+    setCharacterAvatarOverride(nameKey, '');
+  }
+
+  bumpUpdateTime();
+}
+
+/**
+ * 提交删除角色（包含消息格式化）
+ */
+export async function submitDeleteCharacter(characterId: string, characterName: string): Promise<string> {
+  const message = formatDeleteCharacterMessage(characterId, characterName);
+  deleteCharacterFromVariables(characterId);
+  toastr.success(`已删除角色「${characterName}」及相关个人规则`);
+  return message;
+}
