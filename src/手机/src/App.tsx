@@ -13,7 +13,9 @@ import {
   X,
   MessageSquare,
   UserCheck,
+  Trash2,
 } from 'lucide-react';
+import { clearAllPhoneData, getClearDataSummary } from './clearData';
 import { postRequestCloseTavernPhone } from './tavernPhoneBridge';
 import { loadTheme, saveTheme, getThemeVars, injectThemeVars, THEME_LABELS } from './theme';
 import type { PhoneTheme } from './theme';
@@ -67,6 +69,8 @@ export default function App() {
   const [wallpaper, setWallpaper] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=2564&auto=format&fit=crop');
   const [currentTheme, setCurrentTheme] = useState<PhoneTheme>(() => loadTheme());
   const [momentsInitialCharacterId, setMomentsInitialCharacterId] = useState<string | undefined>(undefined);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   useEffect(() => {
     // 初始化时注入主题变量
@@ -78,6 +82,25 @@ export default function App() {
     setCurrentTheme(theme);
     saveTheme(theme);
     injectThemeVars(getThemeVars(theme));
+  };
+
+  /** 处理清理数据 */
+  const handleClearData = async () => {
+    setIsClearing(true);
+    try {
+      const result = await clearAllPhoneData();
+      if (result.success) {
+        alert('所有数据已清理完成！\n包括：论坛、朋友圈、新闻、微信聊天记录、日记等');
+      } else {
+        alert('部分数据清理失败，请查看控制台日志');
+      }
+    } catch (e) {
+      console.error('[App] 清理数据失败:', e);
+      alert('清理数据时发生错误');
+    } finally {
+      setIsClearing(false);
+      setShowClearConfirm(false);
+    }
   };
 
   useEffect(() => {
@@ -122,21 +145,62 @@ export default function App() {
 
   return (
     <div className="relative box-border flex h-dvh w-full max-w-[100vw] flex-col items-center justify-center overflow-hidden bg-black p-0 font-sans">
-      <button
-        type="button"
-        className="absolute right-2 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
-        style={{ backgroundColor: 'var(--close-btn-bg)', color: 'var(--status-text, white)' }}
-        title="关闭小手机"
-        aria-label="关闭小手机"
-        onClick={() => postRequestCloseTavernPhone()}
-      >
-        <X size={18} strokeWidth={2.5} />
-      </button>
       {/* Phone Frame：无边框观感 — 无描边/无 ring，仅圆角裁剪 + 轻外阴影 */}
       <div
         className="relative shrink-0 overflow-hidden rounded-[40px] shadow-[0_2px_20px_rgba(0,0,0,0.35)]"
         style={phoneShellStyle}
       >
+        {/* 关闭按钮（手机框架外） */}
+        <button
+          type="button"
+          className="absolute -right-11 top-2 z-100 flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+          style={{ backgroundColor: 'var(--close-btn-bg)', color: 'var(--status-text, white)' }}
+          title="关闭小手机"
+          aria-label="关闭小手机"
+          onClick={() => postRequestCloseTavernPhone()}
+        >
+          <X size={18} strokeWidth={2.5} />
+        </button>
+
+        {/* 清理确认对话框 */}
+        {showClearConfirm && (
+          <div className="absolute inset-0 z-200 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-[300px] rounded-2xl bg-white p-5 shadow-2xl">
+              <h3 className="mb-3 text-center text-lg font-bold text-red-500">
+                {getClearDataSummary().title}
+              </h3>
+              <p className="mb-4 text-center text-sm text-gray-600">
+                {getClearDataSummary().message}
+              </p>
+              <ul className="mb-4 max-h-[180px] overflow-y-auto rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
+                {getClearDataSummary().dataTypes.map((item, idx) => (
+                  <li key={idx} className="mb-1 flex items-center gap-2">
+                    <span className="text-red-400">•</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-gray-200 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-300"
+                  onClick={() => setShowClearConfirm(false)}
+                  disabled={isClearing}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
+                  onClick={handleClearData}
+                  disabled={isClearing}
+                >
+                  {isClearing ? '清理中...' : '确认清理'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Screen Content：底层渐变防止壁纸加载失败时整屏纯黑；渐变色跟随主题 */}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, var(--phone-bg-from, #778899), var(--phone-bg-via, #2c3e50), var(--phone-bg-to, #1a252f))' }}>
           <div
@@ -176,6 +240,19 @@ export default function App() {
                   <span className="text-white text-[11px] font-medium tracking-wide drop-shadow-md">{app.name}</span>
                 </button>
               ))}
+              {/* 清理缓存应用图标 */}
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(true)}
+                className="flex flex-col items-center gap-1.5 group"
+                disabled={isClearing}
+              >
+                <div className="w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 bg-linear-to-br from-red-500 to-red-600 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
+                  <Trash2 size={34} color="white" strokeWidth={1.5} />
+                </div>
+                <span className="text-white text-[11px] font-medium tracking-wide drop-shadow-md">清理缓存</span>
+              </button>
             </div>
           </div>
 

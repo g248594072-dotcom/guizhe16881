@@ -221,3 +221,16 @@ export async function copyLegacyThreadIfTargetEmpty(
   await idbPutThread(target, leg);
   return leg;
 }
+
+/**
+ * 清空所有微信聊天记录（用于重置）
+ */
+export async function clearAllWeChatData(): Promise<void> {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_THREADS, 'readwrite');
+    tx.objectStore(STORE_THREADS).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}

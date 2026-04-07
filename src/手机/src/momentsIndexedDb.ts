@@ -450,3 +450,18 @@ export async function getLatestMoment(): Promise<Moment | null> {
     req.onerror = () => reject(req.error);
   });
 }
+
+/**
+ * 清空所有朋友圈数据（用于重置）
+ */
+export async function clearAllMoments(): Promise<void> {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([STORE_MOMENTS, STORE_COMMENTS, STORE_META], 'readwrite');
+    tx.objectStore(STORE_MOMENTS).clear();
+    tx.objectStore(STORE_COMMENTS).clear();
+    tx.objectStore(STORE_META).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}

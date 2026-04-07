@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, Loader2, Smartphone, Trash2 } from 'lucide-react';
+import { ChevronLeft, Loader2, Smartphone } from 'lucide-react';
 import { TAVERN_PHONE_UI_LABEL, TAVERN_PHONE_UI_VERSION } from '../../tavernPhoneVersion';
 import {
   loadTavernPhoneApiConfig,
@@ -9,7 +9,6 @@ import {
 } from '../../tavernPhoneApiConfig';
 import { fetchOpenAiCompatibleModelIds, testOpenAiCompatibleConnection } from '../../openaiCompatible';
 import { THEME_LABELS, type PhoneTheme } from '../../theme';
-import { clearAllBrowserCaches } from '../../../../shared/phoneCharacterAvatarStorage';
 
 export default function SettingsApp({
   onClose,
@@ -28,8 +27,6 @@ export default function SettingsApp({
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState('');
   const [modelOptions, setModelOptions] = useState<string[]>([]);
-  const [clearCacheState, setClearCacheState] = useState<'idle' | 'clearing' | 'success' | 'error'>('idle');
-  const [clearCacheMessage, setClearCacheMessage] = useState('');
 
   useEffect(() => {
     saveTavernPhoneApiConfig(cfg);
@@ -94,23 +91,6 @@ export default function SettingsApp({
     }
   };
 
-  const handleClearBrowserCache = async () => {
-    if (!confirm('确定要清理所有浏览器缓存吗？这将清除：\n- 所有角色头像缓存\n- 所有日记数据\n- 所有聊天记录（微信/群聊）\n\n此操作不可恢复！')) {
-      return;
-    }
-
-    setClearCacheState('clearing');
-    setClearCacheMessage('正在清理缓存...');
-
-    try {
-      await clearAllBrowserCaches();
-      setClearCacheState('success');
-      setClearCacheMessage('缓存已清空（包括头像、日记、聊天记录）');
-    } catch (e) {
-      setClearCacheState('error');
-      setClearCacheMessage('清理缓存失败: ' + (e instanceof Error ? e.message : String(e)));
-    }
-  };
 
   return (
     <div className="flex flex-col h-full" style={{ backgroundColor: 'var(--app-content-bg, #F2F2F7)' }}>
@@ -358,39 +338,6 @@ export default function SettingsApp({
           </div>
         </div>
 
-        {/* 清理缓存区域 */}
-        <div className="bg-white rounded-[10px] overflow-hidden shadow-sm">
-          <div className="px-3 pt-3 pb-1">
-            <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--settings-desc)' }}>开局重置</p>
-          </div>
-          <div className="p-3" style={{ borderTop: '1px solid var(--card-border)' }}>
-            <button
-              type="button"
-              onClick={handleClearBrowserCache}
-              disabled={clearCacheState === 'clearing'}
-              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 text-[15px] font-semibold text-white active:opacity-90 disabled:opacity-50 bg-red-500 hover:bg-red-600 transition-colors"
-            >
-              {clearCacheState === 'clearing' ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-              清理浏览器缓存
-            </button>
-            {clearCacheState !== 'idle' && clearCacheMessage && (
-              <p
-                className={`text-[13px] px-1 mt-2 ${
-                  clearCacheState === 'success'
-                    ? 'text-green-600'
-                    : clearCacheState === 'error'
-                      ? 'text-red-600'
-                      : 'text-[#8E8E93]'
-                }`}
-              >
-                {clearCacheMessage}
-              </p>
-            )}
-            <p className="text-[11px] text-gray-400 px-1 mt-2">
-              清除：头像缓存 · 日记数据 · 微信/群聊记录 · 自动分析设置
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
