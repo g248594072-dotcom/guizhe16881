@@ -2562,6 +2562,20 @@ async function sendMessage() {
       }
     }
 
+    // ===== 触发数据库剧情推进 =====
+    // 通过触发数据库的 capture 阶段监听器来标记用户发送意图
+    // 数据库会在 generate() 调用时自动运行剧情推进流程
+    try {
+      const { notifyShujukuUserSendIntent } = await import('./utils/shujukuBridge');
+      const notified = notifyShujukuUserSendIntent();
+      if (notified) {
+        console.log('[App] ✅ 数据库用户发送意图已通知，剧情推进将在 generate() 时自动触发');
+      }
+    } catch (e) {
+      console.warn('[App] ⚠️ 通知数据库用户发送意图失败:', e);
+    }
+    // ===== 剧情推进触发结束 =====
+
     // 调用 generate 生成 AI 回复
     console.log('⏳ [App] 调用 generate...');
     aiGenerationStartMs.value = Date.now();

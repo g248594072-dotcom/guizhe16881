@@ -3,12 +3,26 @@
  */
 import { getOtherSettings } from './otherSettings';
 
-type AcuApi = { manualUpdate: () => Promise<boolean> };
+type AcuApi = {
+  manualUpdate: () => Promise<boolean>;
+};
 
 /**
  * 在父窗口 / top / 当前窗口查找 `window.AutoCardUpdaterAPI`（酒馆扩展注入位置因环境而异）。
+ * 注意：优先检查当前 window，因为数据库可能已直接注入到前端 iframe 中。
  */
 export function resolveAutoCardUpdaterApi(): AcuApi | null {
+  // 优先检查当前 window（数据库 API 可能已直接注入到前端 iframe）
+  try {
+    const api = (window as unknown as { AutoCardUpdaterAPI?: unknown }).AutoCardUpdaterAPI;
+    if (api && typeof (api as AcuApi).manualUpdate === 'function') {
+      return api as AcuApi;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // 然后尝试访问父窗口 / top 窗口
   const candidates: Window[] = [];
   try {
     candidates.push(window.parent);
@@ -22,7 +36,6 @@ export function resolveAutoCardUpdaterApi(): AcuApi | null {
   } catch {
     /* cross-origin */
   }
-  candidates.push(window);
 
   for (const w of candidates) {
     try {
@@ -53,5 +66,35 @@ export async function runShujukuManualUpdateAfterAssistantSaved(): Promise<void>
     await api.manualUpdate();
   } catch (e) {
     console.warn('[规则] AutoCardUpdaterAPI.manualUpdate 失败:', e);
+  }
+}
+
+/**
+ * 通知数据库用户发送意图，触发剧情推进机制。
+ *
+ * 数据库通过 capture 阶段的 pointerup 监听器监听 #send_but 按钮，
+ * 当用户点击发送时调用 markUserSendIntent_ACU() 设置时间戳。
+ * 后续 generate() 调用会触发 GENERATION_AFTER_COMMANDS 事件，
+ * 数据库检查 shouldProcessPlotForGeneration_ACU() 发现发送意图后，
+ * 自动运行内部的剧情推进流程。
+ *
+ * 使用 pointerup（非 click）可避免意外触发 SillyTavern 的发送逻辑。
+ */
+export function notifyShujukuUserSendIntent(): boolean {
+  try {
+    const parentDoc = (window.parent || window).document;
+    const sendBtn = parentDoc.getElementById('send_but');
+    if (sendBtn) {
+      // 使用 pointerup 事件（数据库监听器注册的是 click/pointerup/touchend）
+      // bubbles: false 避免向上传播
+      sendBtn.dispatchEvent(new PointerEvent('pointerup', { bubbles: false }));
+      console.log('[shujukuBridge] ✅ markUserSendIntent triggered via pointerup on #send_but');
+      return true;
+    }
+    console.warn('[shujukuBridge] ⚠️ #send_but not found in parent document');
+    return false;
+  } catch (e) {
+    console.warn('[shujukuBridge] ❌ notifyShujukuUserSendIntent failed:', e);
+    return false;
   }
 }

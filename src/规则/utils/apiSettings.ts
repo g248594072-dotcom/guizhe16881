@@ -256,6 +256,7 @@ async function callSecondaryGenerateRawCustom(
     should_stream: false,
     should_silence: true,
     max_chat_history: 0,
+    automatic_trigger: true, // 标记为自动触发，避免触发数据库剧情推进
     ordered_prompts: ordered,
     custom_api: {
       apiurl: normalized.base,
@@ -583,6 +584,7 @@ async function callSecondaryApiViaGenerateRaw(
     should_stream: false,
     should_silence: true,
     max_chat_history: 0,
+    automatic_trigger: true, // 标记为自动触发，避免触发数据库剧情推进
     ordered_prompts: [
       { role: 'system', content: SECONDARY_SYSTEM_PROMPT },
       { role: 'user', content: prompt },
