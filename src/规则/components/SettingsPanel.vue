@@ -200,21 +200,23 @@
         />
       </template>
 
-      <label class="field-label">模型</label>
-      <div class="model-row">
-        <input
-          v-model="secondaryApi.model"
-          class="field-input model-input"
-          type="text"
-          list="secondary-model-datalist"
-          placeholder="手动输入或下方获取列表后选择"
-          autocomplete="off"
-          @blur="persistSecondaryApi"
-        />
-        <datalist id="secondary-model-datalist">
-          <option v-for="m in fetchedModels" :key="m" :value="m" />
-        </datalist>
-      </div>
+      <template v-if="!secondaryApi.useTavernMainConnection">
+        <label class="field-label">模型</label>
+        <div class="model-row">
+          <input
+            v-model="secondaryApi.model"
+            class="field-input model-input"
+            type="text"
+            list="secondary-model-datalist"
+            placeholder="手动输入或下方获取列表后选择"
+            autocomplete="off"
+            @blur="persistSecondaryApi"
+          />
+          <datalist id="secondary-model-datalist">
+            <option v-for="m in fetchedModels" :key="m" :value="m" />
+          </datalist>
+        </div>
+      </template>
 
       <label class="field-label">最大重试次数（0–10，失败后的额外尝试次数）</label>
       <div class="retry-row">
@@ -255,6 +257,7 @@
           {{ secondaryTestLoading ? '测试中…' : '连接测试' }}
         </button>
         <button
+          v-if="!secondaryApi.useTavernMainConnection"
           type="button"
           class="btn-api btn-api-secondary"
           :disabled="secondaryModelsLoading"
