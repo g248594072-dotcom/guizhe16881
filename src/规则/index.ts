@@ -2,6 +2,8 @@ import { waitUntil } from 'async-wait-until';
 import { normalizeFetishRecord, normalizeSensitivePartRecord } from './utils/tagMap';
 import App from './App.vue';
 import './index.scss';
+import './styles/cyber-neon-theme.scss';
+import './styles/cyber-panels-dark.scss';
 
 function registerMvuNestedObjectFix() {
   eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, (variables: Mvu.MvuData) => {

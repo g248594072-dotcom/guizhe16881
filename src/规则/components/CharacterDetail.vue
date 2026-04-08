@@ -55,7 +55,7 @@
 
     <div class="detail-grid">
       <!-- Basic Stats -->
-      <article class="detail-card">
+      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-chart-line"></i>
           <h3>生理指标</h3>
@@ -107,9 +107,20 @@
               label="好感度 AFFECTION"
               :value="affectionValueLabel"
               :percentage="affectionBarPercent"
+              accent="cyan"
             />
-            <StatBar label="发情值 LUST" :value="`${displayLust}/100`" :percentage="lustBarPercent" />
-            <StatBar label="性癖开发值 FETISH" :value="`${displayFetish}/100`" :percentage="displayFetish" />
+            <StatBar
+              label="发情值 LUST"
+              :value="`${displayLust}/100`"
+              :percentage="lustBarPercent"
+              accent="magenta"
+            />
+            <StatBar
+              label="性癖开发值 FETISH"
+              :value="`${displayFetish}/100`"
+              :percentage="displayFetish"
+              accent="purple"
+            />
           </div>
           <div class="physiology-summary">
             <span class="section-label">当前综合生理描述</span>
@@ -121,7 +132,7 @@
       </article>
 
       <!-- Psychology -->
-      <article class="detail-card">
+      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-brain"></i>
           <h3>心理状态</h3>
@@ -160,7 +171,7 @@
       </article>
 
       <!-- Fetishes -->
-      <article class="detail-card">
+      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-heart"></i>
           <h3>性癖与敏感带</h3>
@@ -267,7 +278,7 @@
       </article>
 
       <!-- Identity Tags -->
-      <article class="detail-card">
+      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-tags"></i>
           <h3>身份标签</h3>
@@ -298,7 +309,7 @@
     </div>
 
     <!-- Affected Rules -->
-    <article class="rules-card">
+    <article class="rules-card" :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }">
       <div class="rules-header">
         <div class="title-group">
           <i class="fa-solid fa-shield-exclamation"></i>
@@ -314,6 +325,7 @@
             v-for="r in affectedPersonalRules"
             :key="r.id"
             class="personal-rule-row"
+            :class="{ 'cyber-flowing-border': isDarkMode }"
           >
             <div class="rule-desc">{{ r.desc || r.title }}</div>
             <div class="rule-actions">
@@ -377,7 +389,10 @@ import { tagFieldToBadgeLines } from '../utils/tagMap';
 
 const props = defineProps<{
   characterId: string;
+  isDarkMode?: boolean;
 }>();
+
+const isDarkMode = computed(() => !!props.isDarkMode);
 
 const avatarStorageRev = ref(0);
 function onBrowserAvatarStorageChange() {
@@ -954,7 +969,7 @@ const emit = defineEmits<{
   }
 }
 
-.detail-card {
+.detail-card:not(.cyber-card) {
   padding: 24px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -997,7 +1012,15 @@ const emit = defineEmits<{
   }
 }
 
-:global(.light) .detail-card {
+.detail-card.cyber-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  border-radius: 14px;
+}
+
+:global(.light) .detail-card:not(.cyber-card) {
   border-color: rgba(0, 0, 0, 0.1);
   background: #fff;
 
@@ -1183,7 +1206,7 @@ const emit = defineEmits<{
   color: #3f3f46;
 }
 
-.rules-card {
+.rules-card:not(.cyber-card) {
   padding: 24px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1229,7 +1252,12 @@ const emit = defineEmits<{
   }
 }
 
-:global(.light) .rules-card {
+.rules-card.cyber-card {
+  padding: 24px;
+  border-radius: 14px;
+}
+
+:global(.light) .rules-card:not(.cyber-card) {
   border-color: rgba(0, 0, 0, 0.1);
   background: #fff;
 

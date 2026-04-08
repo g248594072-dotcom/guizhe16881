@@ -1,0 +1,406 @@
+/**
+ * 中间栏各标签页深色赛博风（对齐 规则新新前端 气质）
+ * 仅作用于 .middle-panel.dark 内，不影响浅色。
+ */
+@use './cyber-neon-mixins' as *;
+
+.middle-panel.dark {
+  // ---------- 顶栏（与参考 TopBar 一致：display 字重 + 底边） ----------
+  .panel-header {
+    background: linear-gradient(180deg, rgba(17, 17, 17, 0.85) 0%, rgba(5, 5, 5, 0.92) 100%);
+    border-bottom-color: rgba(0, 243, 255, 0.22);
+
+    h1.panel-title-cyber {
+      font-family: var(--font-cyber-display);
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      font-size: calc(22px * var(--ui-scale, 1));
+    }
+
+    .close-btn:hover {
+      color: var(--color-neon-cyan);
+    }
+  }
+
+  // ---------- 通用区块头 ----------
+  .section-header {
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(51, 51, 51, 0.9);
+  }
+
+  .section-header .desc {
+    color: #a3a3a3;
+    font-size: 14px;
+  }
+
+  // cyber-button 与现有 action-btn 并存时的排版
+  .action-btn.cyber-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: none;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+  }
+
+  // ---------- 人物列表（不依赖子组件是否挂上 .cyber-card class，避免 props 未进模板时仍是灰板） ----------
+  .character-list .character-grid {
+    gap: 16px;
+  }
+
+  .character-list .character-card {
+    @include cyber-card-full-neon;
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+
+    &:hover {
+      transform: translateY(-3px);
+    }
+
+    .card-header,
+    .stats {
+      position: relative;
+      z-index: 1;
+    }
+  }
+
+  .character-list .avatar {
+    width: 48px;
+    height: 48px;
+    background: rgba(176, 38, 255, 0.12);
+    border: 1px solid var(--color-neon-purple);
+    color: var(--color-neon-purple);
+  }
+
+  .character-list .info h4 {
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .character-list .info p {
+    font-family: var(--font-cyber-mono);
+    font-size: 12px;
+    color: #a3a3a3;
+  }
+
+  .character-list .stat-row {
+    font-size: 14px;
+  }
+
+  .character-list .stat-row .label {
+    color: #a3a3a3;
+  }
+
+  .character-list .stat-row .value {
+    font-family: var(--font-cyber-mono);
+  }
+
+  .character-list .stat-row:nth-child(1) .value {
+    color: var(--color-neon-cyan);
+  }
+
+  .character-list .stat-row:nth-child(2) .value {
+    color: var(--color-neon-magenta);
+  }
+
+  // ---------- 人物详情 ----------
+  .character-detail .back-btn:hover {
+    color: var(--color-neon-cyan);
+  }
+
+  .character-detail .profile-header .avatar-edit {
+    border-color: var(--color-cyber-border);
+    background: rgba(17, 17, 17, 0.55);
+  }
+
+  .character-detail .profile-info .name-row h2 {
+    font-family: var(--font-cyber-display);
+    letter-spacing: 0.06em;
+  }
+
+  .character-detail .rules-card:not(.cyber-card) {
+    @media (min-width: 768px) {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .character-detail .rules-card.cyber-card {
+    @media (min-width: 768px) {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .character-detail .detail-card .card-title {
+    border-bottom-color: rgba(0, 243, 255, 0.18);
+  }
+
+  .character-detail .detail-card .card-title h3 {
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .character-detail .detail-card .card-title i {
+    color: var(--color-neon-cyan);
+  }
+
+  .character-detail .edit-mini-btn:hover {
+    color: var(--color-neon-cyan);
+  }
+
+  .character-detail .delete-btn {
+    background: transparent;
+    border: 1px solid var(--color-neon-red);
+    color: var(--color-neon-red);
+    text-shadow: 0 0 6px rgba(255, 0, 60, 0.35);
+
+    &:hover {
+      background: rgba(255, 0, 60, 0.12);
+      box-shadow: 0 0 12px rgba(255, 0, 60, 0.25);
+    }
+  }
+
+  .character-detail .edit-btn {
+    background: transparent;
+    border: 1px solid rgba(120, 120, 120, 0.5);
+    color: #d4d4d8;
+
+    &:hover {
+      border-color: var(--color-neon-cyan);
+      color: var(--color-neon-cyan);
+      background: rgba(0, 243, 255, 0.08);
+    }
+  }
+
+  .character-detail .stats-list .stat-row:not(.edit) {
+    font-family: var(--font-cyber-mono);
+    font-size: 14px;
+  }
+
+  .character-detail .physiology-summary {
+    border-top-color: rgba(0, 243, 255, 0.12);
+  }
+
+  // ---------- 世界规则条目（.cyber-card 由 RuleListItem 挂载） ----------
+  .rule-item .title-row h4 {
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .rule-item .status-badge.active {
+    border-color: rgba(0, 243, 255, 0.4);
+    color: var(--color-neon-cyan);
+    background: rgba(0, 243, 255, 0.08);
+    font-family: var(--font-cyber-mono);
+  }
+
+  .rule-item .action-btn.edit:hover {
+    color: var(--color-neon-cyan);
+    background: rgba(0, 243, 255, 0.12);
+  }
+
+  .rule-item .action-btn.delete:hover {
+    color: var(--color-neon-red);
+    background: rgba(255, 0, 60, 0.1);
+  }
+
+  // ---------- 区域规则卡片（.cyber-card 在模板） ----------
+  .region-card .title-group {
+    color: var(--color-neon-yellow);
+  }
+
+  .region-card .title-group h3 {
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .region-card .rule-count {
+    font-family: var(--font-cyber-mono);
+    font-size: 12px;
+    color: #737373;
+  }
+
+  .rule-row.cyber-flowing-border {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    border-bottom: none;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    .rule-desc,
+    .rule-actions {
+      position: relative;
+      z-index: 2;
+    }
+
+    .rule-desc {
+      color: #d4d4d8;
+      font-size: 14px;
+    }
+
+    .action {
+      color: #a1a1aa;
+
+      &.edit:hover {
+        color: var(--color-neon-cyan);
+        background: rgba(0, 243, 255, 0.12);
+      }
+
+      &.archive:hover {
+        color: var(--color-neon-yellow);
+        background: rgba(252, 238, 10, 0.1);
+      }
+
+      &.delete:hover {
+        color: var(--color-neon-red);
+        background: rgba(255, 0, 60, 0.1);
+      }
+    }
+  }
+
+  .add-subrule.cyber-dashed-btn {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: 8px;
+    padding: 10px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #737373;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-neon-cyan);
+    }
+  }
+
+  // ---------- 个人规则（.cyber-card 在模板） ----------
+  .group-header .group-name {
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .group-header i.fa-user-circle {
+    color: var(--color-neon-purple);
+  }
+
+  .group-header .group-count {
+    font-family: var(--font-cyber-mono);
+    font-size: 12px;
+    color: #737373;
+  }
+
+  // ---------- 设置：顶部分段 ----------
+  .settings-panel.dark .settings-tab-btn {
+    background: transparent;
+    border: 1px solid rgba(51, 51, 51, 0.9);
+    color: #a1a1aa;
+
+    &:hover {
+      border-color: rgba(163, 163, 163, 0.4);
+      color: #e4e4e7;
+    }
+
+    &.active {
+      border-color: var(--color-neon-cyan);
+      color: var(--color-neon-cyan);
+      background: rgba(0, 243, 255, 0.08);
+      box-shadow: 0 0 14px rgba(0, 243, 255, 0.15);
+    }
+  }
+
+  .settings-panel.dark .shujuku-bridge-block {
+    @include cyber-card-full-neon;
+    overflow: visible;
+    border-radius: 12px;
+  }
+
+  // ---------- 世界与生活 ----------
+  .world-life-panel.dark .tabs-header {
+    border-bottom-color: rgba(0, 243, 255, 0.15);
+  }
+
+  .world-life-panel.dark .tab-btn {
+    color: #737373;
+    font-weight: 600;
+
+    &:hover {
+      color: #d4d4d8;
+      background: rgba(0, 243, 255, 0.05);
+    }
+
+    &.active {
+      color: var(--color-neon-cyan);
+      background: rgba(0, 243, 255, 0.1);
+      box-shadow: 0 2px 0 var(--color-neon-cyan), 0 0 12px rgba(0, 243, 255, 0.2);
+    }
+  }
+
+  .world-life-panel.dark .latest-card.cyber-card.unread {
+    border-color: rgba(0, 243, 255, 0.35);
+    box-shadow:
+      0 0 20px rgba(0, 243, 255, 0.15),
+      inset 0 0 10px rgba(0, 243, 255, 0.05);
+  }
+
+  // ---------- 随机规则 ----------
+  .random-rules-panel.dark .panel-description .desc-text {
+    font-family: var(--font-cyber-display);
+    color: var(--color-neon-purple);
+    text-shadow: 0 0 14px rgba(176, 38, 255, 0.45);
+
+    i {
+      color: var(--color-neon-purple);
+      filter: drop-shadow(0 0 8px rgba(176, 38, 255, 0.6));
+    }
+  }
+
+  .random-rules-panel.dark .generate-btn {
+    @include neon-button-purple;
+    padding: 14px 32px;
+    border-radius: 10px;
+    font-size: 1.05rem;
+    text-transform: none;
+    letter-spacing: 0.04em;
+
+    &:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+  }
+
+  // ---------- 人物详情：受影响规则行 ----------
+  .character-detail .personal-rule-row.cyber-flowing-border {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+
+    .rule-desc,
+    .rule-actions {
+      position: relative;
+      z-index: 2;
+    }
+  }
+
+  .archive-toggle:hover {
+    color: var(--color-neon-cyan);
+  }
+}

@@ -1,0 +1,172 @@
+/** 供 App.vue 等单独 @import，避免与 cyber-neon-theme 重复输出工具类。依赖 :root 上的 --color-*（由 cyber-neon-theme 注入）。 */
+
+@mixin cyber-card-surface {
+  background: linear-gradient(135deg, rgba(17, 17, 17, 0.65) 0%, rgba(5, 5, 5, 0.88) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 51, 51, 0.55);
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+@mixin cyber-card-full {
+  @include cyber-card-surface;
+  @include cyber-card-top-sheen;
+}
+
+/**
+ * 叠在纯色深底（如 .panel-content #1f1f23）上仍可见的赛博卡片：
+ * 多层色偏渐变 + 常驻霓虹边与外发光，不依赖 backdrop-filter 背后有内容。
+ */
+@mixin cyber-card-neon-stack {
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 130% 90% at 100% 0%, rgba(0, 243, 255, 0.14) 0%, transparent 52%),
+    radial-gradient(ellipse 110% 80% at 0% 100%, rgba(176, 38, 255, 0.12) 0%, transparent 48%),
+    linear-gradient(148deg, rgba(34, 36, 44, 0.97) 0%, rgba(18, 20, 26, 0.99) 42%, rgba(10, 12, 18, 1) 100%);
+  border: 1px solid rgba(0, 243, 255, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(176, 38, 255, 0.1) inset,
+    0 1px 0 rgba(255, 255, 255, 0.07) inset,
+    0 0 26px rgba(0, 243, 255, 0.1),
+    0 0 42px rgba(176, 38, 255, 0.06);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
+}
+
+@mixin cyber-card-full-neon {
+  @include cyber-card-neon-stack;
+  @include cyber-card-top-sheen;
+
+  &:hover {
+    border-color: rgba(0, 243, 255, 0.48);
+    box-shadow:
+      0 0 0 1px rgba(176, 38, 255, 0.2) inset,
+      0 1px 0 rgba(255, 255, 255, 0.09) inset,
+      0 0 32px rgba(0, 243, 255, 0.22),
+      0 0 56px rgba(176, 38, 255, 0.12),
+      inset 0 0 14px rgba(0, 243, 255, 0.07);
+  }
+}
+
+@mixin cyber-card-top-sheen {
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--color-neon-cyan), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s ease;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  &:hover::before {
+    transform: translateX(100%);
+  }
+
+  &:hover {
+    border-color: rgba(0, 243, 255, 0.4);
+    box-shadow:
+      0 0 20px rgba(0, 243, 255, 0.15),
+      inset 0 0 10px rgba(0, 243, 255, 0.05);
+  }
+}
+
+@mixin neon-button-purple {
+  background: transparent;
+  border: 1px solid var(--color-neon-purple);
+  color: var(--color-neon-purple);
+  text-transform: uppercase;
+  font-family: var(--font-cyber-display);
+  letter-spacing: 2px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  text-shadow: 0 0 5px rgba(176, 38, 255, 0.5);
+
+  &:hover {
+    background: rgba(176, 38, 255, 0.1);
+    box-shadow:
+      0 0 10px rgba(176, 38, 255, 0.3),
+      inset 0 0 10px rgba(176, 38, 255, 0.2);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transform: rotate(45deg) translateY(100%);
+    transition: transform 0.5s ease;
+  }
+
+  &:hover::after {
+    transform: rotate(45deg) translateY(-100%);
+  }
+}
+
+@mixin neon-button-cyan {
+  border-color: var(--color-neon-cyan);
+  color: var(--color-neon-cyan);
+  text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
+
+  &:hover {
+    background: rgba(0, 243, 255, 0.1);
+    box-shadow:
+      0 0 10px rgba(0, 243, 255, 0.3),
+      inset 0 0 10px rgba(0, 243, 255, 0.2);
+  }
+}
+
+@mixin cyber-flowing-border-inner {
+  position: relative;
+  border-radius: 0.5rem;
+  z-index: 1;
+  overflow: hidden;
+  border: none;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200vw;
+    height: 200vw;
+    transform: translate(-50%, -50%);
+    background: conic-gradient(
+      transparent,
+      rgba(0, 243, 255, 0.8) 5%,
+      transparent 15%,
+      transparent 50%,
+      rgba(176, 38, 255, 0.8) 55%,
+      transparent 65%
+    );
+    animation: cyber-rotate-border 3s linear infinite;
+    z-index: -2;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    background: rgba(10, 10, 10, 0.95);
+    border-radius: calc(0.5rem - 1px);
+    z-index: -1;
+  }
+}

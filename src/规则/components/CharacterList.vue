@@ -3,7 +3,11 @@
     <div class="section-header">
       <p class="desc">管理当前世界中的所有角色实体。</p>
       <div class="actions">
-        <button id="btn-add-character" class="action-btn" @click="$emit('openModal', 'add_character')">
+        <button
+          id="btn-add-character"
+          class="action-btn cyber-button cyber-button-cyan"
+          @click="$emit('openModal', 'add_character')"
+        >
           <i class="fa-solid fa-plus"></i>
           <span>新增角色</span>
         </button>
@@ -180,7 +184,7 @@ function formatAffection(v: number) {
   gap: 0.5rem;
 }
 
-.action-btn {
+.action-btn:not(.cyber-button) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -194,7 +198,7 @@ function formatAffection(v: number) {
   transition: opacity 0.2s;
 }
 
-.action-btn:hover {
+.action-btn:not(.cyber-button):hover {
   opacity: 0.9;
 }
 
@@ -227,7 +231,8 @@ function formatAffection(v: number) {
   gap: 0.75rem;
 }
 
-.character-card {
+/* 浅色中间栏：扁平卡片（深色由 cyber-panels-dark 的 .middle-panel.dark .character-list .character-card 负责） */
+:global(.middle-panel.light) .character-card {
   background: var(--card-bg, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
   border-radius: 8px;
@@ -236,9 +241,13 @@ function formatAffection(v: number) {
   transition: all 0.2s;
 }
 
-.character-card:hover {
+:global(.middle-panel.light) .character-card:hover {
   background: var(--card-hover-bg, rgba(255, 255, 255, 0.08));
   border-color: var(--accent-color, #4f46e5);
+}
+
+.character-card {
+  cursor: pointer;
 }
 
 .card-header {
@@ -297,7 +306,7 @@ function formatAffection(v: number) {
   color: var(--text-secondary);
 }
 
-.stat-row .value {
+:global(.middle-panel.light) .character-card .stat-row .value {
   color: var(--accent-color, #4f46e5);
   font-weight: 600;
 }

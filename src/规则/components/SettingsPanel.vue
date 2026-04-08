@@ -42,7 +42,7 @@
       <!-- 数据库：剧情推进 / 自动填表（独立开关） -->
       <div
         class="shujuku-master-toggle"
-        :class="{ dark: isDarkMode, light: !isDarkMode }"
+        :class="{ dark: isDarkMode, light: !isDarkMode, 'cyber-card': isDarkMode }"
       >
         <div class="shujuku-master-section-head">
           <div class="shujuku-master-icon">
@@ -89,7 +89,12 @@
       <div class="mode-cards mode-cards--standalone">
       <div
         class="mode-card"
-        :class="{ active: outputMode === 'single', dark: isDarkMode, light: !isDarkMode }"
+        :class="{
+          active: outputMode === 'single',
+          dark: isDarkMode,
+          light: !isDarkMode,
+          'cyber-card': isDarkMode,
+        }"
         @click="selectMode('single')"
       >
         <div class="mode-header">
@@ -118,7 +123,12 @@
 
       <div
         class="mode-card"
-        :class="{ active: outputMode === 'dual', dark: isDarkMode, light: !isDarkMode }"
+        :class="{
+          active: outputMode === 'dual',
+          dark: isDarkMode,
+          light: !isDarkMode,
+          'cyber-card': isDarkMode,
+        }"
         @click="selectMode('dual')"
       >
         <div class="mode-header">
@@ -878,15 +888,22 @@ async function selectMode(mode: OutputMode) {
   margin-bottom: 20px;
   padding: 14px 16px;
   border-radius: 12px;
+}
+
+.shujuku-master-toggle:not(.cyber-card) {
   border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
-.dark .shujuku-master-toggle {
+.dark .shujuku-master-toggle:not(.cyber-card) {
   background: rgba(59, 130, 246, 0.12);
   border-color: rgba(59, 130, 246, 0.25);
 }
 
-.light .shujuku-master-toggle {
+.shujuku-master-toggle.cyber-card {
+  border: 1px solid rgba(0, 243, 255, 0.25);
+}
+
+.light .shujuku-master-toggle:not(.cyber-card) {
   background: rgba(59, 130, 246, 0.08);
   border-color: rgba(59, 130, 246, 0.2);
 }
@@ -1146,7 +1163,6 @@ input:checked + .toggle-slider:before {
 
 .mode-card {
   border-radius: 12px;
-  border: 2px solid transparent;
   padding: 20px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1154,13 +1170,17 @@ input:checked + .toggle-slider:before {
   &:hover {
     transform: translateY(-2px);
   }
+}
+
+.mode-card:not(.cyber-card) {
+  border: 2px solid transparent;
 
   &.active {
     border-color: #3b82f6;
   }
 }
 
-.dark .mode-card {
+.dark .mode-card:not(.cyber-card) {
   background: #2d2d33;
   border-color: rgba(255, 255, 255, 0.18);
 
@@ -1175,7 +1195,16 @@ input:checked + .toggle-slider:before {
   }
 }
 
-.light .mode-card {
+.mode-card.cyber-card {
+  border: 2px solid rgba(51, 51, 51, 0.6);
+
+  &.active {
+    border-color: var(--color-neon-cyan);
+    box-shadow: 0 0 18px rgba(0, 243, 255, 0.2);
+  }
+}
+
+.light .mode-card:not(.cyber-card) {
   background: #fff;
   border-color: rgba(0, 0, 0, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);

@@ -2,7 +2,7 @@
   <section id="panel-personal-rules" class="personal-rules-panel">
     <div class="section-header">
       <p class="desc">针对特定个体的专属规则与设定。</p>
-      <button id="btn-add-personal-rule" class="action-btn" @click="$emit('openModal', 'add_personal_rule')">
+      <button id="btn-add-personal-rule" class="action-btn cyber-button" @click="$emit('openModal', 'add_personal_rule')">
         <i class="fa-solid fa-plus"></i>
         <span>新增个人规则</span>
       </button>
@@ -15,7 +15,11 @@
 
     <template v-else>
       <!-- 顶部：折叠的归档区（按人分组） -->
-      <div v-if="archivedGroups.length > 0" class="archive-section">
+      <div
+        v-if="archivedGroups.length > 0"
+        class="archive-section"
+        :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }"
+      >
         <button
           class="archive-toggle"
           :class="{ open: archiveSectionOpen }"
@@ -64,6 +68,7 @@
           v-for="grp in grouped"
           :key="grp.groupName"
           class="group-card"
+          :class="{ 'cyber-card': isDarkMode }"
         >
           <button
             class="group-header"
@@ -80,6 +85,7 @@
               v-for="rule in grp.active"
               :key="rule.id"
               class="rule-row"
+              :class="{ 'cyber-flowing-border': isDarkMode }"
             >
               <div class="rule-desc">{{ rule.desc || rule.title }}</div>
               <div class="rule-actions">
@@ -122,6 +128,7 @@ import { submitArchivePersonalRule, submitRestorePersonalRule } from '../utils/d
 const props = defineProps<{
   /** 从角色详情「管理规则影响」跳转时要展开的分组名（与 rule.target 一致） */
   expandGroupName?: string | null;
+  isDarkMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -299,14 +306,19 @@ async function onRestore(rule: RuleData, groupName: string) {
   }
 }
 
-.archive-section {
+.archive-section:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
 }
 
-:global(.light) .archive-section {
+.archive-section.cyber-card {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+:global(.light) .archive-section:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 }
@@ -418,14 +430,19 @@ async function onRestore(rule: RuleData, groupName: string) {
   gap: 12px;
 }
 
-.group-card {
+.group-card:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
 }
 
-:global(.light) .group-card {
+.group-card.cyber-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:global(.light) .group-card:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 }

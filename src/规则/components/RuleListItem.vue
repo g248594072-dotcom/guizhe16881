@@ -1,5 +1,5 @@
 <template>
-  <article class="rule-item">
+  <article class="rule-item" :class="{ 'cyber-card': props.isDarkMode }">
     <div class="item-content">
       <div class="title-row">
         <h4>{{ title }}</h4>
@@ -28,6 +28,7 @@ const props = defineProps<{
   desc: string;
   status: string;
   rule?: { id?: string; title: string; desc: string; status: string; [key: string]: any };
+  isDarkMode?: boolean;
 }>();
 
 const rule = computed(() => props.rule ?? { title: props.title, desc: props.desc, status: props.status });
@@ -39,12 +40,15 @@ defineEmits<{
 
 <style lang="scss" scoped>
 .rule-item {
-  padding: 20px;
-  border-radius: 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   transition: all 0.2s;
+}
+
+.rule-item:not(.cyber-card) {
+  padding: 20px;
+  border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.02);
 
@@ -53,7 +57,12 @@ defineEmits<{
   }
 }
 
-:global(.light) .rule-item {
+.rule-item.cyber-card {
+  padding: 16px 20px;
+  border-radius: 12px;
+}
+
+:global(.light) .rule-item:not(.cyber-card) {
   border-color: rgba(0, 0, 0, 0.1);
   background: #fff;
 

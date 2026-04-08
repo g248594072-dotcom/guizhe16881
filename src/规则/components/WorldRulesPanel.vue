@@ -2,7 +2,7 @@
   <section id="panel-world-rules" class="world-rules-panel">
     <div class="section-header">
       <p class="desc">影响整个世界所有实体的基础法则。</p>
-      <button id="btn-add-world-rule" class="action-btn" @click="$emit('openModal', 'add_world_rule')">
+      <button id="btn-add-world-rule" class="action-btn cyber-button" @click="$emit('openModal', 'add_world_rule')">
         <i class="fa-solid fa-plus"></i>
         <span>新增世界规则</span>
       </button>
@@ -15,7 +15,11 @@
 
     <template v-else>
       <!-- 顶部：折叠的归档区 -->
-      <div v-if="archivedRules.length > 0" class="archive-section">
+      <div
+        v-if="archivedRules.length > 0"
+        class="archive-section"
+        :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }"
+      >
         <button
           class="archive-toggle"
           :class="{ open: archiveSectionOpen }"
@@ -49,6 +53,7 @@
         <RuleListItem
           v-for="rule in activeRules"
           :key="rule.id"
+          :is-dark-mode="isDarkMode"
           :title="rule.title"
           :desc="rule.desc"
           :status="rule.status"
@@ -66,6 +71,8 @@ import RuleListItem from './RuleListItem.vue';
 import type { RuleData } from '../types';
 import { useWorldRules } from '../store';
 import { submitRestoreWorldRule } from '../utils/dialogAndVariable';
+
+withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
 const emit = defineEmits<{
   (e: 'openModal', type: string, payload?: Record<string, any>): void;
@@ -158,14 +165,19 @@ async function onRestore(rule: RuleData) {
   }
 }
 
-.archive-section {
+.archive-section:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
 }
 
-:global(.light) .archive-section {
+.archive-section.cyber-card {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+:global(.light) .archive-section:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 }

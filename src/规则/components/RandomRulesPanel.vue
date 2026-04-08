@@ -36,7 +36,12 @@
           <i class="fa-solid fa-user"></i>
           个人规则
         </h4>
-        <div v-for="(rule, idx) in personalRules" :key="rule.id" class="rule-card">
+        <div
+          v-for="(rule, idx) in personalRules"
+          :key="rule.id"
+          class="rule-card"
+          :class="{ 'cyber-card': isDarkMode }"
+        >
           <div class="rule-header">
             <span class="rule-target">{{ rule.target }}</span>
             <span class="rule-type">个人</span>
@@ -63,7 +68,12 @@
           <i class="fa-solid fa-map-location-dot"></i>
           区域规则
         </h4>
-        <div v-for="(rule, idx) in regionalRules" :key="rule.id" class="rule-card">
+        <div
+          v-for="(rule, idx) in regionalRules"
+          :key="rule.id"
+          class="rule-card"
+          :class="{ 'cyber-card': isDarkMode }"
+        >
           <div class="rule-header">
             <span class="rule-target">{{ rule.regionName }}</span>
             <span class="rule-type">区域</span>
@@ -90,7 +100,12 @@
           <i class="fa-solid fa-globe"></i>
           世界规则
         </h4>
-        <div v-for="(rule, idx) in worldRules" :key="rule.id" class="rule-card">
+        <div
+          v-for="(rule, idx) in worldRules"
+          :key="rule.id"
+          class="rule-card"
+          :class="{ 'cyber-card': isDarkMode }"
+        >
           <div class="rule-header">
             <span class="rule-type">世界</span>
           </div>
@@ -915,14 +930,8 @@ async function confirmApplyFromDialog() {
 
 .rule-card {
   padding: 16px;
-  border-radius: 8px;
   margin-bottom: 12px;
-  border: 1px solid;
   transition: all 0.2s ease;
-
-  &:hover {
-    transform: translateX(4px);
-  }
 
   .rule-header {
     display: flex;
@@ -1006,7 +1015,24 @@ async function confirmApplyFromDialog() {
   }
 }
 
-.dark .rule-card {
+.rule-card:not(.cyber-card) {
+  border-radius: 8px;
+  border: 1px solid;
+
+  &:hover {
+    transform: translateX(4px);
+  }
+}
+
+.rule-card.cyber-card {
+  border-radius: 12px;
+
+  &:hover {
+    transform: translateX(2px);
+  }
+}
+
+.dark .rule-card:not(.cyber-card) {
   background: rgba(30, 41, 59, 0.6);
   border-color: #334155;
 
@@ -1019,7 +1045,17 @@ async function confirmApplyFromDialog() {
   }
 }
 
-.light .rule-card {
+.dark .rule-card.cyber-card {
+  .rule-title {
+    color: #f1f5f9;
+  }
+
+  .rule-desc {
+    color: #cbd5e1;
+  }
+}
+
+.light .rule-card:not(.cyber-card) {
   background: #f8fafc;
   border-color: #e2e8f0;
 

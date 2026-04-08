@@ -2,7 +2,7 @@
   <section id="panel-regional-rules" class="regional-rules-panel">
     <div class="section-header">
       <p class="desc">仅在特定地理区域或建筑内生效的规则。</p>
-      <button id="btn-add-region" class="action-btn" @click="$emit('openModal', 'add_region')">
+      <button id="btn-add-region" class="action-btn cyber-button" @click="$emit('openModal', 'add_region')">
         <i class="fa-solid fa-plus"></i>
         <span>新增区域</span>
       </button>
@@ -15,7 +15,11 @@
 
     <template v-else>
       <!-- 顶部：折叠的归档区（按区域分组） -->
-      <div v-if="archivedGrouped.length > 0" class="archive-section">
+      <div
+        v-if="archivedGrouped.length > 0"
+        class="archive-section"
+        :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }"
+      >
         <button
           class="archive-toggle"
           :class="{ open: archiveSectionOpen }"
@@ -65,7 +69,7 @@
           :key="region.name"
           class="region-card-wrap"
         >
-          <div class="region-card">
+          <div class="region-card" :class="{ 'cyber-card': isDarkMode }">
             <button
               class="card-header"
               :class="{ expanded: expandedRegions.has(region.name) }"
@@ -83,6 +87,7 @@
                 v-for="rule in activeRulesList(region)"
                 :key="rule.id"
                 class="rule-row"
+                :class="{ 'cyber-flowing-border': isDarkMode }"
               >
                 <div class="rule-desc">{{ rule.desc || rule.title }}</div>
                 <div class="rule-actions">
@@ -105,6 +110,7 @@
               <!-- 在区域卡片内新增细分规则入口 -->
               <button
                 class="add-subrule"
+                :class="{ 'cyber-dashed-btn': isDarkMode }"
                 @click="$emit('openModal', 'add_region_rule', regionPayload(region))"
               >
                 <i class="fa-solid fa-plus"></i>
@@ -123,6 +129,8 @@ import { ref, computed, watch } from 'vue';
 import type { RegionData, RuleData } from '../types';
 import { useRegionalRules, useRegionalArchivedGrouped } from '../store';
 import { submitArchiveRegionalRule, submitRestoreRegionalRule } from '../utils/dialogAndVariable';
+
+withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
 const emit = defineEmits<{
   (e: 'openModal', type: string, payload?: Record<string, any>): void;
@@ -269,14 +277,19 @@ async function onRestore(regionName: string, rule: RuleData) {
   }
 }
 
-.archive-section {
+.archive-section:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
 }
 
-:global(.light) .archive-section {
+.archive-section.cyber-card {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+:global(.light) .archive-section:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 }
@@ -388,14 +401,19 @@ async function onRestore(regionName: string, rule: RuleData) {
   gap: 16px;
 }
 
-.region-card {
+.region-card:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
 }
 
-:global(.light) .region-card {
+.region-card.cyber-card {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:global(.light) .region-card:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 }

@@ -35,7 +35,11 @@
         <div
           v-if="latestWorldRecord"
           class="latest-card"
-          :class="{ unread: !latestWorldRecord.isRead, expanded: expandedWorld === latestWorldRecord.id }"
+          :class="{
+            unread: !latestWorldRecord.isRead,
+            expanded: expandedWorld === latestWorldRecord.id,
+            'cyber-card': isDarkMode,
+          }"
           @click="toggleWorldExpand(latestWorldRecord.id)"
         >
           <div class="latest-header">
@@ -61,7 +65,11 @@
             v-for="record in worldRecords.slice(1)"
             :key="record.id"
             class="record-card"
-            :class="{ unread: !record.isRead, expanded: expandedWorld === record.id }"
+            :class="{
+              unread: !record.isRead,
+              expanded: expandedWorld === record.id,
+              'cyber-card': isDarkMode,
+            }"
             @click="toggleWorldExpand(record.id)"
           >
             <div class="record-header">
@@ -80,7 +88,11 @@
         </div>
 
         <!-- 随机NPC案例区 -->
-        <div v-if="randomNpcCase" class="npc-case-section">
+        <div
+          v-if="randomNpcCase"
+          class="npc-case-section"
+          :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }"
+        >
           <div class="npc-header">
             <div class="npc-title">
               <i class="fa-solid fa-user"></i>
@@ -122,7 +134,11 @@
         <div
           v-if="latestResidentRecord"
           class="latest-card"
-          :class="{ unread: !latestResidentRecord.isRead, expanded: expandedResident === latestResidentRecord.id }"
+          :class="{
+            unread: !latestResidentRecord.isRead,
+            expanded: expandedResident === latestResidentRecord.id,
+            'cyber-card': isDarkMode,
+          }"
           @click="toggleResidentExpand(latestResidentRecord.id)"
         >
           <div class="latest-header">
@@ -160,7 +176,11 @@
             v-for="record in residentRecords.slice(1)"
             :key="record.id"
             class="record-card"
-            :class="{ unread: !record.isRead, expanded: expandedResident === record.id }"
+            :class="{
+              'cyber-card': isDarkMode,
+              unread: !record.isRead,
+              expanded: expandedResident === record.id,
+            }"
             @click="toggleResidentExpand(record.id)"
           >
             <div class="record-header">
@@ -438,13 +458,22 @@ watch(
 
 // ==================== Latest Card ====================
 .latest-card {
+  margin-bottom: 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &.expanded {
+    .detail-content {
+      display: block;
+    }
+  }
+}
+
+.latest-card:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 24px;
-  cursor: pointer;
-  transition: all 0.2s;
 
   &:hover {
     background: rgba(255, 255, 255, 0.05);
@@ -454,15 +483,14 @@ watch(
     border-color: rgba(59, 130, 246, 0.3);
     background: rgba(59, 130, 246, 0.05);
   }
-
-  &.expanded {
-    .detail-content {
-      display: block;
-    }
-  }
 }
 
-.light .latest-card {
+.latest-card.cyber-card {
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.light .latest-card:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.02);
   border-color: rgba(0, 0, 0, 0.06);
 
@@ -594,12 +622,21 @@ watch(
 }
 
 .record-card {
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &.expanded {
+    .record-detail {
+      display: block;
+    }
+  }
+}
+
+.record-card:not(.cyber-card) {
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 8px;
   padding: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
 
   &:hover {
     background: rgba(255, 255, 255, 0.04);
@@ -609,15 +646,18 @@ watch(
   &.unread {
     border-left: 3px solid #3b82f6;
   }
+}
 
-  &.expanded {
-    .record-detail {
-      display: block;
-    }
+.record-card.cyber-card {
+  padding: 12px;
+  border-radius: 12px;
+
+  &.unread {
+    border-left: 3px solid var(--color-neon-cyan);
   }
 }
 
-.light .record-card {
+.light .record-card:not(.cyber-card) {
   background: rgba(0, 0, 0, 0.01);
   border-color: rgba(0, 0, 0, 0.04);
 
@@ -691,14 +731,17 @@ watch(
 
 // ==================== NPC Case Section ====================
 .npc-case-section {
-  background: rgba(245, 158, 11, 0.05);
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 12px;
-  padding: 16px;
   margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
 }
 
-.light .npc-case-section {
+.npc-case-section:not(.cyber-card) {
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+}
+
+.light .npc-case-section:not(.cyber-card) {
   background: rgba(245, 158, 11, 0.03);
 }
 

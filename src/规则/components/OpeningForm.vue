@@ -1665,7 +1665,9 @@ defineExpose({
   overflow: hidden;
 
   &.dark {
-    background: #050508;
+    background: var(--color-cyber-bg);
+    color: #e4e4e7;
+    font-family: var(--font-cyber-sans);
   }
 }
 

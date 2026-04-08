@@ -4,6 +4,7 @@
       <CharacterDetail
         v-if="selectedCharacter"
         :character-id="selectedCharacter"
+        :is-dark-mode="isDarkMode"
         @back="selectedCharacter = null"
         @open-modal="(...args) => $emit('openModal', ...args)"
         @copy-to-input="$emit('copyToInput', $event)"
@@ -21,6 +22,8 @@
 import { ref } from 'vue';
 import CharacterList from './CharacterList.vue';
 import CharacterDetail from './CharacterDetail.vue';
+
+withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
 const selectedCharacter = ref<string | null>(null);
 

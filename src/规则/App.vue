@@ -235,7 +235,13 @@
     <aside v-if="activeTab" class="middle-panel" :class="{ dark: isDarkMode, light: !isDarkMode }">
       <div class="panel-inner">
         <header class="panel-header">
-          <h1>
+          <h1
+            :class="{
+              'glitch-text panel-title-cyber': isDarkMode && activeTab !== 'settings',
+              'panel-title-cyber': isDarkMode && activeTab === 'settings',
+            }"
+            :data-text="isDarkMode && activeTab !== 'settings' ? panelTitle : undefined"
+          >
             {{ panelTitle }}
             <span v-if="activeTab === 'settings'" class="version-badge" :title="appBuildVersion">{{ appBuildVersion }}</span>
           </h1>
@@ -248,13 +254,23 @@
             <div :key="activeTab">
               <CharacterPanel
                 v-if="activeTab === 'character'"
+                :is-dark-mode="isDarkMode"
                 @open-modal="openModal"
                 @copy-to-input="copyToInput"
               />
-              <WorldRulesPanel v-else-if="activeTab === 'world_rules'" @open-modal="openModal" />
-              <RegionalRulesPanel v-else-if="activeTab === 'regional_rules'" @open-modal="openModal" />
+              <WorldRulesPanel
+                v-else-if="activeTab === 'world_rules'"
+                :is-dark-mode="isDarkMode"
+                @open-modal="openModal"
+              />
+              <RegionalRulesPanel
+                v-else-if="activeTab === 'regional_rules'"
+                :is-dark-mode="isDarkMode"
+                @open-modal="openModal"
+              />
               <PersonalRulesPanel
                 v-else-if="activeTab === 'personal_rules'"
+                :is-dark-mode="isDarkMode"
                 :expand-group-name="personalRulesExpandGroup"
                 @expand-group-consumed="personalRulesExpandGroup = null"
                 @open-modal="openModal"
@@ -4682,6 +4698,7 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 // 导入赛博朋克全局样式
 @use './styles/cyber-effects' as *;
+@use './styles/cyber-neon-mixins' as *;
 
 // 第二 API 开始请求：全宽绿色横幅（开局与主界面均通过 processWithSecondaryApi 触发）
 .secondary-api-banner {
@@ -5036,8 +5053,9 @@ onUnmounted(() => {
   }
 
   &.dark {
-    background: #030303;
-    color: #f4f4f5;
+    background: var(--color-cyber-bg);
+    color: #e4e4e7;
+    font-family: var(--font-cyber-sans);
   }
 
   &.light {
@@ -5068,7 +5086,11 @@ onUnmounted(() => {
 }
 
 .dark .sidebar {
-  border-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(0, 243, 255, 0.12);
+  background: linear-gradient(180deg, rgba(17, 17, 17, 0.58) 0%, rgba(5, 5, 5, 0.82) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: inset -1px 0 0 rgba(176, 38, 255, 0.08);
 }
 
 .light .sidebar {
@@ -5199,12 +5221,18 @@ onUnmounted(() => {
 
   &:hover {
     color: #e4e4e7;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(0, 243, 255, 0.06);
   }
 
   &.active {
     color: #fff;
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+    background: rgba(0, 243, 255, 0.08);
+    box-shadow: 0 0 18px rgba(0, 243, 255, 0.12);
+
+    .active-indicator {
+      background: linear-gradient(180deg, var(--color-neon-cyan), var(--color-neon-purple));
+      box-shadow: 0 0 12px rgba(0, 243, 255, 0.45);
+    }
   }
 }
 
@@ -5261,8 +5289,11 @@ onUnmounted(() => {
   pointer-events: auto;
 
   &.dark {
-    background: #1f1f23;
-    box-shadow: 8px 0 28px rgba(0, 0, 0, 0.35);
+    @include cyber-card-surface;
+    border-right: 1px solid rgba(0, 243, 255, 0.1);
+    box-shadow:
+      8px 0 28px rgba(0, 0, 0, 0.45),
+      0 0 32px rgba(176, 38, 255, 0.08);
   }
 
   &.light {
@@ -5283,8 +5314,11 @@ onUnmounted(() => {
 }
 
 .dark .middle-panel {
-  background: #1f1f23;
-  border-color: rgba(255, 255, 255, 0.12);
+  @include cyber-card-surface;
+  border-right: 1px solid rgba(0, 243, 255, 0.1);
+  box-shadow:
+    0 0 calc(40px * var(--ui-scale, 1)) rgba(0, 0, 0, 0.45),
+    0 0 28px rgba(176, 38, 255, 0.07);
 }
 
 .light .middle-panel {
@@ -5403,7 +5437,10 @@ onUnmounted(() => {
 }
 
 .dark .panel-content {
-  background: #1f1f23;
+  background:
+    radial-gradient(ellipse 100% 45% at 50% 0%, rgba(0, 243, 255, 0.06) 0%, transparent 55%),
+    linear-gradient(168deg, #26262e 0%, #1c1c22 38%, #141418 100%);
+  box-shadow: inset 0 1px 0 rgba(0, 243, 255, 0.06);
 }
 
 .light .panel-content {
@@ -5461,7 +5498,11 @@ onUnmounted(() => {
 }
 
 .dark .main-panel {
-  background: #030303;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: 1px solid rgba(0, 243, 255, 0.08);
+  background: linear-gradient(160deg, rgba(17, 17, 17, 0.45) 0%, rgba(5, 5, 5, 0.92) 50%, var(--color-cyber-bg) 100%);
+  box-shadow: inset 0 0 80px rgba(0, 243, 255, 0.04);
 }
 
 .light .main-panel {
@@ -5498,11 +5539,17 @@ onUnmounted(() => {
 }
 
 .dark .main-header {
-  border-color: rgba(255, 255, 255, 0.05);
+  @include cyber-card-surface;
+  border-bottom-color: rgba(0, 243, 255, 0.15);
+  background: linear-gradient(90deg, rgba(17, 17, 17, 0.5) 0%, rgba(5, 5, 5, 0.65) 100%);
 
   .header-title {
-    i { color: #d4d4d8; }
-    h2 { color: #fff; }
+    i { color: var(--color-neon-cyan); }
+    h2 {
+      color: #fff;
+      font-family: var(--font-cyber-display);
+      letter-spacing: 0.08em;
+    }
   }
 }
 
@@ -7500,7 +7547,11 @@ body.has-dragging-fab {
 }
 
 .dark .modal-content {
-  background: #080808;
+  @include cyber-card-surface;
+  border-color: rgba(0, 243, 255, 0.28);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.65),
+    0 0 36px rgba(176, 38, 255, 0.18);
 }
 
 .light .modal-content {
@@ -8076,6 +8127,21 @@ body.has-dragging-fab {
 
   &:hover {
     background: #27272a;
+  }
+}
+
+.dark .btn-primary {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(176, 38, 255, 0.9), rgba(0, 243, 255, 0.55));
+  border: 1px solid rgba(0, 243, 255, 0.35);
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.2);
+  font-family: var(--font-cyber-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(176, 38, 255, 1), rgba(0, 243, 255, 0.75));
+    box-shadow: 0 0 26px rgba(176, 38, 255, 0.35);
   }
 }
 
