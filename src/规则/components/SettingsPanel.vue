@@ -18,6 +18,7 @@
         :class="{ active: settingsTab === 'options' }"
         role="tab"
         :aria-selected="settingsTab === 'options'"
+        title="剧情选项点击行为、编辑暂存（购物车）"
         @click="settingsTab = 'options'"
       >
         <i class="fa-solid fa-list-check"></i>
@@ -261,6 +262,38 @@
 
     <!-- 点击选项时：直接发送 vs 填入输入框 -->
     <div v-show="settingsTab === 'options'" class="settings-tab-panel">
+      <!-- 编辑暂存（购物车）：置顶，便于在系统设置中找到；默认开启见 DEFAULT_OTHER_SETTINGS -->
+      <div
+        class="edit-staging-cart-toggle"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="shujuku-master-section-head">
+          <div class="shujuku-master-icon">
+            <i class="fa-solid fa-cart-shopping"></i>
+          </div>
+          <div class="shujuku-master-section-titles">
+            <span class="shujuku-master-section-title">编辑暂存（购物车）</span>
+            <p class="shujuku-master-section-lead">
+              <strong>默认开启。</strong>开启后修改世界/区域/个人规则与角色等先入队，在侧栏「暂存」统一检视后再写入变量；关闭后每次操作立即生效。
+            </p>
+          </div>
+        </div>
+        <div class="shujuku-toggle-row">
+          <div class="shujuku-toggle-label">
+            <span class="shujuku-toggle-title">启用编辑暂存</span>
+            <span class="shujuku-toggle-hint">关闭时若购物车非空将询问是否清空暂存</span>
+          </div>
+          <label class="toggle-switch">
+            <input
+              type="checkbox"
+              v-model="enableEditStagingCart"
+              @change="persistEnableEditStagingCart"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
       <p class="option-behavior-hint">
         点击剧情选项（A / B / C 等）时，将选项文本<strong>直接发送给 AI</strong>，或
         <strong>仅填入本界面底部输入框</strong>（可再编辑后手动发送），在此选择行为。
@@ -320,28 +353,6 @@
               <li><i class="fa-solid fa-check"></i> 更安全，避免误点</li>
             </ul>
           </div>
-        </div>
-      </div>
-
-      <div
-        class="edit-staging-cart-toggle"
-        :class="{ dark: isDarkMode, light: !isDarkMode }"
-      >
-        <div class="edit-staging-cart-head">
-          <div class="edit-staging-cart-titles">
-            <span class="edit-staging-cart-title">编辑暂存（购物车）</span>
-            <p class="edit-staging-cart-lead">
-              开启后，修改世界/区域/个人规则与角色等将先入队，在侧栏「暂存」中统一检视后再写入变量；关闭后为每次操作立即生效。
-            </p>
-          </div>
-          <label class="toggle-switch">
-            <input
-              type="checkbox"
-              v-model="enableEditStagingCart"
-              @change="persistEnableEditStagingCart"
-            />
-            <span class="toggle-slider"></span>
-          </label>
         </div>
       </div>
 
@@ -927,8 +938,7 @@ async function selectMode(mode: OutputMode) {
 }
 
 .edit-staging-cart-toggle {
-  margin-top: 20px;
-  margin-bottom: 8px;
+  margin: 0 0 20px;
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid rgba(234, 179, 8, 0.35);
@@ -942,32 +952,8 @@ async function selectMode(mode: OutputMode) {
   background: rgba(234, 179, 8, 0.06);
 }
 
-.edit-staging-cart-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.edit-staging-cart-title {
-  display: block;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.edit-staging-cart-lead {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.45;
-  opacity: 0.88;
-}
-
-.dark .edit-staging-cart-lead {
-  color: #a1a1aa;
-}
-
-.light .edit-staging-cart-lead {
-  color: #52525b;
+.edit-staging-cart-toggle .shujuku-master-icon {
+  background: linear-gradient(135deg, #ca8a04, #eab308);
 }
 
 .shujuku-toggle-row {

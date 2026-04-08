@@ -42,7 +42,11 @@
 
     <template v-else-if="modalType === 'add_personal_rule' || modalType === 'edit_personal_rule'">
       <label class="eci-label">对象（角色名）</label>
-      <input v-model="form.personalRuleCharacter" type="text" class="eci-input" />
+      <PersonalRuleCharacterPicker
+        v-model="form.personalRuleCharacter"
+        select-class="eci-input"
+        input-class="eci-input"
+      />
       <label class="eci-label">规则细节</label>
       <textarea v-model="form.personalRuleDetail" class="eci-textarea" rows="4" />
     </template>
@@ -145,6 +149,7 @@
 
 <script setup lang="ts">
 import type { EditCartModalForm } from '../types/editCart';
+import PersonalRuleCharacterPicker from './PersonalRuleCharacterPicker.vue';
 
 defineProps<{
   modalType: string;

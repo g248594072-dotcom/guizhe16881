@@ -626,7 +626,7 @@
             <!-- 新增个人规则 -->
             <div v-else-if="modalType === 'add_personal_rule'" class="rule-form">
               <label class="form-label">对象（角色名）</label>
-              <input v-model="modalForm.personalRuleCharacter" type="text" class="form-input" placeholder="输入适用角色/对象名称" />
+              <PersonalRuleCharacterPicker v-model="modalForm.personalRuleCharacter" />
               <label class="form-label">规则细节</label>
               <textarea
                 v-model="modalForm.personalRuleDetail"
@@ -638,7 +638,7 @@
             <!-- 编辑个人规则 -->
             <div v-else-if="modalType === 'edit_personal_rule'" class="rule-form">
               <label class="form-label">对象（角色名）</label>
-              <input v-model="modalForm.personalRuleCharacter" type="text" class="form-input" placeholder="输入适用角色/对象名称" />
+              <PersonalRuleCharacterPicker v-model="modalForm.personalRuleCharacter" />
               <label class="form-label">规则细节</label>
               <textarea
                 v-model="modalForm.personalRuleDetail"
@@ -1255,6 +1255,7 @@ import CharacterPanel from './components/CharacterPanel.vue';
 import WorldRulesPanel from './components/WorldRulesPanel.vue';
 import RegionalRulesPanel from './components/RegionalRulesPanel.vue';
 import PersonalRulesPanel from './components/PersonalRulesPanel.vue';
+import PersonalRuleCharacterPicker from './components/PersonalRuleCharacterPicker.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import OpeningForm from './components/OpeningForm.vue';
 import WorldLifePanel from './components/WorldLifePanel.vue';
