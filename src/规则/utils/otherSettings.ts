@@ -45,10 +45,16 @@ export function getOtherSettings(): OtherSettings {
           : typeof local?.enableShujukuManualUpdateAfterConfirm === 'boolean'
             ? local.enableShujukuManualUpdateAfterConfirm
             : DEFAULT_OTHER_SETTINGS.enableShujukuManualUpdateAfterConfirm,
+      enableEditStagingCart:
+        typeof settings?.enableEditStagingCart === 'boolean'
+          ? settings.enableEditStagingCart
+          : typeof local?.enableEditStagingCart === 'boolean'
+            ? local.enableEditStagingCart
+            : DEFAULT_OTHER_SETTINGS.enableEditStagingCart,
     };
   } catch (error) {
     console.warn('⚠️ [otherSettings] 获取其他设置失败，使用默认值:', error);
-    return local ?? { ...DEFAULT_OTHER_SETTINGS };
+    return { ...DEFAULT_OTHER_SETTINGS, ...(local ?? {}) };
   }
 }
 

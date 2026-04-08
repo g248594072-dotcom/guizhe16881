@@ -366,7 +366,13 @@ import {
   PHONE_CHARACTER_AVATARS_CHANGED,
   resolveCharacterAvatarFromBrowserOnly,
 } from '../../shared/phoneCharacterAvatarStorage';
-import { submitArchivePersonalRule } from '../utils/dialogAndVariable';
+import {
+  buildArchivePersonalItem,
+  buildCharacterBasicItem,
+  buildDeleteCharacterItem,
+  isEditCartEnabled,
+  stageItem,
+} from '../utils/editCartFlow';
 import { tagFieldToBadgeLines } from '../utils/tagMap';
 
 const props = defineProps<{
@@ -620,7 +626,15 @@ function ruleSummary(rule: RuleData): string {
 
 async function onArchivePersonalRule(rule: RuleData) {
   const groupName = rule.target || name.value || props.characterId;
-  await submitArchivePersonalRule(rule.id, groupName, ruleSummary(rule));
+  const summary = ruleSummary(rule);
+  if (isEditCartEnabled()) {
+    stageItem(
+      buildArchivePersonalItem(rule.id, groupName, summary, `归档个人规则：${rule.title || groupName}`),
+    );
+    return;
+  }
+  const { submitArchivePersonalRule } = await import('../utils/dialogAndVariable');
+  await submitArchivePersonalRule(rule.id, groupName, summary);
 }
 
 function startEditBasic() {
@@ -634,8 +648,7 @@ function cancelEditBasic() {
 
 async function onFinishEditBasic() {
   try {
-    const { submitEditCharacterBasic } = await import('../utils/dialogAndVariable');
-    const messageText = await submitEditCharacterBasic(props.characterId, {
+    const data = {
       name: editForm.value.name,
       age: editForm.value.age,
       height: editForm.value.height,
@@ -645,7 +658,15 @@ async function onFinishEditBasic() {
       affection: typeof editForm.value.affection === 'number' ? editForm.value.affection : parseInt(String(editForm.value.affection), 10) || 0,
       lust: typeof editForm.value.lust === 'number' ? editForm.value.lust : parseInt(String(editForm.value.lust), 10) || 0,
       fetish: typeof editForm.value.fetish === 'number' ? editForm.value.fetish : parseInt(String(editForm.value.fetish), 10) || 0,
-    });
+    };
+    if (isEditCartEnabled()) {
+      stageItem(buildCharacterBasicItem(props.characterId, data, name.value));
+      Object.assign(savedForm.value, editForm.value);
+      isEditingBasic.value = false;
+      return;
+    }
+    const { submitEditCharacterBasic } = await import('../utils/dialogAndVariable');
+    const messageText = await submitEditCharacterBasic(props.characterId, data);
     Object.assign(savedForm.value, editForm.value);
     isEditingBasic.value = false;
     if (messageText) emit('copyToInput', messageText);
@@ -675,10 +696,13 @@ async function onDeleteCharacter() {
   if (!result.isConfirmed) return;
 
   try {
+    if (isEditCartEnabled()) {
+      stageItem(buildDeleteCharacterItem(props.characterId, name.value));
+      return;
+    }
     const { submitDeleteCharacter } = await import('../utils/dialogAndVariable');
     const messageText = await submitDeleteCharacter(props.characterId, name.value);
 
-    // 删除成功后返回列表
     emit('back');
     if (messageText) emit('copyToInput', messageText);
   } catch (e) {

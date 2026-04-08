@@ -13,6 +13,82 @@
     </Transition>
   </Teleport>
 
+  <!-- 游戏阶段须挂入 #app-root，与标签弹窗等一致；否则 body 上 fixed 层可能被主界面挡住，底部按钮无法点击 -->
+  <Teleport :to="gameSurfaceTeleportTarget">
+    <Transition name="fade">
+      <div
+        v-if="editCartPanelOpen && editStagingCartEnabled"
+        class="edit-cart-overlay"
+        @click.self="editCartPanelOpen = false"
+      >
+        <div
+          class="edit-cart-dialog"
+          :class="{ dark: isDarkMode, light: !isDarkMode }"
+          role="dialog"
+          aria-labelledby="edit-cart-title"
+          @click.stop
+        >
+          <div class="edit-cart-header">
+            <h3 id="edit-cart-title">编辑暂存</h3>
+            <button type="button" class="close-btn" aria-label="关闭" @click.stop="editCartPanelOpen = false">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <p class="edit-cart-hint">
+            以下修改将在你点击「确认提交」后按顺序写入变量，并合并一段说明到输入框。
+          </p>
+          <ul v-if="editCartSortedForUi.length > 0" class="edit-cart-list">
+            <li v-for="it in editCartSortedForUi" :key="it.id" class="edit-cart-row">
+              <span class="edit-cart-label">{{ it.label }}</span>
+              <div class="edit-cart-row-actions">
+                <button type="button" class="edit-cart-edit" @click.stop="onEditCartRowEdit(it)">编辑</button>
+                <button type="button" class="edit-cart-remove" @click.stop="onEditCartRemove(it.id)">移除</button>
+              </div>
+            </li>
+          </ul>
+          <p v-else class="edit-cart-empty">暂无暂存项</p>
+          <p
+            v-if="editCartAwaitingClearConfirm && editCartPendingCount > 0"
+            class="edit-cart-clear-hint"
+            role="status"
+          >
+            确定清空全部暂存？未提交的修改将丢失。
+          </p>
+          <div class="edit-cart-footer">
+            <div class="edit-cart-footer-left">
+              <template v-if="editCartAwaitingClearConfirm && editCartPendingCount > 0">
+                <button type="button" class="btn-secondary" @click.stop="onEditCartClearDismiss">取消</button>
+                <button type="button" class="edit-cart-clear-confirm-btn" @click.stop="onEditCartClearConfirm">
+                  确定清空
+                </button>
+              </template>
+              <button v-else type="button" class="btn-secondary" @click.stop="onEditCartClearAsk">清空</button>
+            </div>
+            <!-- 勿用原生 disabled：禁用态点击会穿透到下层（如侧栏「设置」），宿主脚本会看到误触 -->
+            <button
+              type="button"
+              class="btn-primary edit-cart-submit-btn"
+              :class="{ 'edit-cart-submit-btn--blocked': editCartSubmitBlocked }"
+              :aria-disabled="editCartSubmitBlocked"
+              @click.stop="onEditCartApply"
+            >
+              {{ editCartApplying ? '提交中…' : '确认提交' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <EditCartItemEditor
+    :teleport-to="gameSurfaceTeleportTarget"
+    :open="editCartEditorOpen"
+    :item="editCartEditorItem"
+    :is-dark-mode="isDarkMode"
+    @update:open="onEditCartEditorOpenUpdate"
+    @save="onEditCartEditorSave"
+  />
+
   <!-- 开局表单界面 -->
   <OpeningForm
     v-if="gamePhase === GamePhase.OPENING"
@@ -120,6 +196,21 @@
             <span class="nav-label">{{ item.label }}</span>
           </button>
           <div class="nav-items-bottom-spacer">
+            <button
+              v-if="editStagingCartEnabled"
+              id="nav-edit-cart"
+              type="button"
+              class="nav-btn nav-btn-cart"
+              @click.stop="editCartPanelOpen = true"
+            >
+              <span
+                v-if="editCartPendingCount > 0"
+                class="cart-badge"
+                aria-hidden="true"
+              >{{ editCartPendingCount > 99 ? '99+' : editCartPendingCount }}</span>
+              <i class="fa-solid fa-cart-shopping"></i>
+              <span class="nav-label">暂存</span>
+            </button>
             <button type="button" class="nav-btn nav-btn-theme" @click="isDarkMode = !isDarkMode">
               <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
               <span class="nav-label">{{ isDarkMode ? '浅色模式' : '深色模式' }}</span>
@@ -1159,6 +1250,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { storeToRefs } from 'pinia';
 import CharacterPanel from './components/CharacterPanel.vue';
 import WorldRulesPanel from './components/WorldRulesPanel.vue';
 import RegionalRulesPanel from './components/RegionalRulesPanel.vue';
@@ -1170,6 +1262,7 @@ import RandomRulesPanel from './components/RandomRulesPanel.vue';
 
 // 赛博朋克特效组件
 import ParallaxBackground from './components/ParallaxBackground.vue';
+import EditCartItemEditor from './components/EditCartItemEditor.vue';
 import TerminalSnippets from './components/TerminalSnippets.vue';
 import HeaderEffects from './components/HeaderEffects.vue';
 import SidebarEffects from './components/SidebarEffects.vue';
@@ -1188,6 +1281,8 @@ import {
   type TagCheckResult
 } from './utils/messageParser';
 import { GamePhase, type OpeningFormData, type OutputMode } from './types';
+import type { EditCartItem, EditCartModalForm } from './types/editCart';
+import { klona } from 'klona';
 import {
   initializeGameVariables,
   createOpeningStoryMessage,
@@ -1204,6 +1299,16 @@ import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits'
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
 import { useDataStore } from './store';
+import { useEditCartStore } from './stores/editCart';
+import { getOtherSettings } from './utils/otherSettings';
+import {
+  buildArchivePersonalFromPayload,
+  buildArchiveRegionItem,
+  buildArchiveWorldItem,
+  buildCartItemFromModal,
+  isEditCartEnabled,
+  stageItem,
+} from './utils/editCartFlow';
 import {
   fetishRecordToEditableText,
   sensitiveRecordToEditableText,
@@ -1249,6 +1354,32 @@ let lastIframeMinHeightApplied: number | null = null;
 
 // 界面状态
 const activeTab = ref<string | null>(null);
+/** 与 SettingsPanel 一致：来自 MVU / localStorage，用于显示侧栏「暂存」入口 */
+const editStagingCartEnabled = computed(() => getOtherSettings().enableEditStagingCart === true);
+const editCartStore = useEditCartStore();
+// 用 items 派生数量，避免 storeToRefs(pendingCount) 与列表不同步导致「有项仍灰」
+const { items: editCartItems } = storeToRefs(editCartStore);
+const editCartPendingCount = computed(() => editCartItems.value.length);
+const editCartSortedForUi = computed(() => editCartStore.sortedItems());
+const editCartPanelOpen = ref(false);
+const editCartApplying = ref(false);
+const editCartEditorOpen = ref(false);
+const editCartEditorItem = ref<EditCartItem | null>(null);
+/** 不使用 window.confirm（iframe 内常被禁用），在面板内二次确认清空 */
+const editCartAwaitingClearConfirm = ref(false);
+
+watch(editCartPanelOpen, open => {
+  if (!open) editCartAwaitingClearConfirm.value = false;
+});
+
+watch(editCartPendingCount, n => {
+  if (n === 0) editCartAwaitingClearConfirm.value = false;
+});
+
+/** 与模板「确认提交」一致：不禁用按钮，仅样式 + 处理函数内早退，避免点击穿透 */
+const editCartSubmitBlocked = computed(
+  () => editCartPendingCount.value === 0 || editCartApplying.value,
+);
 /** 打开个人规则面板时要展开的分组名（与 rule.target / 角色名一致）；由子组件消费后清空 */
 const personalRulesExpandGroup = ref<string | null>(null);
 /** 第二 API 开始请求时顶部绿色横幅 */
@@ -1762,11 +1893,15 @@ async function openModal(type: string, payload?: Record<string, any>) {
     return;
   }
 
-  // 删除/归档类：直接执行并关闭，不弹窗
+  // 删除/归档类：直接执行并关闭，不弹窗（购物车开启时先入队）
   if (type === 'delete_world_rule' && payload?.title) {
     try {
-      const { submitArchiveWorldRule } = await import('./utils/dialogAndVariable');
-      await submitArchiveWorldRule(payload.title);
+      if (isEditCartEnabled()) {
+        stageItem(buildArchiveWorldItem(String(payload.title)));
+      } else {
+        const { submitArchiveWorldRule } = await import('./utils/dialogAndVariable');
+        await submitArchiveWorldRule(payload.title);
+      }
     } catch (e) {
       console.error('归档世界规则失败', e);
       toastr.error('归档失败');
@@ -1775,8 +1910,12 @@ async function openModal(type: string, payload?: Record<string, any>) {
   }
   if (type === 'delete_region' && payload?.name) {
     try {
-      const { submitArchiveRegion } = await import('./utils/dialogAndVariable');
-      await submitArchiveRegion(payload.name);
+      if (isEditCartEnabled()) {
+        stageItem(buildArchiveRegionItem(String(payload.name)));
+      } else {
+        const { submitArchiveRegion } = await import('./utils/dialogAndVariable');
+        await submitArchiveRegion(payload.name);
+      }
     } catch (e) {
       console.error('归档区域失败', e);
       toastr.error('归档失败');
@@ -1785,12 +1924,16 @@ async function openModal(type: string, payload?: Record<string, any>) {
   }
   if (type === 'delete_personal_rule' && (payload?.id ?? payload?.title ?? payload?.character)) {
     try {
-      const { submitArchivePersonalRule } = await import('./utils/dialogAndVariable');
-      await submitArchivePersonalRule(
-        payload.id ?? payload.title ?? payload.character,
-        payload.character ?? payload.title,
-        payload.title !== payload.character ? payload.title : undefined
-      );
+      if (isEditCartEnabled()) {
+        stageItem(buildArchivePersonalFromPayload(payload as Record<string, unknown>));
+      } else {
+        const { submitArchivePersonalRule } = await import('./utils/dialogAndVariable');
+        await submitArchivePersonalRule(
+          payload.id ?? payload.title ?? payload.character,
+          payload.character ?? payload.title,
+          payload.title !== payload.character ? payload.title : undefined
+        );
+      }
     } catch (e) {
       console.error('归档个人规则失败', e);
       toastr.error('归档失败');
@@ -1974,6 +2117,61 @@ function copyToInput(text: string, mode: 'replace' | 'append' = 'append') {
   toastr.success('修改信息已复制进入对话框');
 }
 
+function onEditCartRemove(id: string) {
+  editCartStore.removeItem(id);
+}
+
+function onEditCartRowEdit(it: EditCartItem) {
+  editCartEditorItem.value = klona(it);
+  editCartEditorOpen.value = true;
+}
+
+function onEditCartEditorOpenUpdate(open: boolean) {
+  editCartEditorOpen.value = open;
+  if (!open) {
+    editCartEditorItem.value = null;
+  }
+}
+
+function onEditCartEditorSave(item: EditCartItem) {
+  editCartStore.replaceItemAfterEdit(item);
+  editCartEditorItem.value = null;
+  toastr.success('已更新暂存项');
+}
+
+function onEditCartClearAsk() {
+  if (editCartPendingCount.value === 0) return;
+  editCartAwaitingClearConfirm.value = true;
+}
+
+function onEditCartClearDismiss() {
+  editCartAwaitingClearConfirm.value = false;
+}
+
+function onEditCartClearConfirm() {
+  if (editCartPendingCount.value === 0) {
+    editCartAwaitingClearConfirm.value = false;
+    return;
+  }
+  editCartStore.clear();
+  editCartAwaitingClearConfirm.value = false;
+  toastr.info('已清空暂存');
+}
+
+async function onEditCartApply() {
+  if (editCartPendingCount.value === 0 || editCartApplying.value) return;
+  editCartApplying.value = true;
+  try {
+    const ok = await editCartStore.applyAll((text, mode) => copyToInput(text, mode));
+    if (ok) {
+      editCartPanelOpen.value = false;
+      toastr.success('已批量提交暂存');
+    }
+  } finally {
+    editCartApplying.value = false;
+  }
+}
+
 function onCopyToInputEvent(event: Event) {
   const customEvent = event as CustomEvent<{ message?: string }>;
   const messageText = String(customEvent.detail?.message ?? '').trim();
@@ -1987,6 +2185,19 @@ async function onModalComplete() {
   const payload = modalPayload.value;
   let messageText = '';
   try {
+    if (isEditCartEnabled()) {
+      const item = buildCartItemFromModal(
+        type,
+        form as EditCartModalForm,
+        (payload as Record<string, unknown> | null) ?? null,
+      );
+      if (item) {
+        stageItem(item);
+        closeModal();
+        return;
+      }
+    }
+
     if (type === 'add_character') {
       const { submitAddCharacter } = await import('./utils/dialogAndVariable');
       messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
@@ -7865,6 +8076,227 @@ body.has-dragging-fab {
   &:hover {
     background: #27272a;
   }
+}
+
+// 编辑暂存（购物车）
+.edit-cart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+.edit-cart-dialog {
+  width: 100%;
+  max-width: 480px;
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.edit-cart-submit-btn--blocked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.edit-cart-dialog.dark {
+  background: #18181b;
+  color: #e4e4e7;
+}
+
+.edit-cart-dialog.light {
+  background: #fafafa;
+  color: #18181b;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+.edit-cart-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+.light .edit-cart-header {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+.edit-cart-hint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+
+.edit-cart-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.edit-cart-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+}
+
+.light .edit-cart-row {
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+.edit-cart-label {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.edit-cart-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.edit-cart-edit {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(59, 130, 246, 0.55);
+  background: transparent;
+  color: #60a5fa;
+  cursor: pointer;
+}
+
+.light .edit-cart-edit {
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.edit-cart-remove {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  background: transparent;
+  color: #f87171;
+  cursor: pointer;
+}
+
+.edit-cart-empty {
+  margin: 0;
+  padding: 16px 14px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.edit-cart-clear-hint {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 8px 14px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #fbbf24;
+}
+
+.light .edit-cart-clear-hint {
+  color: #b45309;
+}
+
+.edit-cart-footer {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.edit-cart-footer-left {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.edit-cart-clear-confirm-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  transition: background 0.2s;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.22);
+  }
+}
+
+.light .edit-cart-clear-confirm-btn {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.light .edit-cart-footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.nav-btn-cart {
+  position: relative;
+}
+
+.cart-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  pointer-events: none;
 }
 
 // 末尾玩家楼层提示（叠在标签弹窗之上，避免被挡）

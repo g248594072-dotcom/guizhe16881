@@ -323,6 +323,28 @@
         </div>
       </div>
 
+      <div
+        class="edit-staging-cart-toggle"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="edit-staging-cart-head">
+          <div class="edit-staging-cart-titles">
+            <span class="edit-staging-cart-title">编辑暂存（购物车）</span>
+            <p class="edit-staging-cart-lead">
+              开启后，修改世界/区域/个人规则与角色等将先入队，在侧栏「暂存」中统一检视后再写入变量；关闭后为每次操作立即生效。
+            </p>
+          </div>
+          <label class="toggle-switch">
+            <input
+              type="checkbox"
+              v-model="enableEditStagingCart"
+              @change="persistEnableEditStagingCart"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
       <p class="option-behavior-hint shujuku-options-hint" :class="{ dark: isDarkMode, light: !isDarkMode }">
         数据库的<strong>剧情推进</strong>与<strong>自动填表</strong>开关在<strong>输出与 API</strong>页顶部「数据库联动」区域。
       </p>
@@ -429,6 +451,7 @@ import {
   saveUiLayout,
 } from '../utils/localSettings';
 import { getOtherSettings, saveOtherSettings } from '../utils/otherSettings';
+import { useEditCartStore } from '../stores/editCart';
 import {
   loadFontSettings,
   applyFont,
@@ -459,6 +482,9 @@ const enableShujukuPlotAdvance = ref(true);
 
 /** 标签确认写入楼层后是否调用数据库 manualUpdate（默认开；未装插件时静默跳过） */
 const enableShujukuManualUpdateAfterConfirm = ref(true);
+
+/** 编辑暂存（购物车）：先入队再统一提交（默认开启，与 OtherSettings 一致） */
+const enableEditStagingCart = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
@@ -564,6 +590,7 @@ function loadSettings() {
     inputActionMode.value = other.inputActionMode;
     enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
     enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
+    enableEditStagingCart.value = other.enableEditStagingCart;
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
     console.log('✅ [SettingsPanel] 设置从 localStorage 加载成功:', {
@@ -637,6 +664,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
       inputActionMode: inputActionMode.value,
       enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
       enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
+      enableEditStagingCart: enableEditStagingCart.value,
     });
     showSaveSuccess.value = true;
     setTimeout(() => {
@@ -673,6 +701,30 @@ function persistShujukuManualUpdateOption() {
     enableShujukuManualUpdateAfterConfirm.value
       ? '已开启：自动填表（确认标签后 manualUpdate）'
       : '已关闭：自动填表',
+  );
+}
+
+function persistEnableEditStagingCart() {
+  if (!enableEditStagingCart.value) {
+    const cart = useEditCartStore();
+    if (cart.pendingCount > 0) {
+      const ok = window.confirm(
+        '购物车中有未提交的修改。确定将清空暂存并关闭「编辑暂存」吗？点「取消」可保留开关与购物车。',
+      );
+      if (!ok) {
+        enableEditStagingCart.value = true;
+        return;
+      }
+      cart.clear();
+    }
+  }
+  saveOtherSettings({ enableEditStagingCart: enableEditStagingCart.value });
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+  toastr.success(
+    enableEditStagingCart.value ? '已开启：编辑暂存（购物车）' : '已关闭：编辑暂存（立即生效）',
   );
 }
 
@@ -871,6 +923,50 @@ async function selectMode(mode: OutputMode) {
 }
 
 .light .shujuku-master-section-lead {
+  color: #52525b;
+}
+
+.edit-staging-cart-toggle {
+  margin-top: 20px;
+  margin-bottom: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.dark .edit-staging-cart-toggle {
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.light .edit-staging-cart-toggle {
+  background: rgba(234, 179, 8, 0.06);
+}
+
+.edit-staging-cart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.edit-staging-cart-title {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.edit-staging-cart-lead {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.88;
+}
+
+.dark .edit-staging-cart-lead {
+  color: #a1a1aa;
+}
+
+.light .edit-staging-cart-lead {
   color: #52525b;
 }
 

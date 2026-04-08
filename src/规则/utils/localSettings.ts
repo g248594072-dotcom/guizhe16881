@@ -145,6 +145,7 @@ const DEFAULT_OTHER_LOCAL: OtherSettings = {
   inputActionMode: 'append',
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
+  enableEditStagingCart: true,
 };
 
 export function loadOtherSettings(): OtherSettings {
@@ -165,6 +166,10 @@ export function loadOtherSettings(): OtherSettings {
           typeof parsed.enableShujukuManualUpdateAfterConfirm === 'boolean'
             ? parsed.enableShujukuManualUpdateAfterConfirm
             : DEFAULT_OTHER_LOCAL.enableShujukuManualUpdateAfterConfirm,
+        enableEditStagingCart:
+          typeof parsed.enableEditStagingCart === 'boolean'
+            ? parsed.enableEditStagingCart
+            : DEFAULT_OTHER_LOCAL.enableEditStagingCart,
       };
     }
   } catch (error) {

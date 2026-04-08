@@ -304,10 +304,15 @@ export interface OtherSettings {
    * 未安装插件时自动跳过，无影响。
    */
   enableShujukuManualUpdateAfterConfirm: boolean;
+  /**
+   * 编辑暂存（购物车）：规则/角色等先入队，统一检视后再写入 MVU。
+   */
+  enableEditStagingCart: boolean;
 }
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   inputActionMode: 'append', // 默认使用追加模式（更安全，不自动发送）
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
+  enableEditStagingCart: true,
 };

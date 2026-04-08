@@ -254,6 +254,13 @@ import {
   randomRulesSessionMarkApplied,
   reloadRandomRulesSessionFromStorage,
 } from '../utils/randomRulesPanelSession';
+import {
+  buildRandomPersonalItem,
+  buildRandomRegionalItem,
+  buildRandomWorldItem,
+  isEditCartEnabled,
+  stageItem,
+} from '../utils/editCartFlow';
 
 interface GeneratedRule {
   id: string;
@@ -669,7 +676,7 @@ function closeEditDialog() {
   applyEditDesc.value = '';
 }
 
-// 确认后写入变量并发送到对话框（与手动添加规则一致）
+// 确认后写入变量并发送到对话框（与手动添加规则一致）；购物车开启时先入队
 async function confirmApplyFromDialog() {
   const ctx = editingRule.value;
   if (!ctx) return;
@@ -686,6 +693,42 @@ async function confirmApplyFromDialog() {
   }
 
   try {
+    if (isEditCartEnabled()) {
+      switch (ctx.type) {
+        case 'world':
+          stageItem(buildRandomWorldItem(title, desc));
+          break;
+        case 'regional':
+          if (ctx.regionName) {
+            const regions = store.data.区域规则 || {};
+            const regionEntry = Object.entries(regions).find(
+              ([_, r]) => r.名称 === ctx.regionName,
+            );
+            if (regionEntry) {
+              stageItem(buildRandomRegionalItem(regionEntry[0], ctx.regionName, title, desc));
+            } else {
+              toastr.error('未找到对应区域，无法应用区域规则');
+              return;
+            }
+          } else {
+            toastr.error('缺少区域信息');
+            return;
+          }
+          break;
+        case 'personal':
+          if (ctx.target) {
+            stageItem(buildRandomPersonalItem(ctx.target, `${title}: ${desc}`));
+          } else {
+            toastr.error('缺少适用角色');
+            return;
+          }
+          break;
+      }
+      closeEditDialog();
+      toastr.success(`已加入暂存：${title}`);
+      return;
+    }
+
     const { submitAddWorldRule, submitAddRegionalRule, submitAddPersonalRule } =
       await import('../utils/dialogAndVariable');
 
