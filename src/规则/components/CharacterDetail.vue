@@ -354,6 +354,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import Swal from 'sweetalert2';
+import 'sweetalert2/dist/sweetalert2.css';
 import type { CharacterData, RuleData } from '../types';
 import StatRow from './StatRow.vue';
 import StatBar from './StatBar.vue';
@@ -653,10 +655,14 @@ async function onFinishEditBasic() {
 }
 
 async function onDeleteCharacter() {
-  // 确认对话框
+  const safeName = String(name.value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
   const result = await Swal.fire({
     title: '确认删除角色？',
-    html: `即将删除角色「<strong>${name.value}</strong>」及其所有相关数据（包括个人规则、头像缓存等），<br>此操作<strong>不可恢复</strong>。`,
+    html: `即将删除角色「<strong>${safeName}</strong>」及其所有相关数据（包括个人规则、头像缓存等），<br>此操作<strong>不可恢复</strong>。`,
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: '确认删除',
