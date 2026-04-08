@@ -11,7 +11,15 @@ import {
   type WorldTrendRecord,
   type ResidentLifeRecord,
 } from './worldLifeStorage';
-import { getSecondaryApiConfig } from './apiSettings';
+import { loadSecondaryApiConfig } from './localSettings';
+import { buildDualWorldbookExcerptsForPrompt, getChatScopeWorldbookName } from './worldLifeWorldbookExcerpt';
+
+declare function waitGlobalInitialized<T>(global: 'Mvu' | string): Promise<T>;
+declare const Mvu: {
+  getMvuData: (options: { type: 'message'; message_id: 'latest' | number }) => {
+    stat_data?: Record<string, unknown>;
+  } | null;
+};
 
 // ==================== Type Definitions ====================
 
@@ -35,6 +43,120 @@ interface ResidentLifePromptResult {
   }>;
 }
 
+function formatTagMapBrief(v: unknown, maxKeys: number): string {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return '（无）';
+  const entries = Object.entries(v as Record<string, unknown>).slice(0, maxKeys);
+  if (entries.length === 0) return '（无）';
+  return entries.map(([k, val]) => `${k}：${String(val)}`).join('；');
+}
+
+function formatWorldbookSectionsMarkdown(charSection: string, chatSection: string): string {
+  const scope = getChatScopeWorldbookName();
+  const parts: string[] = [];
+  if (charSection.trim()) {
+    parts.push(`## 角色卡绑定世界书（节选，仅启用条目）\n${charSection.trim()}`);
+  }
+  if (chatSection.trim()) {
+    parts.push(
+      `## 当前聊天同名世界书（节选，chatScopeId：${scope || '（无）'}，仅启用条目）\n${chatSection.trim()}`,
+    );
+  }
+  return parts.length ? `${parts.join('\n\n')}\n\n` : '';
+}
+
+function worldTrendCreativeConstraintsMarkdown(): string {
+  return `## 创作约束（世界大势）
+- 须严格遵守上文世界书节选与变量摘要中的身份、性格、生活方式与叙事语气，**拒绝 OOC**；与世界书冲突时以世界书为准。
+- 可偏**日常**，允许**暧昧、轻度色情**的心理与身体感受，聚焦具体人物受到的影响；**避免**酷刑、公开羞辱、极端暴力、重度创伤或社会崩溃式描写。
+- **随机 NPC 案例**优先选择**女性**（姓名、身份描写明确为女性），除非规则语境下男性更合理且不违背设定。
+- 禁止主创说明、打破第四面墙、「作为 AI」等元话语。`;
+}
+
+function residentLifeCreativeConstraintsMarkdown(): string {
+  return `## 创作约束（居民生活）
+- 须严格遵守上文世界书节选与「角色档案摘录」中的姓名、性格、描写与生活细节，**拒绝 OOC**；档案与世界书冲突时以世界书为准。
+- 可写**日常琐事、暧昧氛围、轻度色情**的心理或擦边感受，控制在成人向可读尺度；**避免**极端、猎奇与非自愿重度伤害。
+- 主要描写背景列表中与档案摘录对应的人物，勿凭空替换或矛盾化已有角色人设。
+- 禁止元话语、打破第四面墙。`;
+}
+
+async function tryGetLatestMvuRoleSnapshot(maxChars: number): Promise<string> {
+  try {
+    await waitGlobalInitialized('Mvu');
+    const d = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const raw = d?.stat_data?.['角色档案'];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
+    const chars = raw as Record<string, Record<string, unknown>>;
+    const lines: string[] = [];
+    let used = 0;
+    for (const [id, c] of Object.entries(chars)) {
+      if (!c || typeof c !== 'object') continue;
+      const name = String(c['姓名'] ?? id);
+      const 状态 = String(c['状态'] ?? '');
+      const 描写 = String(c['描写'] ?? '').slice(0, 180);
+      const line = `- ${name}（${状态}）：${描写}`;
+      if (used + line.length > maxChars) break;
+      lines.push(line);
+      used += line.length + 1;
+    }
+    return lines.length
+      ? `## 当前变量中的角色档案摘要（随机案例与日常描写须与此一致）\n${lines.join('\n')}\n\n`
+      : '';
+  } catch {
+    return '';
+  }
+}
+
+function buildInactiveCharacterArchiveExcerpt(
+  statData: Record<string, unknown>,
+  inactiveDisplayNames: string[],
+  maxTotal: number,
+): string {
+  const chars = statData['角色档案'] as Record<string, Record<string, unknown>> | undefined;
+  if (!chars || typeof chars !== 'object') return '';
+  const blocks: string[] = [];
+  let used = 0;
+  const seen = new Set<string>();
+
+  for (const displayName of inactiveDisplayNames) {
+    if (seen.has(displayName)) continue;
+    for (const [id, c] of Object.entries(chars)) {
+      if (!c || typeof c !== 'object') continue;
+      const name = String(c['姓名'] ?? id);
+      if (name !== displayName && id !== displayName) continue;
+      const 状态 = String(c['状态'] ?? '');
+      const 描写 = String(c['描写'] ?? '').slice(0, 320);
+      const 性格 = formatTagMapBrief(c['性格'], 10);
+      const 内心 = String(c['当前内心想法'] ?? '').slice(0, 220);
+      const block = `### ${name}（键：${id}，状态：${状态}）\n- 描写摘录：${描写}\n- 性格：${性格}\n- 当前内心想法摘录：${内心}`;
+      if (used + block.length > maxTotal) {
+        blocks.push('…（档案摘录已达长度上限，余下角色从略）');
+        return blocks.join('\n\n');
+      }
+      blocks.push(block);
+      used += block.length + 2;
+      seen.add(displayName);
+      break;
+    }
+  }
+
+  return blocks.join('\n\n');
+}
+
+async function tryLoadStatDataForResidentArchive(): Promise<Record<string, unknown> | null> {
+  try {
+    await waitGlobalInitialized('Mvu');
+    const d = Mvu.getMvuData({ type: 'message', message_id: 'latest' });
+    const sd = d?.stat_data;
+    if (sd && typeof sd === 'object' && !Array.isArray(sd)) {
+      return sd as Record<string, unknown>;
+    }
+  } catch {
+    /* 静默 */
+  }
+  return null;
+}
+
 // ==================== World Trend Generation ====================
 
 /**
@@ -51,16 +173,21 @@ export async function generateWorldTrend(
   ruleDescription: string,
   affectedRegions?: string[],
 ): Promise<boolean> {
-  const config = getSecondaryApiConfig();
+  const config = loadSecondaryApiConfig();
   if (!config?.tasks?.includeWorldTrend) {
     console.log('[WorldTrend] 任务未启用，跳过生成');
     return false;
   }
 
-  const prompt = buildWorldTrendPrompt(ruleName, ruleLevel, ruleDescription, affectedRegions);
+  const { charSection, chatSection } = await buildDualWorldbookExcerptsForPrompt();
+  const mvuSnapshot = await tryGetLatestMvuRoleSnapshot(900);
+  const prompt = buildWorldTrendPrompt(ruleName, ruleLevel, ruleDescription, affectedRegions, {
+    worldbookMarkdown: formatWorldbookSectionsMarkdown(charSection, chatSection),
+    mvuRoleSnapshot: mvuSnapshot,
+  });
 
   try {
-    console.log(`[WorldTrend] 开始生成规则「${ruleName}」的世界大势说明...`);
+    console.log(`[WorldTrend] 开始生成规则「${ruleName}」的世界大势说明… promptLen=${prompt.length}`);
     const result = await callSecondaryApiForWorldLife(prompt, config);
     const parsed = parseWorldTrendResult(result);
 
@@ -94,9 +221,13 @@ function buildWorldTrendPrompt(
   ruleName: string,
   ruleLevel: 'world' | 'regional',
   ruleDescription: string,
-  affectedRegions?: string[],
+  affectedRegions: string[] | undefined,
+  extras: { worldbookMarkdown: string; mvuRoleSnapshot: string },
 ): string {
-  return `你是一位专门负责描述世界变化对日常生活影响的AI。
+  const prefix = `${extras.worldbookMarkdown}${extras.mvuRoleSnapshot}${worldTrendCreativeConstraintsMarkdown()}
+
+`;
+  return `${prefix}你是一位专门负责描述世界变化对日常生活影响的AI。
 
 ## 生效的规则信息
 规则名称：${ruleName}
@@ -110,14 +241,14 @@ ${affectedRegions && affectedRegions.length > 0 ? `影响区域：${affectedRegi
 1. **日常生活变化描述** (200-400字)
    - 描述这个规则生效后，普通人的日常生活发生了哪些变化
    - 包括工作、社交、出行、消费等方面的变化
-   - 描述应该具体且有画面感
+   - 描述应该具体且有画面感，并与世界书语气一致
 
 2. **影响范围** (一句话概括)
    - 这个规则主要影响了哪些地区/人群
 
 3. **随机NPC生活案例**
-   - 随机想象一个NPC（普通人或非主要角色），描述TA在这个变化下的生活
-   - 包括：NPC姓名、身份、具体生活变化、心理反应
+   - 随机想象一个NPC（普通人或非主要角色），**优先女性**，描述TA在这个变化下的生活
+   - 包括：NPC姓名、身份、具体生活变化、心理反应；须符合人设与世界书，拒绝OOC
 
 ## 输出格式
 请严格按照以下JSON格式输出，不要包含任何其他内容：
@@ -187,7 +318,7 @@ export async function generateResidentLife(
   ruleDescription: string,
   inactiveCharacters: string[],
 ): Promise<boolean> {
-  const config = getSecondaryApiConfig();
+  const config = loadSecondaryApiConfig();
   if (!config?.tasks?.includeResidentLife) {
     console.log('[ResidentLife] 任务未启用，跳过生成');
     return false;
@@ -199,10 +330,16 @@ export async function generateResidentLife(
     return false;
   }
 
-  const prompt = buildResidentLifePrompt(ruleName, targetCharacter, ruleDescription, inactiveCharacters);
+  const { charSection, chatSection } = await buildDualWorldbookExcerptsForPrompt();
+  const stat = await tryLoadStatDataForResidentArchive();
+  const archiveExcerpt = stat ? buildInactiveCharacterArchiveExcerpt(stat, inactiveCharacters, 3600) : '';
+  const prompt = buildResidentLifePrompt(ruleName, targetCharacter, ruleDescription, inactiveCharacters, {
+    worldbookMarkdown: formatWorldbookSectionsMarkdown(charSection, chatSection),
+    archiveExcerpt,
+  });
 
   try {
-    console.log(`[ResidentLife] 开始生成规则「${ruleName}」的居民生活说明...`);
+    console.log(`[ResidentLife] 开始生成规则「${ruleName}」的居民生活说明… promptLen=${prompt.length}`);
     const result = await callSecondaryApiForWorldLife(prompt, config);
     const parsed = parseResidentLifeResult(result);
 
@@ -228,6 +365,139 @@ export async function generateResidentLife(
 }
 
 /**
+ * 聚合当前「生效中」个人规则与背景角色，一次第二 API 生成居民生活记录（变量已提交后调用）。
+ */
+export async function generateResidentLifeAggregated(statData: Record<string, unknown>): Promise<boolean> {
+  const config = loadSecondaryApiConfig();
+  if (!config?.tasks?.includeResidentLife) {
+    console.log('[ResidentLife] 任务未启用，跳过聚合生成');
+    return false;
+  }
+
+  const 角色档案 = statData['角色档案'] as Record<string, { 姓名?: string; 状态?: string }> | undefined;
+  const inactiveChars: string[] = [];
+  if (角色档案 && typeof 角色档案 === 'object') {
+    for (const [id, c] of Object.entries(角色档案)) {
+      if (!c || typeof c !== 'object') continue;
+      if (c.状态 !== '出场中') {
+        inactiveChars.push(String(c.姓名 || id));
+      }
+    }
+  }
+
+  if (inactiveChars.length === 0) {
+    console.log('[ResidentLife] 聚合：无未出场/退场角色，跳过');
+    return false;
+  }
+
+  const personalRules = statData['个人规则'] as Record<string, Record<string, unknown>> | undefined;
+  const rulesLines: string[] = [];
+  if (personalRules && typeof personalRules === 'object') {
+    for (const [k, pr] of Object.entries(personalRules)) {
+      if (!pr || typeof pr !== 'object') continue;
+      const st = String(pr['状态'] ?? '生效中');
+      if (st !== '生效中') continue;
+      const name = String(pr['名称'] ?? k);
+      const target = String(pr['适用对象'] ?? pr['名称'] ?? k).trim();
+      const desc = String(pr['效果描述'] ?? '').trim();
+      rulesLines.push(`- 【${name}】适用对象：${target}；效果：${desc || '（无描述）'}`);
+    }
+  }
+
+  const rulesBlock =
+    rulesLines.length > 0 ? rulesLines.join('\n') : '（当前无「生效中」个人规则；请主要依据游戏日与背景角色推演日常变化。）';
+
+  const gt = statData['游戏时间'];
+  const { charSection, chatSection } = await buildDualWorldbookExcerptsForPrompt();
+  const archiveExcerpt = buildInactiveCharacterArchiveExcerpt(statData, inactiveChars, 3600);
+  const prompt = buildResidentLifeAggregatedPrompt(rulesBlock, inactiveChars, gt, {
+    worldbookMarkdown: formatWorldbookSectionsMarkdown(charSection, chatSection),
+    archiveExcerpt,
+  });
+
+  try {
+    console.log(`[ResidentLife] 开始聚合生成居民生活说明… promptLen=${prompt.length}`);
+    const result = await callSecondaryApiForWorldLife(prompt, config);
+    const parsed = parseResidentLifeResult(result);
+
+    if (parsed && parsed.otherCharacters.length > 0) {
+      const triggerRule =
+        rulesLines.length > 0 ? `个人规则汇总（${rulesLines.length}条）` : '游戏日推进 / 背景角色';
+      const record: Omit<ResidentLifeRecord, 'id'> = {
+        timestamp: Date.now(),
+        triggerRule,
+        targetCharacter: '（汇总）',
+        otherCharacters: parsed.otherCharacters,
+        isRead: false,
+      };
+      saveResidentLifeRecord({
+        ...record,
+        id: generateRecordId('rl'),
+      });
+      console.log('[ResidentLife] 聚合居民生活记录已保存');
+      return true;
+    }
+  } catch (error) {
+    console.error('[ResidentLife] 聚合生成失败:', error);
+  }
+  return false;
+}
+
+function buildResidentLifeAggregatedPrompt(
+  rulesBlock: string,
+  inactiveCharacters: unknown[],
+  游戏时间: unknown,
+  extras: { worldbookMarkdown: string; archiveExcerpt: string },
+): string {
+  const archiveBlock = extras.archiveExcerpt.trim()
+    ? `## 角色档案摘录（须严格遵守，与下列姓名对应）\n${extras.archiveExcerpt.trim()}\n\n`
+    : '';
+  return `${extras.worldbookMarkdown}${archiveBlock}${residentLifeCreativeConstraintsMarkdown()}
+
+你是一位专门负责描述角色背景生活的AI。
+
+## 当前游戏时间（变量）
+${JSON.stringify(游戏时间 ?? {}, null, 2)}
+
+## 生效中的个人规则（可能多条，需综合考虑叠加影响）
+${rulesBlock}
+
+## 背景角色列表
+以下角色当前未出场或已暂时退场：
+${inactiveCharacters.map((c) => `- ${String(c)}`).join('\n')}
+
+## 生成任务
+请综合上述**所有**个人规则（若有）对背景角色的影响，并结合当前游戏日推演日常生活变化：
+
+对于每个可能受影响的角色，描述：
+1. 该角色的日常生活变化（日常化、可含暧昧与轻度色情心理/擦边感受，勿极端）
+2. 是否有异常或特殊变化（个人规则往往只影响特定对象，其他角色可能觉得奇怪或不理解）
+3. 角色的心理状态（须符合档案与世界书，拒绝OOC）
+
+注意：
+- 若有多条个人规则，请考虑其对不同目标角色的叠加或交叉影响
+- 不需要描述所有背景角色，选择 2-4 个最相关的角色描述即可
+
+## 输出格式
+请严格按照以下JSON格式输出，不要包含任何其他内容：
+
+\`\`\`json
+{
+  "otherCharacters": [
+    {
+      "name": "角色名",
+      "status": "inactive/retired",
+      "lifeDescription": "生活变化描述...",
+      "abnormalChange": "异常变化（若无则填：无）..."
+    }
+  ]
+}
+\`\`\`
+
+只输出JSON，不要其他解释。`;
+}
+
+/**
  * 构建居民生活提示词
  */
 function buildResidentLifePrompt(
@@ -235,8 +505,14 @@ function buildResidentLifePrompt(
   targetCharacter: string,
   ruleDescription: string,
   inactiveCharacters: string[],
+  extras: { worldbookMarkdown: string; archiveExcerpt: string },
 ): string {
-  return `你是一位专门负责描述角色背景生活的AI。
+  const archiveBlock = extras.archiveExcerpt.trim()
+    ? `## 角色档案摘录（须严格遵守）\n${extras.archiveExcerpt.trim()}\n\n`
+    : '';
+  return `${extras.worldbookMarkdown}${archiveBlock}${residentLifeCreativeConstraintsMarkdown()}
+
+你是一位专门负责描述角色背景生活的AI。
 
 ## 生效的规则信息
 规则名称：${ruleName}
@@ -251,9 +527,9 @@ ${inactiveCharacters.map((c) => `- ${c}`).join('\n')}
 请分析上述个人规则对这些背景角色的影响：
 
 对于每个可能受影响的角色，描述：
-1. 该角色的日常生活变化
+1. 该角色的日常生活变化（可日常、暧昧、轻度色情向，勿极端）
 2. 是否有异常或特殊变化（因为个人规则只影响目标角色，其他角色可能觉得奇怪或不理解）
-3. 角色的心理状态
+3. 角色的心理状态（须符合档案与世界书，拒绝OOC）
 
 注意：
 - 目标角色是「${targetCharacter}」，个人规则只影响TA
@@ -270,7 +546,7 @@ ${inactiveCharacters.map((c) => `- ${c}`).join('\n')}
       "name": "角色名",
       "status": "inactive/retired",
       "lifeDescription": "生活变化描述...",
-      "abnormalChange": "异常变化（如果没有写\"无\"）..."
+      "abnormalChange": "异常变化（若无则填：无）..."
     }
   ]
 }
@@ -405,7 +681,7 @@ export async function callSecondaryApiWithRetry(
   prompt: string,
   maxRetries: number = 2,
 ): Promise<string> {
-  const config = getSecondaryApiConfig();
+  const config = loadSecondaryApiConfig();
   const maxAttempts = 1 + Math.max(0, Math.min(10, maxRetries));
   let lastError: Error | null = null;
 

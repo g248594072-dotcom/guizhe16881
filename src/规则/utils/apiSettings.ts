@@ -9,6 +9,7 @@ import { normalizeOpenAiUrl } from './openaiUrl';
 import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
 import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
 import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
+import { getCharBoundWorldbookName } from './charBoundWorldbookName';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
 
@@ -611,26 +612,8 @@ function extractUpdateVariable(response: string): string | null {
  * 获取当前角色卡绑定的世界书名称
  * @returns 世界书名称
  */
-function getCurrentCharWorldbookName(): string {
-  try {
-    // 从酒馆接口获取当前角色卡的世界书
-    const charInfo = SillyTavern.getCharacterInfo?.();
-    if (charInfo?.worldbook_name) {
-      return charInfo.worldbook_name;
-    }
-
-    // 备选方案：从变量中读取
-    const vars = getVariables({ type: 'character' });
-    if (vars?.worldbook_name) {
-      return vars.worldbook_name;
-    }
-
-    // 默认世界书名称
-    return '规则系统';
-  } catch (error) {
-    console.warn('⚠️ [apiSettings] 获取世界书名称失败，使用默认值:', error);
-    return '规则系统';
-  }
+export function getCurrentCharWorldbookName(): string {
+  return getCharBoundWorldbookName();
 }
 
 // 导出常量供外部使用

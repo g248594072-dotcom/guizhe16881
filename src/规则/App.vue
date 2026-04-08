@@ -2534,7 +2534,7 @@ function extractJsonPatchFromUpdateVariable(message: string): Array<{op: string;
   }
 }
 
-/** JSON Patch 成功写入 stat_data 后，若触及世界/区域/个人规则则异步触发生成「世界大势 / 居民生活」 */
+/** JSON Patch 成功写入 stat_data 后：异步生成「世界大势」；个人规则变更仅打标，居民生活在下方统一刷新 */
 function scheduleWorldLifeAfterJsonPatchIfNeeded(
   patches: ReturnType<typeof extractJsonPatchFromUpdateVariable>,
   statData: unknown,
@@ -2542,6 +2542,14 @@ function scheduleWorldLifeAfterJsonPatchIfNeeded(
   if (!patches?.length || !statData || typeof statData !== 'object') return;
   void import('./utils/worldLifeFromPatch').then(({ scheduleWorldLifeTriggersFromJsonPatches }) => {
     scheduleWorldLifeTriggersFromJsonPatches(patches, statData as Record<string, unknown>);
+  });
+}
+
+/** 变量已提交到楼层后：若有个规待刷新或已进入新游戏日，则统一调用第二 API 更新居民生活 */
+function scheduleResidentLifeFlushAfterStatCommit(statData: unknown): void {
+  if (!statData || typeof statData !== 'object') return;
+  void import('./utils/residentLifePending').then(({ tryFlushPendingResidentLife }) => {
+    void tryFlushPendingResidentLife(statData as Record<string, unknown>);
   });
 }
 
@@ -2670,6 +2678,7 @@ async function applyMvuParseToMessageFloor(
       console.log('✅ [App] MVU 已通过 replaceVariables 写入楼层:', messageId);
     }
     scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
+    scheduleResidentLifeFlushAfterStatCommit(parsed.stat_data);
   } catch (e) {
     console.warn('⚠️ [App] 解析消息中 <UpdateVariable> 失败:', e);
   }
@@ -3474,6 +3483,7 @@ async function confirmVariableRerollApply() {
     }
 
     scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatchesForWorldLife, appliedParsed?.stat_data);
+    scheduleResidentLifeFlushAfterStatCommit(appliedParsed?.stat_data);
 
     closeVariableRerollDialog();
     // 使用轻量级刷新，避免界面闪烁
@@ -3895,6 +3905,7 @@ async function onTagDialogIgnore() {
           await Mvu.replaceMvuData(parsed, { type: 'message', message_id: messageId });
           console.log('✅ [App] 变量已通过 Mvu.replaceMvuData 应用到楼层:', messageId);
           scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
+          scheduleResidentLifeFlushAfterStatCommit(parsed.stat_data);
         }
       } catch (e) {
         console.warn('⚠️ [App] 单独重roll变量时应用变量更新失败:', e);
@@ -4097,6 +4108,7 @@ async function refineOpeningAssistantWithSecondaryApi(
     if (parsed) {
       await replaceVariables(parsed, { type: 'message', message_id: assistantMessageId });
       scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
+      scheduleResidentLifeFlushAfterStatCommit(parsed.stat_data);
     }
     console.log('✅ [App] 开局精炼变量：已应用第二遍第二 API');
   } catch (e) {
@@ -4147,6 +4159,7 @@ async function recordAssistantMessage(message: string) {
       if (jsonPatchesForAssistantRecord?.length && baseData && finalData.stat_data) {
         scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatchesForAssistantRecord, finalData.stat_data);
       }
+      scheduleResidentLifeFlushAfterStatCommit(finalData.stat_data);
 
       await createChatMessages(
         [

@@ -126,7 +126,7 @@
       <div v-if="residentRecords.length === 0" class="empty-state">
         <i class="fa-solid fa-users-slash"></i>
         <p>暂无居民生活记录</p>
-        <span class="hint">个人规则变更或角色退场后将自动生成</span>
+        <span class="hint">个人规则变更、跨游戏日或补丁写入个人规则后，在下次变量提交时由第二 API 统一生成</span>
       </div>
 
       <template v-else>

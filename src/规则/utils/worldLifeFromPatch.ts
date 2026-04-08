@@ -1,9 +1,10 @@
 /**
- * 在通过 &lt;JSONPatch&gt; 成功写入 MVU 后，根据路径检测世界/区域/个人规则变更，
- * 并异步调用第二 API 生成「世界大势」「居民生活」记录（与 dialogAndVariable 中 UI 操作一致）。
+ * 在通过 &lt;JSONPatch&gt; 成功写入 MVU 后，根据路径检测世界/区域规则变更并异步生成「世界大势」。
+ * 个人规则变更仅标记待刷新；「居民生活」在变量提交后由 residentLifePending 统一触发第二 API。
  */
 
-import { generateWorldTrend, generateResidentLife } from './worldLifeGenerator';
+import { generateWorldTrend } from './worldLifeGenerator';
+import { markPendingIfPersonalRulePatches } from './residentLifePending';
 
 export type JsonPatchOp = { op: string; path: string; value?: unknown; from?: string };
 
@@ -26,14 +27,6 @@ function collectPathsFromPatches(patches: JsonPatchOp[]): string[] {
     if ((p.op === 'move' || p.op === 'copy') && p.from) out.push(p.from);
   }
   return out;
-}
-
-function getInactiveCharacterNames(statData: Record<string, unknown>): string[] {
-  const chars = statData['角色档案'] as Record<string, { 姓名?: string; 状态?: string }> | undefined;
-  if (!chars || typeof chars !== 'object') return [];
-  return Object.entries(chars)
-    .filter(([, c]) => c && typeof c === 'object' && c.状态 !== '出场中')
-    .map(([id, c]) => String(c.姓名 || id));
 }
 
 interface RuleTriggerSets {
@@ -76,24 +69,20 @@ function collectRuleKeysFromPaths(paths: string[]): RuleTriggerSets {
   return { worldKeys, regionKeys, subRegional, personalKeys };
 }
 
-async function runTriggers(patches: JsonPatchOp[], statData: Record<string, unknown>): Promise<void> {
+async function runWorldTrendTriggersOnly(
+  patches: JsonPatchOp[],
+  statData: Record<string, unknown>,
+): Promise<void> {
   const paths = collectPathsFromPatches(patches);
   if (!paths.length) return;
 
-  const { worldKeys, regionKeys, subRegional, personalKeys } = collectRuleKeysFromPaths(paths);
-  if (
-    worldKeys.size === 0 &&
-    regionKeys.size === 0 &&
-    subRegional.size === 0 &&
-    personalKeys.size === 0
-  ) {
+  const { worldKeys, regionKeys, subRegional } = collectRuleKeysFromPaths(paths);
+  if (worldKeys.size === 0 && regionKeys.size === 0 && subRegional.size === 0) {
     return;
   }
 
   const 世界规则 = statData['世界规则'] as Record<string, Record<string, unknown>> | undefined;
   const 区域规则 = statData['区域规则'] as Record<string, Record<string, unknown>> | undefined;
-  const 个人规则 = statData['个人规则'] as Record<string, Record<string, unknown>> | undefined;
-  const inactiveChars = getInactiveCharacterNames(statData);
 
   for (const key of worldKeys) {
     const r = 世界规则?.[key];
@@ -127,17 +116,6 @@ async function runTriggers(patches: JsonPatchOp[], statData: Record<string, unkn
     const ok = await generateWorldTrend(subKey, 'regional', desc, [regionDisplay]);
     if (ok) toastr.success(`已生成世界大势说明：${subKey}`);
   }
-
-  for (const pKey of personalKeys) {
-    const pr = 个人规则?.[pKey];
-    if (!pr || typeof pr !== 'object') continue;
-    const target = String(pr['适用对象'] ?? pr['名称'] ?? pKey).trim() || pKey;
-    const ruleName = String(pr['名称'] ?? pKey).trim() || pKey;
-    const desc = String(pr['效果描述'] ?? '').trim() || '（效果描述未提供）';
-    if (inactiveChars.length === 0) continue;
-    const ok = await generateResidentLife(ruleName, target, desc, inactiveChars);
-    if (ok) toastr.success(`已生成居民生活说明：${ruleName}`);
-  }
 }
 
 /**
@@ -149,10 +127,12 @@ export function scheduleWorldLifeTriggersFromJsonPatches(
 ): void {
   if (!patches?.length || !statData) return;
 
+  markPendingIfPersonalRulePatches(patches);
+
   setTimeout(() => {
     void (async () => {
       try {
-        await runTriggers(patches, statData);
+        await runWorldTrendTriggersOnly(patches, statData);
       } catch (e) {
         console.warn('[WorldLifePatch] 根据 JSON Patch 触发生成失败:', e);
       }

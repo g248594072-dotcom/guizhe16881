@@ -15,7 +15,8 @@ import {
   type FetishEntryZh,
   type SensitiveEntryZh,
 } from './tagMap';
-import { generateWorldTrend, generateResidentLife } from './worldLifeGenerator';
+import { generateWorldTrend } from './worldLifeGenerator';
+import { markResidentLifePendingPersonalRule } from './residentLifePending';
 
 /**
  * 将文本写入前端对话框输入区（不创建新楼层）
@@ -1058,21 +1059,7 @@ export async function submitAddPersonalRule(characterName: string, detail: strin
   }
   const message = formatPersonalRuleMessage('add', c, detail.trim());
   addPersonalRuleToVariables(c, detail.trim());
-
-  // 获取未出场角色列表（用于居民生活生成）
-  const store = useDataStore();
-  const inactiveChars = Object.entries(store.data.角色档案 || {})
-    .filter(([_, char]) => char.状态 !== '出场中')
-    .map(([id, char]) => char.姓名 || id);
-
-  // 异步触发居民生活生成
-  setTimeout(() => {
-    generateResidentLife(c, c, detail.trim(), inactiveChars).then((success) => {
-      if (success) {
-        toastr.success(`已生成居民生活说明：${c}`);
-      }
-    }).catch(console.error);
-  }, 100);
+  markResidentLifePendingPersonalRule();
 
   return message;
 }
@@ -1085,17 +1072,7 @@ export async function submitEditPersonalRule(idOrTitle: string, characterName: s
   }
   const message = formatPersonalRuleMessage('edit', c, detail.trim());
   updatePersonalRuleInVariables(idOrTitle, { title: c, desc: detail.trim() });
-
-  // 获取未出场角色列表（用于居民生活生成）
-  const store = useDataStore();
-  const inactiveChars = Object.entries(store.data.角色档案 || {})
-    .filter(([_, char]) => char.状态 !== '出场中')
-    .map(([id, char]) => char.姓名 || id);
-
-  // 异步触发居民生活生成
-  setTimeout(() => {
-    generateResidentLife(c, c, detail.trim(), inactiveChars).catch(console.error);
-  }, 100);
+  markResidentLifePendingPersonalRule();
 
   return message;
 }
@@ -1105,6 +1082,7 @@ export async function submitArchivePersonalRule(idOrTitle: string, characterName
   const message = formatPersonalRuleMessage('archive', label, ruleSummary);
   await sendToDialog(message);
   archivePersonalRuleInVariables(idOrTitle);
+  markResidentLifePendingPersonalRule();
   toastr.success(`已归档「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
 }
 
@@ -1113,6 +1091,7 @@ export async function submitRestorePersonalRule(idOrTitle: string, characterName
   const message = formatPersonalRuleMessage('restore', label, ruleSummary);
   await sendToDialog(message);
   restorePersonalRuleInVariables(idOrTitle);
+  markResidentLifePendingPersonalRule();
   toastr.success(`已复原「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
 }
 
