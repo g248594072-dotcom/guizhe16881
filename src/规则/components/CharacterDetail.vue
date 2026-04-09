@@ -17,7 +17,7 @@
       <span>返回角色列表</span>
     </button>
 
-    <!-- Header Profile -->
+    <!-- Header Profile：大屏为「头像 | 姓名+元数据 + 操作列」，避免侧栏窄时姓名被压成竖排 -->
     <div class="profile-header">
       <div
         id="btn-edit-avatar"
@@ -30,26 +30,28 @@
           <i class="fa-solid fa-pen"></i>
         </div>
       </div>
-      <div class="profile-info">
-        <div class="name-row">
-          <template v-if="isEditingBasic">
-            <input v-model="editForm.name" type="text" class="edit-name-input" placeholder="姓名" />
-          </template>
-          <template v-else>
-            <h2>{{ name }}</h2>
-          </template>
+      <div class="profile-main">
+        <div class="profile-info">
+          <div class="name-row">
+            <template v-if="isEditingBasic">
+              <input v-model="editForm.name" type="text" class="edit-name-input" placeholder="姓名" />
+            </template>
+            <template v-else>
+              <h2>{{ name }}</h2>
+            </template>
+          </div>
+          <p class="meta">ID: {{ characterId }} | 状态: {{ characterStatusText }}</p>
         </div>
-        <p class="meta">ID: {{ characterId }} | 状态: {{ characterStatusText }}</p>
-      </div>
-      <div v-if="!isEditingBasic" class="header-actions">
-        <button id="btn-delete-character" class="delete-btn" @click="onDeleteCharacter">
-          <i class="fa-solid fa-trash"></i>
-          <span>删除角色</span>
-        </button>
-        <button id="btn-edit-basic" class="edit-btn" @click="startEditBasic">
-          <i class="fa-solid fa-pen"></i>
-          <span>编辑基础信息</span>
-        </button>
+        <div v-if="!isEditingBasic" class="header-actions">
+          <button id="btn-delete-character" class="delete-btn" @click="onDeleteCharacter">
+            <i class="fa-solid fa-trash"></i>
+            <span>删除角色</span>
+          </button>
+          <button id="btn-edit-basic" class="edit-btn" @click="startEditBasic">
+            <i class="fa-solid fa-pen"></i>
+            <span>编辑基础信息</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -351,7 +353,7 @@
       </article>
 
       <!-- Identity Tags -->
-      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
+      <article class="detail-card identity-tags-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-tags"></i>
           <h3>身份标签</h3>
@@ -379,61 +381,61 @@
           </template>
         </div>
       </article>
-    </div>
 
-    <!-- Affected Rules -->
-    <article class="rules-card" :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }">
-      <div class="rules-header">
-        <div class="title-group">
-          <i class="fa-solid fa-shield-exclamation"></i>
-          <h3>当前受影响规则</h3>
-        </div>
-        <button id="btn-manage-rules" class="manage-btn" @click="$emit('openModal', 'manage_rules', manageRulesPayload())">
-          管理规则影响
-        </button>
-      </div>
-      <div class="rules-grid">
-        <template v-if="affectedPersonalRules.length > 0">
-          <div
-            v-for="r in affectedPersonalRules"
-            :key="r.id"
-            class="personal-rule-row"
-            :class="{ 'cyber-flowing-border': isDarkMode }"
-          >
-            <div class="rule-desc">{{ r.desc || r.title }}</div>
-            <div class="rule-actions">
-              <button
-                type="button"
-                class="action edit"
-                title="编辑"
-                @click="$emit('openModal', 'edit_personal_rule', personalRulePayload(r))"
-              >
-                <i class="fa-solid fa-pen"></i>
-              </button>
-              <button
-                type="button"
-                class="action archive"
-                title="归档"
-                @click="onArchivePersonalRule(r)"
-              >
-                <i class="fa-solid fa-archive"></i>
-              </button>
-              <button
-                type="button"
-                class="action delete"
-                title="删除"
-                @click="$emit('openModal', 'delete_personal_rule', personalRulePayload(r))"
-              >
-                <i class="fa-solid fa-trash"></i>
-              </button>
-            </div>
+      <!-- Affected Rules（放在同一 grid 内，大屏占满列宽） -->
+      <article class="rules-card" :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }">
+        <div class="rules-header">
+          <div class="title-group">
+            <i class="fa-solid fa-shield-exclamation"></i>
+            <h3>当前受影响规则</h3>
           </div>
-        </template>
-        <template v-else>
-          <div class="empty-hint">暂无个人规则影响</div>
-        </template>
-      </div>
-    </article>
+          <button id="btn-manage-rules" class="manage-btn" @click="$emit('openModal', 'manage_rules', manageRulesPayload())">
+            管理规则影响
+          </button>
+        </div>
+        <div class="rules-grid">
+          <template v-if="affectedPersonalRules.length > 0">
+            <div
+              v-for="r in affectedPersonalRules"
+              :key="r.id"
+              class="personal-rule-row"
+              :class="{ 'cyber-flowing-border': isDarkMode }"
+            >
+              <div class="rule-desc">{{ r.desc || r.title }}</div>
+              <div class="rule-actions">
+                <button
+                  type="button"
+                  class="action edit"
+                  title="编辑"
+                  @click="$emit('openModal', 'edit_personal_rule', personalRulePayload(r))"
+                >
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+                <button
+                  type="button"
+                  class="action archive"
+                  title="归档"
+                  @click="onArchivePersonalRule(r)"
+                >
+                  <i class="fa-solid fa-archive"></i>
+                </button>
+                <button
+                  type="button"
+                  class="action delete"
+                  title="删除"
+                  @click="$emit('openModal', 'delete_personal_rule', personalRulePayload(r))"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="empty-hint">暂无个人规则影响</div>
+          </template>
+        </div>
+      </article>
+    </div>
   </section>
 </template>
 
@@ -871,6 +873,10 @@ const emit = defineEmits<{
   flex-direction: column;
   gap: 32px;
   padding-bottom: 80px;
+  width: 100%;
+  max-width: 1400px;
+  margin-inline: auto;
+  box-sizing: border-box;
 }
 
 .edit-mode-bar {
@@ -937,12 +943,34 @@ const emit = defineEmits<{
 
 .profile-header {
   display: flex;
-  align-items: flex-end;
-  gap: 24px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 20px;
+
+  @media (max-width: 639px) {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+
+    .profile-main {
+      align-items: center;
+    }
+
+    .profile-info .name-row {
+      justify-content: center;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+  }
 
   .avatar-edit {
     width: 128px;
     height: 128px;
+    flex-shrink: 0;
     border-radius: 16px;
     display: flex;
     align-items: center;
@@ -991,9 +1019,21 @@ const emit = defineEmits<{
     }
   }
 
-  .profile-info {
+  // 始终纵向：姓名 → 元数据 → 按钮行，避免大屏下与按钮并排导致文字区被 flex 压成「一字一行」
+  .profile-main {
     flex: 1;
-    padding-bottom: 8px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: stretch;
+    gap: 14px;
+    padding-top: 4px;
+  }
+
+  .profile-info {
+    width: 100%;
+    min-width: 0;
 
     .name-row {
       display: flex;
@@ -1002,18 +1042,34 @@ const emit = defineEmits<{
       margin-bottom: 8px;
 
       h2 {
-        font-size: 36px;
+        font-size: clamp(1.5rem, 2.5vw, 2.25rem);
         font-weight: 700;
-        letter-spacing: -0.02em;
+        letter-spacing: 0.02em;
         color: #fff;
+        word-break: keep-all;
+        overflow-wrap: break-word;
+        line-height: 1.2;
+        font-family: ui-sans-serif, system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
       }
     }
 
     .meta {
       font-size: 14px;
       color: #a1a1aa;
-      font-family: monospace;
+      font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+      white-space: normal;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
     }
+  }
+}
+
+@media (min-width: 1100px) {
+  .profile-header .avatar-edit {
+    width: 144px;
+    height: 144px;
+    border-radius: 18px;
   }
 }
 
@@ -1041,7 +1097,7 @@ const emit = defineEmits<{
   border: none;
   background: rgba(255, 255, 255, 0.05);
   color: #e4e4e7;
-  margin-bottom: 8px;
+  white-space: nowrap;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -1059,8 +1115,10 @@ const emit = defineEmits<{
 
 .header-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
+  align-self: flex-start;
 }
 
 .delete-btn {
@@ -1076,6 +1134,7 @@ const emit = defineEmits<{
   border: none;
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
+  white-space: nowrap;
 
   &:hover {
     background: rgba(239, 68, 68, 0.2);
@@ -1097,7 +1156,25 @@ const emit = defineEmits<{
   gap: 24px;
 
   @media (min-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+  }
+
+  @media (min-width: 1280px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 28px;
+  }
+
+  > .rules-card {
+    @media (min-width: 768px) {
+      grid-column: 1 / -1;
+    }
+  }
+
+  > .identity-tags-card {
+    @media (min-width: 1280px) {
+      grid-column: span 2;
+    }
   }
 }
 

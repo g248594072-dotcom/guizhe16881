@@ -119,9 +119,9 @@
     background: rgba(17, 17, 17, 0.55);
   }
 
+  // 姓名字体由 CharacterDetail.vue 使用系统无衬线，避免窄栏下西文展示字体与中文混排异常
   .character-detail .profile-info .name-row h2 {
-    font-family: var(--font-cyber-display);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.03em;
   }
 
   .character-detail .rules-card:not(.cyber-card) {

@@ -75,6 +75,7 @@ export function formatAddCharacterMessage(name: string, description: string): st
   return lines.join('\n');
 }
 
+/** 直接向 MVU 写入新角色档案（一般不要用；新增角色应走 `submitAddCharacter` 由 AI/变量管线写入，避免重复条目） */
 export function addCharacterToVariables(name: string, description: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
@@ -119,6 +120,7 @@ export function addCharacterToVariables(name: string, description: string): void
   bumpUpdateTime();
 }
 
+/** 仅生成并返回 `[新增角色]` 消息文本；不写入 `角色档案`，避免与 AI 输出变量重复。 */
 export async function submitAddCharacter(name: string, description: string): Promise<string> {
   const n = name.trim();
   if (!n) {
@@ -126,9 +128,7 @@ export async function submitAddCharacter(name: string, description: string): Pro
     return '';
   }
   if (!tryRulesMvuWritable()) return '';
-  const message = formatAddCharacterMessage(n, description);
-  addCharacterToVariables(n, description);
-  return message;
+  return formatAddCharacterMessage(n, description);
 }
 
 // ---------- 编辑角色基础信息 ----------

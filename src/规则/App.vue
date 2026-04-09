@@ -565,6 +565,9 @@
                 rows="6"
                 placeholder="简要描述外貌、身份、性格等..."
               />
+              <p class="form-hint">
+                确认后仅将请求填入输入框并发消息，不会立刻写入角色档案；新角色在 AI（或第二 API 处理变量）生成变量后才会出现，避免重复。
+              </p>
             </div>
             <!-- 新增世界规则 -->
             <div v-else-if="modalType === 'add_world_rule'" class="rule-form">
@@ -2518,6 +2521,7 @@ async function onModalComplete() {
     }
 
     if (type === 'add_character') {
+      // 只生成 [新增角色] 消息，不预写角色档案（与 editCartApply.runModalCommit 一致）
       const { submitAddCharacter } = await import('./utils/dialogAndVariable');
       messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
     } else if (type === 'add_world_rule') {

@@ -14,6 +14,7 @@ export async function runModalCommit(
   let messageText = '';
 
   if (type === 'add_character') {
+    // 与主弹窗 onModalComplete 一致：只生成消息，由发送后 AI/第二 API 写入变量
     const { submitAddCharacter } = await import('./dialogAndVariable');
     messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
   } else if (type === 'add_world_rule') {

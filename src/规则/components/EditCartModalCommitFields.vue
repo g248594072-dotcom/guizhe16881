@@ -6,6 +6,7 @@
       <input v-model="form.addCharacterName" type="text" class="eci-input" />
       <label class="eci-label">简单描述</label>
       <textarea v-model="form.addCharacterDescription" class="eci-textarea" rows="5" />
+      <p class="eci-hint">提交购物车后只发消息，不预写档案；角色在 AI 写入变量后出现。</p>
     </template>
 
     <template v-else-if="modalType === 'add_world_rule' || modalType === 'edit_world_rule'">
