@@ -5710,25 +5710,29 @@ onUnmounted(() => {
   inset: 0;
   /* 低于 .opening-settings-drawer(110)，否则会挡住侧栏、点击穿透关闭 */
   z-index: 85;
-  /* 仅适度压暗背后内容，避免与侧栏糊成一片纯黑 */
-  background: rgba(0, 0, 0, 0.45);
+  /* 轻压暗即可；过深时在深色开局页上会像整屏全黑 */
+  background: rgba(0, 0, 0, 0.22);
   backdrop-filter: none;
 }
 
 // 开局界面无 #app-root 侧栏时，设置抽屉固定于视口左侧（与主界面中间面板同宽）
+// 用 top/bottom 拉满 iframe 视口，勿用 100vh/100dvh（嵌套 iframe 里 vh 常错位导致超长滚动）
 .opening-settings-drawer {
   position: fixed;
   left: 0;
   top: 0;
   bottom: 0;
+  right: auto;
   /* 高于 scrim(85) 与手机端 .middle-panel(60)，保证可点击 */
   z-index: 110;
-  height: 100vh;
-  max-height: 100vh;
+  height: auto;
+  max-height: none;
   width: min(calc(700px * var(--ui-scale, 1)), 92vw);
   --middle-panel-width: min(calc(700px * var(--ui-scale, 1)), 92vw);
   backdrop-filter: none;
   pointer-events: auto;
+  /* 覆盖 .middle-panel 的 slideIn（transform 与 fixed 同元素易出怪相） */
+  animation: none;
 
   &.dark {
     @include cyber-card-surface;
@@ -5736,6 +5740,13 @@ onUnmounted(() => {
     box-shadow:
       8px 0 28px rgba(0, 0, 0, 0.45),
       0 0 32px rgba(176, 38, 255, 0.08);
+    /* mixin 含 position:relative，会盖掉外层 fixed，侧栏会掉进文档流排到页面底部 */
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: auto;
+    z-index: 110;
   }
 
   &.light {
@@ -6890,6 +6901,10 @@ onUnmounted(() => {
     width: 100%;
     max-width: 100%;
     --middle-panel-width: 100%;
+    /* 覆盖上方 .middle-panel 的 height:100dvh，改由 inset 贴合 iframe */
+    height: auto;
+    max-height: none;
+    inset: 0;
   }
 
   .panel-inner {

@@ -1656,7 +1656,7 @@ defineExpose({
   --radius-lg: calc(12px * var(--ui-scale, 1));
   --radius-xl: calc(16px * var(--ui-scale, 1));
 
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2368,7 +2368,7 @@ defineExpose({
   --text-faint: rgba(255, 255, 255, 0.48);
   --accent: #c7ccd4;
   --danger: #ff6b6b;
-  min-height: 100vh;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

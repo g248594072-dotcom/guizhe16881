@@ -1,0 +1,485 @@
+{
+  "sheet_mvu_meta": {
+    "uid": "sheet_mvu_meta",
+    "name": "元信息",
+    "sourceData": {
+      "note": "对应 MVU 根键「元信息」。此表有且仅有一行，禁止增删行。\n\n【变量更新规则】\n- 玩家名称、玩家设置JSON、当前阶段、进度：随剧情切页、规则掌控度或主角设定推进而更新。\n- 最近更新时间：Unix 毫秒时间戳；本轮若对任意相关表做了实质更新，建议同步刷新。\n\n【玩家设置JSON】对应 元信息.玩家设置，无则填 {}。\n【进度】整数，建议 ≥1。\n\n【与「游戏时间」表分工】剧情时间数字只写在「游戏时间」表；跨日结算时须联动更新本表最近更新时间，并在「角色」表批量更新出场角色的内心想法、发情值、当前综合生理描述等。",
+      "initNode": "插入唯一一行：开局玩家名、阶段、进度、时间戳与玩家设置 JSON。",
+      "deleteNode": "禁止。",
+      "updateNode": "按变量更新规则更新元信息各列及最近更新时间。",
+      "insertNode": "禁止。"
+    },
+    "content": [
+      [
+        null,
+        "玩家名称",
+        "玩家设置JSON",
+        "当前阶段",
+        "进度",
+        "最近更新时间"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "元信息",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "元信息-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99981
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99982
+      }
+    },
+    "orderNo": 0
+  },
+  "sheet_mvu_game_time": {
+    "uid": "sheet_mvu_game_time",
+    "name": "游戏时间",
+    "sourceData": {
+      "note": "对应 MVU 根键「游戏时间」。此表有且仅有一行，禁止增删行。\n\n【变量更新规则】\n- 每次生成须审视正文：出现时间跳跃则强制换算并写入 年/月/日/时/分。\n- 对话、探索等微观推进须累加「分」并处理进位；分→时→日→月→年（与角色卡 schema 一致：月内按 31 日简化）。\n- 若进位导致「日」变更：跨日结算——必须在「角色」表中更新所有「出场中」角色的：当前内心想法、发情值（自然发酵）、当前综合生理描述等。\n\n【格式】月∈[1,12]，日∈[1,31]，时∈[0,23]，分∈[0,59]。",
+      "initNode": "插入唯一一行：填入剧情起始 年/月/日/时/分。",
+      "deleteNode": "禁止。",
+      "updateNode": "随正文时间推进更新五列；跨日时按规则联动「角色」表与「元信息」最近更新时间。",
+      "insertNode": "禁止。"
+    },
+    "content": [
+      [
+        null,
+        "年",
+        "月",
+        "日",
+        "时",
+        "分"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "游戏时间",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "游戏时间-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99979
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99980
+      }
+    },
+    "orderNo": 1
+  },
+  "sheet_mvu_world_rules": {
+    "uid": "sheet_mvu_world_rules",
+    "name": "世界规则",
+    "sourceData": {
+      "note": "对应 MVU「世界规则」Record。每行一条；「规则键」= 变量内该条目的键名。\n\n【变量更新规则 · 世界/区域/个人共用】\n- 仅当主角主动提出、修改或提交规则时，方可增删改行或覆写字段。\n- 新规则须在「效果描述」「细分规则JSON」中体现对常识/物理/认知的覆写（与正文一致）。\n\n【字段】状态为 生效中|已归档；细分规则JSON 形如 {\"子项\":{\"描述\":\"\",\"状态\":\"生效中\"}}。",
+      "initNode": "按世界观插入若干行；规则键唯一。",
+      "deleteNode": "仅当主角明确表示废除且剧情不再引用时可删行。",
+      "updateNode": "仅因主角主动修改规则而更新。",
+      "insertNode": "主角设定新世界级规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "世界规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "世界规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 2
+  },
+  "sheet_mvu_region_rules": {
+    "uid": "sheet_mvu_region_rules",
+    "name": "区域规则",
+    "sourceData": {
+      "note": "对应 MVU「区域规则」。更新规则同「世界规则」：仅主角主动提出/修改/提交时可强制更新。\n【状态】生效中|已归档。【细分规则JSON】同世界规则表。",
+      "initNode": "为可玩区域插入规则行。",
+      "deleteNode": "主角废除或区域永久废弃时可删。",
+      "updateNode": "仅主角主动修改区域规则时更新。",
+      "insertNode": "主角确立新区域规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "区域规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "区域规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 3
+  },
+  "sheet_mvu_personal_rules": {
+    "uid": "sheet_mvu_personal_rules",
+    "name": "个人规则",
+    "sourceData": {
+      "note": "对应 MVU「个人规则」。更新规则同「世界规则」：仅主角主动提出/修改/提交时可强制更新。",
+      "initNode": "插入个人/契约类规则行。",
+      "deleteNode": "主角废除时可删。",
+      "updateNode": "仅主角主动修改时更新。",
+      "insertNode": "主角新增个人层面规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "个人规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "个人规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 4
+  },
+  "sheet_mvu_character": {
+    "uid": "sheet_mvu_character",
+    "name": "角色",
+    "sourceData": {
+      "note": "对应 MVU 根键「角色档案」；本表在界面中显示名为「角色」。「档案ID」= 变量里该条目的键（可与姓名相同或独立 ID）。\n\n【登场与建档 · 变量更新规则】\n- 正文出现有戏份/有台词/高颜值或性格突出的女性角色（含路人、学姐、教师等）时：本回合须插入或补全一行；禁止留空列、禁止 JSON 列为空 {} 糊弄。\n- 初始化须覆盖：①基础信息 ②性格JSON（≥2 标签）③性癖JSON、隐藏性癖 ④身体信息列 ⑤服装状态JSON ⑥身体部位物理状态JSON（至少含脸部、手部、乳房、乳头、小穴、脚部）⑦敏感点开发JSON（敏感等级、生理反应、开发细节）⑧数值列 ⑨身份标签JSON、当前综合生理描述。\n\n【状态】出场中|暂时退场。【性癖】100 触变质后性癖开发值归零（与变量规则一致）。\n【数值】好感度约 ±(1~3)；发情值言语撩拨 +(5~15)；性癖开发 +(2~8)。\n【级联】规则或游戏时间跨日时须更新本表相关列。\n\n【JSON】须合法，双引号键。",
+      "initNode": "开局每人一行；新角色登场 insertRow 并填满各列与 JSON。",
+      "deleteNode": "角色永久退场且不再引用时可删行。",
+      "updateNode": "随剧情、规则、跨日结算更新。",
+      "insertNode": "新角色登场；档案ID 唯一。"
+    },
+    "content": [
+      [
+        null,
+        "档案ID",
+        "姓名",
+        "状态",
+        "描写",
+        "当前内心想法",
+        "隐藏性癖",
+        "年龄",
+        "身高",
+        "体重",
+        "三围",
+        "体质特征",
+        "好感度",
+        "性癖开发值",
+        "发情值",
+        "性格JSON",
+        "性癖JSON",
+        "敏感点开发JSON",
+        "服装状态JSON",
+        "身体部位物理状态JSON",
+        "身份标签JSON",
+        "当前综合生理描述"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": true,
+      "splitByRow": true,
+      "entryName": "角色",
+      "entryType": "keyword",
+      "keywords": "姓名",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": true,
+      "extraIndexEntryName": "角色-索引",
+      "extraIndexColumns": [
+        "姓名",
+        "档案ID"
+      ],
+      "extraIndexColumnModes": {
+        "姓名": "both",
+        "档案ID": "index_only"
+      },
+      "extraIndexInjectionTemplate": "<已登场角色索引>\n$1\n</已登场角色索引>",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99983
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99984
+      }
+    },
+    "orderNo": 5
+  },
+  "sheet_mvu_game_state": {
+    "uid": "sheet_mvu_game_state",
+    "name": "游戏状态",
+    "sourceData": {
+      "note": "对应 MVU「游戏状态」。每行一键值；状态值JSON 须合法。\n【细则】以角色卡「变量更新规则」全文为准。",
+      "initNode": "按需插入行；可无。",
+      "deleteNode": "键不再使用时删行。",
+      "updateNode": "值变化时更新。",
+      "insertNode": "新剧情键时插入。"
+    },
+    "content": [
+      [
+        null,
+        "状态键",
+        "状态值JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": -1,
+      "updateFrequency": -1,
+      "batchSize": -1,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "游戏状态",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "游戏状态-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 6
+  },
+  "mate": {
+    "type": "chatSheets",
+    "version": 1,
+    "updateConfigUiSentinel": -1,
+    "globalInjectionConfig": {
+      "readableEntryPlacement": {
+        "position": "before_char",
+        "depth": 2,
+        "order": 99981
+      },
+      "wrapperPlacement": {
+        "position": "before_char",
+        "depth": 2,
+        "order": 99982
+      }
+    }
+  }
+}
