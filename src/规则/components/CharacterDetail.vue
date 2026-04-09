@@ -317,15 +317,17 @@
           </div>
           <div class="appearance-block">
             <span class="section-label">身体部位物理状态</span>
-            <div v-if="bodyPartBadgeLines.length > 0" class="badges">
-              <Badge
-                v-for="(line, idx) in bodyPartBadgeLines"
-                :key="'bp-' + idx"
-                :text="line"
-                :highlight="idx === 0"
-                class="clickable-badge"
+            <div v-if="bodyPartBadgeLines.length > 0" class="body-part-rows">
+              <button
+                v-for="line in bodyPartBadgeLines"
+                :key="'bp-' + line"
+                type="button"
+                class="body-part-line"
+                :class="{ 'is-expanded': expandedBodyPart === line }"
                 @click="toggleBodyPartExpand(line)"
-              />
+              >
+                <span class="body-part-name">{{ line }}</span>
+              </button>
             </div>
             <span v-else class="empty-hint">暂无（点「编辑」添加部位）</span>
             <template v-if="expandedBodyPart">
@@ -1740,10 +1742,70 @@ const emit = defineEmits<{
   line-height: 1.6;
 }
 
+.body-part-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.body-part-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  font: inherit;
+  color: inherit;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &.is-expanded {
+    border-color: rgba(167, 139, 250, 0.5);
+    background: rgba(167, 139, 250, 0.09);
+  }
+}
+
+.body-part-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a78bfa;
+  line-height: 1.35;
+}
+
 :global(.light) {
   .appearance-slot-line .slot-text,
   .appearance-list {
     color: #3f3f46;
+  }
+
+  .body-part-line {
+    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.02);
+
+    &:hover {
+      border-color: rgba(0, 0, 0, 0.14);
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    &.is-expanded {
+      border-color: rgba(124, 58, 237, 0.35);
+      background: rgba(124, 58, 237, 0.06);
+    }
+  }
+
+  .body-part-name {
+    color: #7c3aed;
   }
 
   .detail-expand-panel {
