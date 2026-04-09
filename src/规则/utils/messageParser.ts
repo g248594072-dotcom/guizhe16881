@@ -34,8 +34,12 @@ function classifyTagBalance(
   open: number,
   close: number,
   kind: TagKind,
+  /** 消息里替代默认 `<tag>` 的展示名（如正文：`<maintext> / <content>`） */
+  angleOverride?: string,
 ): TagCheckResult {
-  const angle = tag === 'UpdateVariable' ? '<UpdateVariable>' : `<${tag}>`;
+  const angle =
+    angleOverride ??
+    (tag === 'UpdateVariable' ? '<UpdateVariable>' : `<${tag}>`);
 
   if (kind === 'optionalAbsent' && open === 0 && close === 0) {
     const absentMsg =
@@ -61,7 +65,7 @@ function classifyTagBalance(
       severity: 'error',
       isOpen: false,
       isClosed: false,
-      message: tag === 'maintext' ? '缺少 <maintext> 标签' : '缺少 <option> 标签',
+      message: tag === 'maintext' ? `缺少 ${angle} 开标签` : '缺少 <option> 标签',
     };
   }
 
@@ -149,7 +153,7 @@ export function validateTags(messageContent: string): TagCheckResult[] {
   if (!messageContent) {
     return [
       classifyTagBalance('thinking', 0, 0, 'optionalAbsent'),
-      classifyTagBalance('maintext', 0, 0, 'required'),
+      classifyTagBalance('maintext', 0, 0, 'required', '<maintext> / <content>'),
       classifyTagBalance('option', 0, 0, 'required'),
       classifyTagBalance('sum', 0, 0, 'optionalAbsent'),
       classifyTagBalance('UpdateVariable', 0, 0, 'optionalAbsent'),
@@ -160,9 +164,20 @@ export function validateTags(messageContent: string): TagCheckResult[] {
   const thinkingClose = (messageContent.match(/<\/thinking>/gi) || []).length;
   const thinking = classifyTagBalance('thinking', thinkingOpen, thinkingClose, 'optionalAbsent');
 
-  const maintextOpen = (messageContent.match(/<maintext>/gi) || []).length;
-  const maintextClose = (messageContent.match(/<\/maintext>/gi) || []).length;
-  const maintext = classifyTagBalance('maintext', maintextOpen, maintextClose, 'required');
+  /** 正文区：开标签可为 <maintext> 或 <content>，闭标签可为 </maintext> 或 </content> */
+  const maintextOpen =
+    (messageContent.match(/<maintext>/gi) || []).length +
+    (messageContent.match(/<content(\s[^>]*)?>/gi) || []).length;
+  const maintextClose =
+    (messageContent.match(/<\/maintext>/gi) || []).length +
+    (messageContent.match(/<\/content>/gi) || []).length;
+  const maintext = classifyTagBalance(
+    'maintext',
+    maintextOpen,
+    maintextClose,
+    'required',
+    '<maintext> / <content>',
+  );
 
   const optionOpen = (messageContent.match(/<option/gi) || []).length;
   const optionClose = (messageContent.match(/<\/option>/gi) || []).length;
@@ -227,30 +242,59 @@ export function extractFilteredContent(streamText: string): string {
   return cleaned.trim();
 }
 
+/** 最后一个正文闭标签位置：`</maintext>` 或 `</content>`（取在文中更靠后者） */
+function findLastBodyClose(text: string, lc: string): { idx: number; len: number } | null {
+  const idxM = lc.lastIndexOf('</maintext>');
+  const idxC = lc.lastIndexOf('</content>');
+  if (idxM < 0 && idxC < 0) return null;
+  const preferM = idxM >= idxC;
+  const candidates = preferM
+    ? [
+        { idx: idxM, re: /^<\/maintext>/i },
+        { idx: idxC, re: /^<\/content>/i },
+      ]
+    : [
+        { idx: idxC, re: /^<\/content>/i },
+        { idx: idxM, re: /^<\/maintext>/i },
+      ];
+  for (const { idx, re } of candidates) {
+    if (idx < 0) continue;
+    const m = text.slice(idx).match(re);
+    if (m) return { idx, len: m[0].length };
+  }
+  return null;
+}
+
+/** 在 closeIdx 之前，最后一个 `<maintext>` 或 `<content …>` 开标签 */
+function lastBodyOpenBefore(text: string, closeIdx: number): { idx: number; len: number } | null {
+  const opens = [...text.matchAll(/<maintext>|<content(\s[^>]*)?>/gi)];
+  let best: { idx: number; len: number } | null = null;
+  for (const m of opens) {
+    const i = m.index ?? 0;
+    if (i >= closeIdx) continue;
+    if (!best || i > best.idx) best = { idx: i, len: m[0].length };
+  }
+  return best;
+}
+
 /**
- * 从后往前配对：最后一个 </maintext> 与其前方最后一个 <maintext> 之间的内容。
+ * 从后往前配对：最后一个 `</maintext>` 或 `</content>` 与其前方最后一个 `<maintext>` / `<content>` 之间的内容。
  * 避免前文「1. <maintext>」等未闭合示例与唯一闭标签被非贪婪正则误配成一对。
  */
 export function extractMaintextByLastClosePair(text: string): string {
   if (!text) return '';
 
   const lc = text.toLowerCase();
-  const closeIdx = lc.lastIndexOf('</maintext>');
-  if (closeIdx === -1) return '';
+  const close = findLastBodyClose(text, lc);
+  if (!close) return '';
 
-  const openIdx = lc.lastIndexOf('<maintext>', closeIdx);
-  if (openIdx === -1) return '';
+  const open = lastBodyOpenBefore(text, close.idx);
+  if (!open) return '';
 
-  const openSlice = text.slice(openIdx);
-  const openMatch = openSlice.match(/^<maintext>/i);
-  if (!openMatch) return '';
+  const innerStart = open.idx + open.len;
+  if (innerStart > close.idx) return '';
 
-  const innerStart = openIdx + openMatch[0].length;
-  if (innerStart > closeIdx) return '';
-
-  if (!/^<\/maintext>/i.test(text.slice(closeIdx))) return '';
-
-  return text.slice(innerStart, closeIdx).trim();
+  return text.slice(innerStart, close.idx).trim();
 }
 
 /**
@@ -261,21 +305,16 @@ export function replaceLastMaintextInnerContent(fullMessage: string, newInner: s
   if (!fullMessage) return fullMessage;
 
   const lc = fullMessage.toLowerCase();
-  const closeIdx = lc.lastIndexOf('</maintext>');
-  if (closeIdx === -1) return fullMessage;
+  const close = findLastBodyClose(fullMessage, lc);
+  if (!close) return fullMessage;
 
-  const openIdx = lc.lastIndexOf('<maintext>', closeIdx);
-  if (openIdx === -1) return fullMessage;
+  const open = lastBodyOpenBefore(fullMessage, close.idx);
+  if (!open) return fullMessage;
 
-  const openMatch = fullMessage.slice(openIdx).match(/^<maintext>/i);
-  if (!openMatch) return fullMessage;
+  const innerStart = open.idx + open.len;
+  if (innerStart > close.idx) return fullMessage;
 
-  const innerStart = openIdx + openMatch[0].length;
-  if (innerStart > closeIdx) return fullMessage;
-
-  if (!/^<\/maintext>/i.test(fullMessage.slice(closeIdx))) return fullMessage;
-
-  return fullMessage.slice(0, innerStart) + newInner + fullMessage.slice(closeIdx);
+  return fullMessage.slice(0, innerStart) + newInner + fullMessage.slice(close.idx);
 }
 
 /**

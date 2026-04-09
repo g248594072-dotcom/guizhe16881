@@ -1109,7 +1109,14 @@
     <!-- 标签验证弹窗（开局/游戏阶段都可显示） -->
     <Transition name="modal">
       <div v-if="isTagDialogOpen" class="modal-overlay tag-validation-overlay">
-        <div class="modal-content tag-validation-modal" :class="{ dark: isDarkMode, light: !isDarkMode }">
+        <div
+          class="modal-content tag-validation-modal"
+          :class="{
+            dark: isDarkMode,
+            light: !isDarkMode,
+            'is-raw-maximized': showAiOutput && tagDialogRawMaximized,
+          }"
+        >
           <div class="modal-header">
             <h2><i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i> 标签验证结果</h2>
             <button class="close-btn" @click="onTagDialogCloseAttempt">
@@ -1143,7 +1150,7 @@
                   <div class="tag-status-header">
                     <span class="tag-name">
                       {{ tagCheckLabel(result.tag) }}
-                      <span class="tag-name-code">&lt;{{ result.tag }}&gt;</span>
+                      <span class="tag-name-code">{{ tagCheckTagCodeDisplay(result.tag) }}</span>
                     </span>
                     <span
                       class="tag-badge"
@@ -1167,25 +1174,94 @@
 
               <!-- AI 完整输出内容展示 -->
               <div class="ai-output-section">
-                <button class="ai-output-toggle" @click="showAiOutput = !showAiOutput">
+                <p
+                  v-show="!tagDialogRawMaximized"
+                  class="tag-dialog-patch-hint"
+                  :class="{ 'tag-dialog-patch-hint--urgent': tagDialogShowPatchHint }"
+                  role="button"
+                  tabindex="0"
+                  @click="openTagDialogPatchEditor"
+                  @keydown.enter.prevent="openTagDialogPatchEditor"
+                  @keydown.space.prevent="openTagDialogPatchEditor"
+                >
+                  <template v-if="tagDialogShowPatchHint">
+                    检测到正文或选项等标签异常。请点此展开全文，手动补全标签后点「重新检验」，最后在底部「确认」生效。
+                  </template>
+                  <template v-else>
+                    当前标签检核均为正常。仍可点此展开全文核对或微调；若有修改，请点「重新检验」后，在底部「确认」生效。
+                  </template>
+                </p>
+                <button
+                  type="button"
+                  class="ai-output-toggle"
+                  :class="{ 'is-patch-suggested': tagDialogShowPatchHint && !showAiOutput }"
+                  @click="toggleTagDialogAiOutput"
+                >
                   <i :class="showAiOutput ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'"></i>
-                  <span>{{ showAiOutput ? '隐藏 AI 完整输出' : '查看 AI 完整输出' }}</span>
-                  <span class="output-length">({{ lastGenerationRaw.length }} 字符)</span>
+                  <span>{{
+                    showAiOutput ? '收起正文（显示标签检核）' : '查看 / 手动修补 AI 输出'
+                  }}</span>
+                  <span class="output-length">({{ tagDialogEditedRaw.length }} 字符)</span>
                 </button>
+                <p v-show="showAiOutput && !tagDialogRawMaximized" class="tag-dialog-edit-hint">
+                  若标签缺失或未闭合，可在下方补全
+                  <code>&lt;maintext&gt;</code> / <code>&lt;content&gt;</code> 与
+                  <code>&lt;/maintext&gt;</code> / <code>&lt;/content&gt;</code>
+                  后点「重新检验」，再「确认」写入本楼层。
+                </p>
                 <Transition name="slide">
-                  <div v-show="showAiOutput" class="ai-output-content">
-                    <pre class="ai-output-text">{{ lastGenerationRaw }}</pre>
+                  <div v-show="showAiOutput" class="ai-output-content tag-dialog-edit-wrap">
+                    <textarea
+                      ref="tagDialogRawTextareaRef"
+                      v-model="tagDialogEditedRaw"
+                      class="ai-output-text tag-dialog-raw-textarea"
+                      rows="14"
+                      spellcheck="false"
+                      autocomplete="off"
+                      autocorrect="off"
+                      autocapitalize="off"
+                      @select="syncTagDialogTextareaSelection"
+                      @keyup="syncTagDialogTextareaSelection"
+                      @click="syncTagDialogTextareaSelection"
+                      @blur="syncTagDialogTextareaSelection"
+                    />
+                    <div class="tag-dialog-edit-actions">
+                      <button type="button" class="btn-secondary btn-recheck-tags" @click="recheckTagDialogContent">
+                        <i class="fa-solid fa-rotate"></i>
+                        重新检验标签
+                      </button>
+                    </div>
                   </div>
                 </Transition>
               </div>
             </div>
           </div>
           <div class="modal-footer tag-validation-footer">
-            <button class="btn-secondary btn-rollback" @click="onTagDialogRollback">
+            <template v-if="showAiOutput && tagDialogRawMaximized">
+              <button
+                type="button"
+                class="btn-secondary btn-insert-maintext-tag"
+                title="在光标处插入开始标签"
+                @mousedown.prevent
+                @click="insertMaintextTagAtCursor('open')"
+              >
+                &lt;maintext&gt;
+              </button>
+              <button
+                type="button"
+                class="btn-secondary btn-insert-maintext-tag"
+                title="在光标处插入结束标签"
+                @mousedown.prevent
+                @click="insertMaintextTagAtCursor('close')"
+              >
+                &lt;/maintext&gt;
+              </button>
+            </template>
+            <button type="button" class="btn-secondary btn-rollback" @click="onTagDialogRollback">
               <i class="fa-solid fa-rotate-left"></i>
               回退到发送前
             </button>
-            <button class="btn-primary btn-continue" @click="void onTagDialogIgnore()">
+            <button type="button" class="btn-primary btn-continue" @click="void onTagDialogIgnore()">
               <i class="fa-solid fa-check"></i>
               {{ tagCheckHasBlockingInvalid(tagCheckResults) ? '无视错误确认' : '确认信息' }}
             </button>
@@ -1265,7 +1341,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import CharacterPanel from './components/CharacterPanel.vue';
 import WorldRulesPanel from './components/WorldRulesPanel.vue';
@@ -1529,6 +1605,22 @@ const lastOptionsSnapshot = ref<Option[]>([]);
 const lastMessageIdSnapshot = ref<number | undefined>(undefined);
 const pendingUserMessageId = ref<number | null>(null);
 const showAiOutput = ref(false); // 是否展开显示AI完整输出
+/** 展开正文编辑时是否在弹窗内铺满（隐藏上方检核列表，textarea 占满剩余高度） */
+const tagDialogRawMaximized = ref(false);
+/** 标签检验弹窗内可编辑的完整 AI 输出（确认时写回 lastGenerationRaw） */
+const tagDialogEditedRaw = ref('');
+const tagDialogRawTextareaRef = ref<HTMLTextAreaElement | null>(null);
+/** 正文框失焦前选区（用于 Tab 点到插入按钮时仍能插到原光标处） */
+const tagDialogTextareaLastSel = ref({ start: 0, end: 0 });
+
+function syncTagDialogTextareaSelection() {
+  const el = tagDialogRawTextareaRef.value;
+  if (!el) return;
+  tagDialogTextareaLastSel.value = {
+    start: el.selectionStart,
+    end: el.selectionEnd,
+  };
+}
 
 /** 末尾为玩家楼层：弹窗与本次会话内「已忽略」的 message_id */
 const orphanUserFloorDialogOpen = ref(false);
@@ -1722,6 +1814,13 @@ function tagCheckLabel(tag: string): string {
   return TAG_CHECK_LABELS[tag] ?? tag;
 }
 
+/** 标签检验卡片上的标签名展示（正文含 <content> 别名） */
+function tagCheckTagCodeDisplay(tag: string): string {
+  if (tag === 'maintext') return '<maintext> / <content>';
+  if (tag === 'UpdateVariable') return '<UpdateVariable>';
+  return `<${tag}>`;
+}
+
 /** 仅 severity 为 error 的正文/思考/选项算阻塞；存疑（warning）不阻塞 */
 function tagCheckHasBlockingInvalid(results: TagCheckResult[]): boolean {
   return results.some(
@@ -1731,6 +1830,31 @@ function tagCheckHasBlockingInvalid(results: TagCheckResult[]): boolean {
       r.tag !== 'UpdateVariable',
   );
 }
+
+/** 折叠条处红色提示：阻塞性错误，或正文标签非「绿」 */
+function tagCheckNeedsManualEditHint(results: TagCheckResult[]): boolean {
+  if (tagCheckHasBlockingInvalid(results)) return true;
+  const mt = results.find(r => r.tag === 'maintext');
+  return mt != null && mt.severity !== 'ok';
+}
+
+function openTagDialogPatchEditor() {
+  showAiOutput.value = true;
+  tagDialogRawMaximized.value = true;
+}
+
+/** 点击「查看/手动修补」：展开并进入弹窗内最大化编辑；收起时恢复检核列表布局 */
+function toggleTagDialogAiOutput() {
+  if (showAiOutput.value) {
+    showAiOutput.value = false;
+    tagDialogRawMaximized.value = false;
+  } else {
+    showAiOutput.value = true;
+    tagDialogRawMaximized.value = true;
+  }
+}
+
+const tagDialogShowPatchHint = computed(() => tagCheckNeedsManualEditHint(tagCheckResults.value));
 
 function tagCheckHasDuplicateOpenWarning(results: TagCheckResult[]): boolean {
   return results.some((r) => r.severity === 'warning');
@@ -3741,7 +3865,9 @@ function maybeReturnToOpeningAfterRollback(): boolean {
     currentMessageInfo.value = {};
     userInput.value = '';
     showAiOutput.value = false;
+    tagDialogRawMaximized.value = false;
     lastGenerationRaw.value = '';
+    tagDialogEditedRaw.value = '';
     lastGenerationDurationLabel.value = '';
     pendingUserMessageId.value = null;
     lastUserInputSnapshot.value = '';
@@ -3805,10 +3931,12 @@ async function rollbackToSnapshot() {
 
     // 4. 清理临时状态
     lastGenerationRaw.value = '';
+    tagDialogEditedRaw.value = '';
     lastGenerationDurationLabel.value = '';
     pendingUserMessageId.value = null;
     isTagDialogOpen.value = false;
     showAiOutput.value = false; // 重置展开状态
+    tagDialogRawMaximized.value = false;
 
     if (maybeReturnToOpeningAfterRollback()) {
       console.log('✅ [App] 回退完成，已切换至开始界面');
@@ -3825,13 +3953,55 @@ async function rollbackToSnapshot() {
 // 打开标签验证弹窗
 function openTagValidationDialog(rawText: string) {
   lastGenerationRaw.value = rawText;
+  tagDialogEditedRaw.value = rawText;
   const elapsed =
     aiGenerationStartMs.value > 0 ? Date.now() - aiGenerationStartMs.value : NaN;
   lastGenerationDurationLabel.value = formatGenerationDurationMs(elapsed);
   tagCheckResults.value = validateTags(rawText);
   isTagDialogOpen.value = true;
   showAiOutput.value = false; // 默认折叠“AI 完整输出”
+  tagDialogRawMaximized.value = false;
+  tagDialogTextareaLastSel.value = { start: rawText.length, end: rawText.length };
   console.log('🔍 [App] 打开标签验证弹窗:', tagCheckResults.value);
+}
+
+/** 标签弹窗内：按当前编辑区文本重新跑标签检核 */
+function recheckTagDialogContent() {
+  const text = tagDialogEditedRaw.value;
+  tagCheckResults.value = validateTags(text);
+  console.log('🔍 [App] 重新检验标签:', tagCheckResults.value);
+  if (tagCheckHasBlockingInvalid(tagCheckResults.value)) {
+    toastr.warning('仍有标红项，可继续修补或选择「无视错误确认」');
+  } else {
+    toastr.success('标签检验已更新');
+  }
+}
+
+/** 在正文编辑框光标处插入 maintext 开/闭标签（未展开编辑区时追加到全文末尾） */
+function insertMaintextTagAtCursor(which: 'open' | 'close') {
+  const tag = which === 'open' ? '<maintext>' : '</maintext>';
+  const el = tagDialogRawTextareaRef.value;
+  const full = tagDialogEditedRaw.value;
+
+  if (showAiOutput.value && el) {
+    let start = typeof el.selectionStart === 'number' ? el.selectionStart : full.length;
+    let end = typeof el.selectionEnd === 'number' ? el.selectionEnd : start;
+    if (document.activeElement !== el) {
+      start = Math.min(tagDialogTextareaLastSel.value.start, full.length);
+      end = Math.min(tagDialogTextareaLastSel.value.end, full.length);
+      if (end < start) end = start;
+    }
+    tagDialogEditedRaw.value = full.slice(0, start) + tag + full.slice(end);
+    const caret = start + tag.length;
+    tagDialogTextareaLastSel.value = { start: caret, end: caret };
+    void nextTick(() => {
+      el.focus();
+      el.setSelectionRange(caret, caret);
+    });
+    return;
+  }
+
+  tagDialogEditedRaw.value = full + tag;
 }
 
 function onTagDialogCloseAttempt() {
@@ -3841,6 +4011,9 @@ function onTagDialogCloseAttempt() {
 // 处理标签验证弹窗 - 无视错误继续
 async function onTagDialogIgnore() {
   console.log('⚠️ [App] 用户选择无视标签错误，继续本回合');
+
+  // 采用弹窗内编辑后的全文（含手动补标签）
+  lastGenerationRaw.value = tagDialogEditedRaw.value;
 
   // 解析最终结果
   const finalMaintext = parseMaintext(lastGenerationRaw.value);
@@ -3855,6 +4028,7 @@ async function onTagDialogIgnore() {
     isTagDialogOpen.value = false;
     isGenerating.value = false;
     showAiOutput.value = false;
+    tagDialogRawMaximized.value = false;
     return;
   }
 
@@ -3930,6 +4104,7 @@ async function onTagDialogIgnore() {
 
   // 清理状态
   lastGenerationRaw.value = '';
+  tagDialogEditedRaw.value = '';
   lastGenerationDurationLabel.value = '';
   pendingUserMessageId.value = null;
   lastUserInputSnapshot.value = '';
@@ -3938,6 +4113,7 @@ async function onTagDialogIgnore() {
   lastMessageIdSnapshot.value = undefined;
   isGenerating.value = false;
   showAiOutput.value = false; // 重置展开状态
+  tagDialogRawMaximized.value = false;
   isVariableRerollOnly.value = false; // 重置单独重roll变量标记
 
   // 如果是开局流程，结束初始化并刷新楼层元数据
@@ -4016,6 +4192,7 @@ async function onTagDialogRollback() {
     // 清理状态
     pendingUserMessageId.value = null;
     lastGenerationRaw.value = '';
+    tagDialogEditedRaw.value = '';
     lastGenerationDurationLabel.value = '';
     isTagDialogOpen.value = false;
     isGenerating.value = false;
@@ -4023,6 +4200,7 @@ async function onTagDialogRollback() {
     isInitializing.value = false;
     isOpeningPhase.value = false;
     showAiOutput.value = false;
+    tagDialogRawMaximized.value = false;
     mainText.value = '';
     options.value = [];
     streamTextBuffer.value = '';
@@ -4039,6 +4217,7 @@ async function onTagDialogRollback() {
   await rollbackToSnapshot();
   isGenerating.value = false;
   showAiOutput.value = false; // 重置展开状态
+  tagDialogRawMaximized.value = false;
 }
 
 /**
@@ -8446,6 +8625,86 @@ body.has-dragging-fab {
   overflow-y: auto;
 }
 
+.tag-validation-modal.is-raw-maximized {
+  max-width: min(920px, 96vw);
+  max-height: min(92vh, calc(100dvh - 20px));
+  height: min(92vh, calc(100dvh - 20px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tag-validation-modal.is-raw-maximized .modal-header,
+.tag-validation-modal.is-raw-maximized .modal-footer {
+  flex-shrink: 0;
+}
+
+.tag-validation-modal.is-raw-maximized .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top: 8px;
+}
+
+.tag-validation-modal.is-raw-maximized .tag-validation-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tag-validation-modal.is-raw-maximized .tag-validation-content > *:not(.ai-output-section) {
+  display: none !important;
+}
+
+.tag-validation-modal.is-raw-maximized .ai-output-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+.tag-validation-modal.is-raw-maximized .ai-output-toggle {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.tag-validation-modal.is-raw-maximized .ai-output-content.tag-dialog-edit-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 0;
+}
+
+.tag-validation-modal.is-raw-maximized textarea.tag-dialog-raw-textarea {
+  flex: 1;
+  min-height: 160px;
+  max-height: none !important;
+  height: auto;
+  resize: none;
+}
+
+.tag-validation-modal.is-raw-maximized .tag-dialog-edit-actions {
+  flex-shrink: 0;
+  padding: 8px 8px 0;
+}
+
+.tag-validation-overlay:has(.tag-validation-modal.is-raw-maximized) {
+  align-items: stretch;
+  padding: 8px 10px;
+  padding-top: calc(36px * var(--ui-scale, 1));
+}
+
 .tag-validation-modal .modal-header {
   padding: 10px 14px;
 
@@ -8656,8 +8915,10 @@ body.has-dragging-fab {
 
 .tag-validation-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 
   button {
     display: flex;
@@ -8666,6 +8927,12 @@ body.has-dragging-fab {
     padding: 8px 16px; // 减小按钮 padding
     font-size: 13px; // 减小字体
   }
+}
+
+.btn-insert-maintext-tag {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-family: ui-monospace, 'Consolas', monospace;
 }
 
 .btn-rollback {
@@ -8691,6 +8958,71 @@ body.has-dragging-fab {
   margin-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: var(--space-md);
+}
+
+.tag-dialog-patch-hint {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: #e4e4e7;
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(161, 161, 170, 0.6);
+    outline-offset: 2px;
+  }
+
+  &--urgent {
+    color: #fecaca;
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(239, 68, 68, 0.45);
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: rgba(248, 113, 113, 0.55);
+      color: #fff;
+    }
+
+    &:focus-visible {
+      outline-color: rgba(248, 113, 113, 0.7);
+    }
+  }
+}
+
+.light .tag-dialog-patch-hint {
+  color: #52525b;
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.07);
+    border-color: rgba(0, 0, 0, 0.14);
+    color: #27272a;
+  }
+}
+
+.light .tag-dialog-patch-hint.tag-dialog-patch-hint--urgent {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(220, 38, 38, 0.35);
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.14);
+    border-color: rgba(220, 38, 38, 0.5);
+    color: #991b1b;
+  }
 }
 
 .dark .ai-output-section {
@@ -8731,6 +9063,15 @@ body.has-dragging-fab {
     color: #71717a;
     font-family: monospace;
   }
+
+  &.is-patch-suggested {
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #fecaca;
+
+    .output-length {
+      color: #fca5a5;
+    }
+  }
 }
 
 .dark .ai-output-toggle {
@@ -8748,6 +9089,20 @@ body.has-dragging-fab {
   }
 }
 
+.dark .ai-output-toggle.is-patch-suggested {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fecaca;
+
+  .output-length {
+    color: #fca5a5;
+  }
+
+  &:hover {
+    border-color: rgba(248, 113, 113, 0.6);
+    color: #fff;
+  }
+}
+
 .light .ai-output-toggle {
   border-color: rgba(0, 0, 0, 0.1);
   background: rgba(0, 0, 0, 0.05);
@@ -8760,6 +9115,15 @@ body.has-dragging-fab {
 
   .output-length {
     color: #a1a1aa;
+  }
+
+  &.is-patch-suggested {
+    border-color: rgba(220, 38, 38, 0.4);
+    color: #991b1b;
+
+    .output-length {
+      color: #b91c1c;
+    }
   }
 }
 
@@ -8779,6 +9143,50 @@ body.has-dragging-fab {
 .light .ai-output-content {
   border-color: rgba(0, 0, 0, 0.1);
   background: rgba(0, 0, 0, 0.05);
+}
+
+.tag-dialog-edit-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #a1a1aa;
+  code {
+    font-size: 11px;
+  }
+}
+
+.light .tag-dialog-edit-hint {
+  color: #71717a;
+}
+
+.tag-dialog-edit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag-dialog-raw-textarea {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  max-height: min(50vh, 420px);
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  resize: vertical;
+}
+
+.tag-dialog-edit-actions {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-recheck-tags {
+  font-size: 12px;
 }
 
 .ai-output-text {
@@ -8835,5 +9243,10 @@ body.has-dragging-fab {
   &::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 0, 0, 0.3);
   }
+}
+
+textarea.ai-output-text.tag-dialog-raw-textarea {
+  max-height: min(50vh, 420px);
+  min-height: 200px;
 }
 </style>

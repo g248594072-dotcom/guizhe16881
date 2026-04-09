@@ -1146,35 +1146,61 @@ function sanitizeCharacterArchiveUpdatesForMvu(updates: Record<string, unknown>)
   return out;
 }
 
+/** 与规则前端 messageParser 一致：`</maintext>` 或 `</content>` 闭标签 + `<maintext>` / `<content>` 开标签 */
+function findLastBodyCloseForPhone(text: string, lc: string): { idx: number; len: number } | null {
+  const idxM = lc.lastIndexOf('</maintext>');
+  const idxC = lc.lastIndexOf('</content>');
+  if (idxM < 0 && idxC < 0) return null;
+  const preferM = idxM >= idxC;
+  const candidates = preferM
+    ? [
+        { idx: idxM, re: /^<\/maintext>/i },
+        { idx: idxC, re: /^<\/content>/i },
+      ]
+    : [
+        { idx: idxC, re: /^<\/content>/i },
+        { idx: idxM, re: /^<\/maintext>/i },
+      ];
+  for (const { idx, re } of candidates) {
+    if (idx < 0) continue;
+    const m = text.slice(idx).match(re);
+    if (m) return { idx, len: m[0].length };
+  }
+  return null;
+}
+
+function lastBodyOpenBeforeForPhone(text: string, closeIdx: number): { idx: number; len: number } | null {
+  const opens = [...text.matchAll(/<maintext>|<content(\s[^>]*)?>/gi)];
+  let best: { idx: number; len: number } | null = null;
+  for (const m of opens) {
+    const i = m.index ?? 0;
+    if (i >= closeIdx) continue;
+    if (!best || i > best.idx) best = { idx: i, len: m[0].length };
+  }
+  return best;
+}
+
 /**
- * 与规则前端 messageParser 一致：最后一对闭合的 <maintext> 内部（先去掉 thinking）。
+ * 与规则前端 messageParser 一致：最后一对正文开闭标签内部（先去掉 thinking）。
  */
 function extractMaintextByLastClosePairForPhone(text: string): string {
   if (!text) {
     return '';
   }
   const lc = text.toLowerCase();
-  const closeIdx = lc.lastIndexOf('</maintext>');
-  if (closeIdx === -1) {
+  const close = findLastBodyCloseForPhone(text, lc);
+  if (!close) {
     return '';
   }
-  const openIdx = lc.lastIndexOf('<maintext>', closeIdx);
-  if (openIdx === -1) {
+  const open = lastBodyOpenBeforeForPhone(text, close.idx);
+  if (!open) {
     return '';
   }
-  const openSlice = text.slice(openIdx);
-  const openMatch = openSlice.match(/^<maintext>/i);
-  if (!openMatch) {
+  const innerStart = open.idx + open.len;
+  if (innerStart > close.idx) {
     return '';
   }
-  const innerStart = openIdx + openMatch[0].length;
-  if (innerStart > closeIdx) {
-    return '';
-  }
-  if (!/^<\/maintext>/i.test(text.slice(closeIdx))) {
-    return '';
-  }
-  return text.slice(innerStart, closeIdx).trim();
+  return text.slice(innerStart, close.idx).trim();
 }
 
 function parseMaintextForPhoneStory(raw: string): string {
@@ -1204,7 +1230,7 @@ function extractLastSumForPhoneStory(raw: string): string {
 }
 
 /**
- * AI 楼层：只采用完整闭合的 <maintext> + <sum>；无则跳过该层（避免选项/patch 混入）。
+ * AI 楼层：只采用完整闭合的正文（<maintext>/<content> 与 </maintext>/</content>）+ <sum>；无则跳过该层。
  */
 function formatAssistantStorySnippet(raw: string): string {
   const cleaned = stripImageGenPromptBlocksForWeChatSnippet(String(raw));
