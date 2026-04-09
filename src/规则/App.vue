@@ -147,6 +147,7 @@
       'layout-pending': uiLayout.maxHeight === undefined,
       'animate-shake': isShaking,
       'has-mvu-missing-tip': showMvuMissingTip,
+      'has-mvu-archive-banner': rulesMvuArchiveReadOnly,
     }"
     :style="rootStyle"
   >
@@ -173,6 +174,15 @@
       >
         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
+    </div>
+    <div
+      v-if="rulesMvuArchiveReadOnly"
+      class="rules-mvu-archive-banner"
+      :class="{ dark: isDarkMode, light: !isDarkMode }"
+      role="status"
+    >
+      <i class="fa-solid fa-eye" aria-hidden="true"></i>
+      <span>历史楼层快照，仅可查看；编辑与变量写入请在<strong>最后一条消息</strong>上的面板中操作。</span>
     </div>
     <!-- Sidebar -->
     <nav class="sidebar">
@@ -1391,7 +1401,7 @@ import type { UiLayoutSettings } from './utils/uiLayoutLimits';
 import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits';
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
-import { useDataStore } from './store';
+import { isRulesMvuLiveHostAtInit, useDataStore } from './store';
 import { useEditCartStore } from './stores/editCart';
 import { getOtherSettings } from './utils/otherSettings';
 import {
@@ -1424,6 +1434,8 @@ const gameSurfaceTeleportTarget = computed(() =>
   gamePhase.value === GamePhase.GAME ? '#app-root' : 'body',
 );
 const isInitializing = ref(false);
+/** 历史楼层 iframe：只读快照，不可写入 latest */
+const rulesMvuArchiveReadOnly = ref(false);
 const isStoreReady = ref(false); // store 数据是否就绪
 const showMvuMissingTip = ref(false); // 是否显示 MVU 缺失提示
 const mvuMissingTipDismissed = ref(false); // 用户是否已关闭过提示（本次会话）
@@ -1471,7 +1483,10 @@ watch(editCartPendingCount, n => {
 
 /** 与模板「确认提交」一致：不禁用按钮，仅样式 + 处理函数内早退，避免点击穿透 */
 const editCartSubmitBlocked = computed(
-  () => editCartPendingCount.value === 0 || editCartApplying.value,
+  () =>
+    editCartPendingCount.value === 0 ||
+    editCartApplying.value ||
+    rulesMvuArchiveReadOnly.value,
 );
 /** 打开个人规则面板时要展开的分组名（与 rule.target / 角色名一致）；由子组件消费后清空 */
 const personalRulesExpandGroup = ref<string | null>(null);
@@ -4767,6 +4782,7 @@ function onSecondaryApiStartEvent(ev: Event) {
 onMounted(() => {
   // 等待 store 数据就绪
   const store = useDataStore();
+  rulesMvuArchiveReadOnly.value = !isRulesMvuLiveHostAtInit();
   let unwatch: (() => void) | null = null;
 
   // 先检查一次数据
@@ -4987,6 +5003,47 @@ onUnmounted(() => {
     .tip-content i {
       color: #b45309;
     }
+  }
+}
+
+// 历史楼层只读提示（可与 MVU 缺失条并存：下移避免重叠）
+.rules-mvu-archive-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px calc(16px * var(--ui-scale, 1));
+  min-height: 40px;
+  box-sizing: border-box;
+  font-size: calc(12px * var(--ui-scale, 1));
+  line-height: 1.45;
+  z-index: 9998;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  top: 0;
+
+  .rule-modifier.has-mvu-missing-tip & {
+    top: 44px;
+  }
+
+  i {
+    flex-shrink: 0;
+    opacity: 0.9;
+  }
+
+  &.dark {
+    background: #1e3a5f;
+    border-bottom: 1px solid #3b82f6;
+    color: #e0f2fe;
+  }
+
+  &.light {
+    background: #dbeafe;
+    border-bottom: 1px solid #2563eb;
+    color: #1e3a8a;
   }
 }
 
@@ -5217,6 +5274,14 @@ onUnmounted(() => {
   // MVU 顶栏占位，避免正文与侧栏被 fixed 条挡住（与 .mvu-missing-tip min-height 一致）
   &.has-mvu-missing-tip {
     padding-top: 44px;
+    box-sizing: border-box;
+  }
+  &.has-mvu-archive-banner:not(.has-mvu-missing-tip) {
+    padding-top: 40px;
+    box-sizing: border-box;
+  }
+  &.has-mvu-missing-tip.has-mvu-archive-banner {
+    padding-top: 84px;
     box-sizing: border-box;
   }
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

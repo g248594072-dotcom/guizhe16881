@@ -8,18 +8,55 @@ import { Schema } from './schema';
 import type { CharacterData, RuleData, RegionData } from './types';
 import { normalizeFetishRecord, normalizeSensitivePartRecord, normalizeTagMap } from './utils/tagMap';
 
+/** 首次 `useDataStore()` 时写入：本 iframe 是否绑定 latest 并可写回（历史层为 false） */
+let rulesMvuLiveHostAtInit: boolean | null = null;
+
 /**
  * 主数据存储
  * 使用 defineMvuDataStore 自动与酒馆变量同步
  *
- * 使用 `message_id: -1`（最新一条消息楼层）：同层界面 iframe 常挂在较早楼层（如 0），
- * 而本项目的 MVU 随回合写在当前聊天**最后一条**；若用 `getCurrentMessageId()` 会长期读到空 `角色档案`。
- * 见 `@types/function/variables.d.ts`：负数下标表示从末尾计，`-1` 为最新楼层。
+ * **分层读写（避免多 iframe 争用 latest）**
+ * - iframe 挂在**当前聊天最后一条消息**（`getCurrentMessageId() === getLastMessageId()`）时：绑定 `message_id: -1` 并 **写回**，与「总状态在最后一层」一致。
+ * - 挂在**历史楼层**时：绑定 `getCurrentMessageId()` 且 **writeBack: false**，只读该层快照，不向酒馆写入，避免旧层顶掉最新层变量。
+ *
+ * 见 `@types/function/variables.d.ts`：负数下标 `-1` 为最新楼层。
  */
-export const useDataStore = defineMvuDataStore(Schema, {
-  type: 'message',
-  message_id: -1,
-});
+export const useDataStore = defineMvuDataStore(
+  Schema,
+  () => {
+    const mid = getCurrentMessageId();
+    const last = getLastMessageId();
+    const live = mid === last;
+    rulesMvuLiveHostAtInit = live;
+    return { type: 'message', message_id: live ? -1 : mid };
+  },
+  undefined,
+  () => ({
+    writeBack: rulesMvuLiveHostAtInit === true,
+  }),
+);
+
+/** 须在首次 `useDataStore()` 之后调用；用于只读 UI 等与 store 绑定一致的判断 */
+export function isRulesMvuLiveHostAtInit(): boolean {
+  return rulesMvuLiveHostAtInit === true;
+}
+
+/** 历史楼层只读快照（无 toast，供底层 *ToVariables 快速短路） */
+export function isRulesMvuArchiveSnapshot(): boolean {
+  return rulesMvuLiveHostAtInit === false;
+}
+
+/**
+ * 历史楼层快照（writeBack=false）时返回 false 并提示。
+ * `rulesMvuLiveHostAtInit === null` 时视为未初始化，不拦截。
+ */
+export function tryRulesMvuWritable(): boolean {
+  if (rulesMvuLiveHostAtInit === false) {
+    toastr.warning('当前为历史楼层快照，仅可查看；请在最后一条消息上的面板中编辑。');
+    return false;
+  }
+  return true;
+}
 
 /**
  * 获取角色列表（响应式）
@@ -251,6 +288,7 @@ export function useMetaInfo() {
  * 更新元信息中的最近更新时间
  */
 export function bumpUpdateTime() {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   store.data.元信息.最近更新时间 = Date.now();
 }
@@ -277,6 +315,7 @@ export function useGameTime() {
  * 推进指定分钟数，触发 schema 的 transform 处理进位
  */
 export function advanceGameTime(minutes: number) {
+  if (!tryRulesMvuWritable()) return;
   const store = useDataStore();
   const gameTime = store.data.游戏时间;
   if (gameTime) {
@@ -289,6 +328,7 @@ export function advanceGameTime(minutes: number) {
  * 设置游戏时间到指定值
  */
 export function setGameTime(time: { 年?: number; 月?: number; 日?: number; 时?: number; 分?: number }) {
+  if (!tryRulesMvuWritable()) return;
   const store = useDataStore();
   const gameTime = store.data.游戏时间;
   if (gameTime) {

@@ -7,7 +7,12 @@
  */
 
 import type { RuleData, CharacterData, RegionData } from '../types';
-import { useDataStore, bumpUpdateTime } from '../store';
+import {
+  useDataStore,
+  bumpUpdateTime,
+  tryRulesMvuWritable,
+  isRulesMvuArchiveSnapshot,
+} from '../store';
 import {
   parseEditableTextToTagMap,
   parseEditableTextToFetishRecord,
@@ -64,6 +69,7 @@ export function formatAddCharacterMessage(name: string, description: string): st
 }
 
 export function addCharacterToVariables(name: string, description: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const id = `CHR-${Date.now()}`;
   const n = name.trim() || '未命名';
@@ -102,6 +108,7 @@ export async function submitAddCharacter(name: string, description: string): Pro
     toastr.warning('请输入角色名字');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatAddCharacterMessage(n, description);
   addCharacterToVariables(n, description);
   return message;
@@ -135,6 +142,7 @@ export function formatEditCharacterBasicMessage(payload: {
 }
 
 export function updateCharacterInVariables(characterId: string, updates: Partial<CharacterData>): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
   if (!char) return;
@@ -164,6 +172,7 @@ export async function submitEditCharacterBasic(
   characterId: string,
   payload: Record<string, string | number | undefined>,
 ): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
   const message = formatEditCharacterBasicMessage({ characterId, ...payload });
 
   const stats: Record<string, number> = {};
@@ -274,6 +283,7 @@ export function updateCharacterPsychInChineseVariables(
     隐藏性癖?: string;
   },
 ): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
   if (!char) return;
@@ -297,6 +307,7 @@ export async function submitEditCharacterPsych(
     hiddenFetish?: string;
   },
 ): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
   const updates: {
     当前内心想法?: string;
     性格?: Record<string, string>;
@@ -349,6 +360,7 @@ export function updateCharacterFetishDetails(
   characterId: string,
   updates: FetishDetailUpdate[],
 ): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
   if (!char) return;
@@ -376,6 +388,7 @@ export function updateCharacterSensitivePartDetails(
   characterId: string,
   updates: SensitivePartDetailUpdate[],
 ): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
   if (!char) return;
@@ -402,6 +415,7 @@ export function updateCharacterIdentityTags(
   characterId: string,
   tags: Record<string, string>,
 ): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
   if (!char) return;
@@ -462,6 +476,7 @@ export function formatWorldRuleMessage(type: 'add' | 'edit' | 'archive' | 'resto
 }
 
 export function addWorldRuleToVariables(title: string, desc: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   store.data.世界规则[title] = {
     名称: title,
@@ -475,6 +490,7 @@ export function addWorldRuleToVariables(title: string, desc: string): void {
 }
 
 export function updateWorldRuleInVariables(idOrTitle: string, updates: Partial<RuleData>): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
   
@@ -508,6 +524,7 @@ export function updateWorldRuleInVariables(idOrTitle: string, updates: Partial<R
 }
 
 export function archiveWorldRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
   
@@ -524,6 +541,7 @@ export function archiveWorldRuleInVariables(idOrTitle: string): void {
 }
 
 export function restoreWorldRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
   
@@ -545,6 +563,7 @@ export async function submitAddWorldRule(name: string, detail: string): Promise<
     toastr.warning('请输入规则名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatWorldRuleMessage('add', n, detail.trim());
   addWorldRuleToVariables(n, detail.trim());
 
@@ -566,6 +585,7 @@ export async function submitEditWorldRule(idOrTitle: string, name: string, detai
     toastr.warning('请输入规则名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatWorldRuleMessage('edit', n, detail.trim());
   updateWorldRuleInVariables(idOrTitle, { title: n, desc: detail.trim() });
 
@@ -578,6 +598,7 @@ export async function submitEditWorldRule(idOrTitle: string, name: string, detai
 }
 
 export async function submitArchiveWorldRule(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatWorldRuleMessage('archive', name);
   await sendToDialog(message);
   archiveWorldRuleInVariables(name);
@@ -585,6 +606,7 @@ export async function submitArchiveWorldRule(name: string): Promise<void> {
 }
 
 export async function submitRestoreWorldRule(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatWorldRuleMessage('restore', name);
   await sendToDialog(message);
   restoreWorldRuleInVariables(name);
@@ -611,6 +633,7 @@ export function formatRegionRuleMessage(
 }
 
 export function addRegionToVariables(name: string, detail: string, firstRuleTitle?: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -631,6 +654,7 @@ export function addRegionToVariables(name: string, detail: string, firstRuleTitl
 }
 
 export function updateRegionInVariables(idOrName: string, updates: Partial<RegionData>): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -667,6 +691,7 @@ export function updateRegionInVariables(idOrName: string, updates: Partial<Regio
 }
 
 export function archiveRegionInVariables(idOrName: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -685,6 +710,7 @@ export function archiveRegionInVariables(idOrName: string): void {
 }
 
 export function restoreRegionInVariables(idOrName: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -703,6 +729,7 @@ export function restoreRegionInVariables(idOrName: string): void {
 }
 
 export function addRegionalRuleToVariables(regionIdOrName: string, title: string, desc: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -733,6 +760,7 @@ export function addRegionalRuleToVariables(regionIdOrName: string, title: string
 }
 
 export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string, updates: Partial<RuleData>): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -787,6 +815,7 @@ export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTi
 }
 
 export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -823,6 +852,7 @@ export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
 }
 
 export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
@@ -864,6 +894,7 @@ export async function submitAddRegion(name: string, detail: string, firstRuleNam
     toastr.warning('请输入区域名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const ruleTitle = (firstRuleName ?? '').trim();
   const message = formatRegionRuleMessage('add', n, detail.trim(), ruleTitle || undefined);
   addRegionToVariables(n, detail.trim(), ruleTitle || undefined);
@@ -886,6 +917,7 @@ export async function submitAddRegionalRule(regionIdOrName: string, regionName: 
     toastr.warning('请输入规则名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const detail = ruleDetail.trim();
   const message = `[新增区域规则]\n区域：${regionName}\n规则：${n}\n细节：${detail}`;
   addRegionalRuleToVariables(regionIdOrName, n, detail);
@@ -914,6 +946,7 @@ export async function submitEditRegionalRule(
     toastr.warning('请输入规则名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const detail = ruleDetail.trim();
   const message = `[编辑区域规则]\n区域：${regionName}\n规则：${n}\n细节：${detail}`;
   updateRegionalRuleInVariables(regionIdOrName, ruleIdOrTitle, { title: n, desc: detail });
@@ -932,6 +965,7 @@ export async function submitEditRegion(idOrName: string, name: string, detail: s
     toastr.warning('请输入区域名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatRegionRuleMessage('edit', n, detail.trim());
   updateRegionInVariables(idOrName, { name: n, description: detail.trim() });
 
@@ -944,6 +978,7 @@ export async function submitEditRegion(idOrName: string, name: string, detail: s
 }
 
 export async function submitArchiveRegion(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('archive', name);
   await sendToDialog(message);
   archiveRegionInVariables(name);
@@ -951,6 +986,7 @@ export async function submitArchiveRegion(name: string): Promise<void> {
 }
 
 export async function submitRestoreRegion(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('restore', name);
   await sendToDialog(message);
   restoreRegionInVariables(name);
@@ -958,6 +994,7 @@ export async function submitRestoreRegion(name: string): Promise<void> {
 }
 
 export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('archive', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
   archiveRegionalRuleInVariables(regionName, ruleIdOrTitle);
@@ -965,6 +1002,7 @@ export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitl
 }
 
 export async function submitRestoreRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('restore', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
   restoreRegionalRuleInVariables(regionName, ruleIdOrTitle);
@@ -981,6 +1019,7 @@ export function formatPersonalRuleMessage(type: 'add' | 'edit' | 'archive' | 're
 }
 
 export function addPersonalRuleToVariables(characterName: string, detail: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const key = `PR-${Date.now()}`;
   const c = characterName.trim();
@@ -996,6 +1035,7 @@ export function addPersonalRuleToVariables(characterName: string, detail: string
 }
 
 export function updatePersonalRuleInVariables(idOrTitle: string, updates: Partial<RuleData>): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
   
@@ -1020,6 +1060,7 @@ export function updatePersonalRuleInVariables(idOrTitle: string, updates: Partia
 }
 
 export function archivePersonalRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
   
@@ -1036,6 +1077,7 @@ export function archivePersonalRuleInVariables(idOrTitle: string): void {
 }
 
 export function restorePersonalRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
   
@@ -1057,6 +1099,7 @@ export async function submitAddPersonalRule(characterName: string, detail: strin
     toastr.warning('请输入角色/对象名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatPersonalRuleMessage('add', c, detail.trim());
   addPersonalRuleToVariables(c, detail.trim());
   markResidentLifePendingPersonalRule();
@@ -1070,6 +1113,7 @@ export async function submitEditPersonalRule(idOrTitle: string, characterName: s
     toastr.warning('请输入角色/对象名称');
     return '';
   }
+  if (!tryRulesMvuWritable()) return '';
   const message = formatPersonalRuleMessage('edit', c, detail.trim());
   updatePersonalRuleInVariables(idOrTitle, { title: c, desc: detail.trim() });
   markResidentLifePendingPersonalRule();
@@ -1078,6 +1122,7 @@ export async function submitEditPersonalRule(idOrTitle: string, characterName: s
 }
 
 export async function submitArchivePersonalRule(idOrTitle: string, characterName?: string, ruleSummary?: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const label = characterName ?? idOrTitle;
   const message = formatPersonalRuleMessage('archive', label, ruleSummary);
   await sendToDialog(message);
@@ -1087,6 +1132,7 @@ export async function submitArchivePersonalRule(idOrTitle: string, characterName
 }
 
 export async function submitRestorePersonalRule(idOrTitle: string, characterName?: string, ruleSummary?: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   const label = characterName ?? idOrTitle;
   const message = formatPersonalRuleMessage('restore', label, ruleSummary);
   await sendToDialog(message);
@@ -1107,6 +1153,7 @@ export async function submitRestorePersonalRule(idOrTitle: string, characterName
  * 3. 调用编年史更新函数写入世界书
  */
 export async function syncGameStoryToWorldbook(): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
   try {
     const { checkAndUpdateChronicle } = await import('./chronicleUpdater');
     const success = await checkAndUpdateChronicle();
@@ -1134,6 +1181,7 @@ export function formatDeleteCharacterMessage(characterId: string, characterName:
  * 同时删除与该角色相关的个人规则和头像缓存
  */
 export function deleteCharacterFromVariables(characterId: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
 
   // 获取角色名称（用于匹配个人规则）
@@ -1176,6 +1224,7 @@ export function deleteCharacterFromVariables(characterId: string): void {
  * 提交删除角色（包含消息格式化）
  */
 export async function submitDeleteCharacter(characterId: string, characterName: string): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
   const message = formatDeleteCharacterMessage(characterId, characterName);
   deleteCharacterFromVariables(characterId);
   toastr.success(`已删除角色「${characterName}」及相关个人规则`);

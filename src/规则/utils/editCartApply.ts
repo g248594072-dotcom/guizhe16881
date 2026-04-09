@@ -1,7 +1,7 @@
 /**
  * 执行购物车单条操作（与 App onModalComplete / 归档 / 角色详情 行为一致）
  */
-import { useDataStore } from '../store';
+import { tryRulesMvuWritable, useDataStore } from '../store';
 import type { EditCartAction, EditCartModalForm } from '../types/editCart';
 
 export async function runModalCommit(
@@ -9,6 +9,7 @@ export async function runModalCommit(
   form: EditCartModalForm,
   payload: Record<string, unknown> | null,
 ): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
   const p = payload ?? undefined;
   let messageText = '';
 
@@ -131,6 +132,7 @@ export async function runModalCommit(
 }
 
 export async function applyEditCartAction(action: EditCartAction): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
   const m = await import('./dialogAndVariable');
 
   switch (action.kind) {

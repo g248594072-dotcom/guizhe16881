@@ -5,7 +5,7 @@
 
 import type { OtherSettings, InputActionMode } from '../types';
 import { DEFAULT_OTHER_SETTINGS } from '../types';
-import { useDataStore } from '../store';
+import { tryRulesMvuWritable, useDataStore } from '../store';
 import { loadOtherSettings, saveOtherSettingsLocal } from './localSettings';
 
 function readOtherFromLocalStorage(): OtherSettings | null {
@@ -63,6 +63,7 @@ export function getOtherSettings(): OtherSettings {
  * 传入部分字段时会与当前设置合并，避免覆盖未传入的项。
  */
 export function saveOtherSettings(partial: Partial<OtherSettings>): boolean {
+  if (!tryRulesMvuWritable()) return false;
   const settings: OtherSettings = {
     ...getOtherSettings(),
     ...partial,

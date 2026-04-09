@@ -5,7 +5,7 @@
  * 与现实系统时间无关，不会自动流逝，仅随剧情推进而更新
  */
 
-import { useDataStore } from '../store';
+import { tryRulesMvuWritable, useDataStore } from '../store';
 
 /**
  * 游戏时间对象接口
@@ -118,6 +118,7 @@ export function getDetailedTimeDescription(time: GameTime): string {
  * @param minutes 要推进的分钟数
  */
 export function advanceGameTime(minutes: number): void {
+  if (!tryRulesMvuWritable()) return;
   const store = useDataStore();
   const gameTime = store.data.游戏时间;
 
@@ -136,6 +137,7 @@ export function advanceGameTime(minutes: number): void {
  * 设置游戏时间到指定值
  */
 export function setGameTime(newTime: Partial<GameTime>): void {
+  if (!tryRulesMvuWritable()) return;
   const store = useDataStore();
   const gameTime = store.data.游戏时间;
 

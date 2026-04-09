@@ -1,4 +1,4 @@
-import { waitUntil } from 'async-wait-until';
+import { TimeoutError, waitUntil } from 'async-wait-until';
 import { normalizeFetishRecord, normalizeSensitivePartRecord } from './utils/tagMap';
 import App from './App.vue';
 import './index.scss';
@@ -47,16 +47,29 @@ $(async () => {
   // 注册 MVU 嵌套对象修复：在每次变量更新后立即规范化性癖/敏感部位字段
   registerMvuNestedObjectFix();
 
-  // ⭐ 关键：等待变量被正确设置（确保 schema 已解析）
-  await waitUntil(() => {
-    try {
-      // 与 store 一致：消息变量在「最新楼层」(-1)，与 iframe 所在楼层 (getCurrentMessageId) 可能不同
-      const vars = getVariables({ type: 'message', message_id: -1 });
-      return _.has(vars, 'stat_data');
-    } catch {
-      return false;
+  // ⭐ 与 store 一致：live 宿主等 latest (-1)；历史层只等本层，短超时避免卡死
+  const mid = getCurrentMessageId();
+  const last = getLastMessageId();
+  const live = mid === last;
+  const waitMessageId = live ? -1 : mid;
+  try {
+    await waitUntil(
+      () => {
+        try {
+          const vars = getVariables({ type: 'message', message_id: waitMessageId });
+          return _.has(vars, 'stat_data');
+        } catch {
+          return false;
+        }
+      },
+      { timeout: live ? 10000 : 2000 },
+    );
+  } catch (e) {
+    if (live || !(e instanceof TimeoutError)) {
+      throw e;
     }
-  }, { timeout: 10000 });
+    console.info('[规则] 历史楼层未在限时内出现 stat_data，继续挂载（只读快照可能为空）');
+  }
 
   console.log('🎮 [规则] 同层前端界面初始化完成，MVU 已就绪');
 

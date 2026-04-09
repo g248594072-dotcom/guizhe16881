@@ -12,6 +12,14 @@ function normalizeMessageVariableOption(option: VariableOption): VariableOption 
   return o;
 }
 
+export type DefineMvuDataStoreOptions = {
+  /**
+   * 为 false 时：仍从 variable_option 拉取/轮询合并到本地 `data`，但不调用 `updateVariablesWith` 写回酒馆。
+   * 用于历史楼层 iframe 只读快照，避免与 `message_id: -1` 争用。默认 true。
+   */
+  writeBack?: boolean;
+};
+
 /**
  * @param variable_option 传入对象时与原先行为一致；传入 **函数** 时，在 Pinia store **首次初始化**（首次 `useDataStore()`）时再求值，
  * 用于 `getCurrentMessageId()` 等必须在 iframe 与楼层绑定就绪后才能调用的场景（避免在 `store.ts` 模块顶层求值读到错误楼层）。
@@ -20,6 +28,7 @@ export function defineMvuDataStore<T extends z.ZodObject>(
   schema: T,
   variable_option: VariableOption | (() => VariableOption),
   additional_setup?: (data: Ref<z.infer<T>>) => void,
+  store_opts?: DefineMvuDataStoreOptions | (() => DefineMvuDataStoreOptions),
 ): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
   const isDeferredOption = typeof variable_option === 'function';
   const storeId = isDeferredOption
@@ -38,6 +47,11 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ? (variable_option as () => VariableOption)()
           : (variable_option as VariableOption),
       );
+      const resolvedStoreOpts =
+        typeof store_opts === 'function'
+          ? (store_opts as () => DefineMvuDataStoreOptions)()
+          : store_opts;
+      const writeBack = resolvedStoreOpts?.writeBack !== false;
       // 辅助函数：获取 stat_data，统一使用 MVU 格式，检测并修复双重嵌套
       function getStatData(variables: any): any {
         if (!variables) return {};
@@ -111,12 +125,17 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ignoreUpdates(() => {
             data.value = result.data;
           });
-          if (!_.isEqual(stat_data, result.data) || hadCorruption) {
+          if (
+            writeBack &&
+            (!_.isEqual(stat_data, result.data) || hadCorruption)
+          ) {
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
           }
-        } else if (hadCorruption) {
+        } else if (hadCorruption && writeBack) {
           console.warn('[mvu] 检测到嵌套对象污染 ([object Object])，强制写回修复');
           updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+        } else if (hadCorruption && !writeBack) {
+          console.warn('[mvu] 检测到嵌套对象污染，但 writeBack=false 跳过写回');
         }
       }, 2000);
 
@@ -132,7 +151,9 @@ export function defineMvuDataStore<T extends z.ZodObject>(
               data.value = result.data;
             });
           }
-          updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+          if (writeBack) {
+            updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+          }
         },
         { deep: true },
       );
