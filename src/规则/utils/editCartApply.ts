@@ -117,6 +117,28 @@ export async function runModalCommit(
     const characterId = String(p.characterId);
     updateCharacterIdentityTags(characterId, tagsObj);
     messageText = formatIdentityTagsMessage(characterId, tagsObj);
+  } else if (type === 'edit_character_appearance' && p?.characterId) {
+    const {
+      submitEditCharacterAppearance,
+      defaultEmptyClothingState,
+      applyJewelryRowsToClothing,
+    } = await import('./dialogAndVariable');
+    const characterId = String(p.characterId);
+    const base = form.appearanceClothing ?? defaultEmptyClothingState();
+    const clothing = applyJewelryRowsToClothing(base, form.appearanceJewelryRows ?? []);
+    const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
+    for (const row of form.appearanceBodyPartRows ?? []) {
+      const k = String(row.key ?? '').trim();
+      if (!k) continue;
+      body[k] = {
+        外观描述: String(row.外观描述 ?? ''),
+        当前状态: String(row.当前状态 ?? ''),
+      };
+    }
+    messageText = await submitEditCharacterAppearance(characterId, {
+      服装状态: clothing,
+      身体部位物理状态: body,
+    });
   } else if (type === 'edit_avatar' && p?.characterId) {
     const { submitEditCharacterAvatar } = await import('./dialogAndVariable');
     const store = useDataStore();

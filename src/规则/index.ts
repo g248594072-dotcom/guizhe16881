@@ -5,6 +5,45 @@ import './index.scss';
 import './styles/cyber-neon-theme.scss';
 import './styles/cyber-panels-dark.scss';
 
+function normalizeCharSensitiveMaps(char: Record<string, unknown>): boolean {
+  let fixed = false;
+
+  if (char.性癖 != null) {
+    const normalized = normalizeFetishRecord(char.性癖);
+    if (!_.isEqual(char.性癖, normalized)) {
+      char.性癖 = normalized;
+      fixed = true;
+    }
+  }
+
+  if (char.敏感点开发 != null) {
+    const normalized = normalizeSensitivePartRecord(char.敏感点开发);
+    if (!_.isEqual(char.敏感点开发, normalized)) {
+      char.敏感点开发 = normalized;
+      fixed = true;
+    }
+  }
+
+  if (char.敏感部位 != null) {
+    const normalized = normalizeSensitivePartRecord(char.敏感部位);
+    if (!_.isEqual(char.敏感部位, normalized)) {
+      char.敏感部位 = normalized;
+      fixed = true;
+    }
+  }
+
+  const dev = normalizeSensitivePartRecord(char.敏感点开发);
+  const leg = normalizeSensitivePartRecord(char.敏感部位);
+  const devEmpty = Object.keys(dev).length === 0;
+  const legNonEmpty = Object.keys(leg).length > 0;
+  if (devEmpty && legNonEmpty) {
+    char.敏感点开发 = { ...leg };
+    fixed = true;
+  }
+
+  return fixed;
+}
+
 function registerMvuNestedObjectFix() {
   eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, (variables: Mvu.MvuData) => {
     const 角色档案 = variables?.stat_data?.角色档案;
@@ -13,26 +52,13 @@ function registerMvuNestedObjectFix() {
     let fixed = false;
     for (const char of Object.values(角色档案 as Record<string, any>)) {
       if (!char || typeof char !== 'object') continue;
-
-      if (char.性癖 != null) {
-        const normalized = normalizeFetishRecord(char.性癖);
-        if (!_.isEqual(char.性癖, normalized)) {
-          char.性癖 = normalized;
-          fixed = true;
-        }
-      }
-
-      if (char.敏感部位 != null) {
-        const normalized = normalizeSensitivePartRecord(char.敏感部位);
-        if (!_.isEqual(char.敏感部位, normalized)) {
-          char.敏感部位 = normalized;
-          fixed = true;
-        }
+      if (normalizeCharSensitiveMaps(char as Record<string, unknown>)) {
+        fixed = true;
       }
     }
 
     if (fixed) {
-      console.warn('[规则] VARIABLE_UPDATE_ENDED: 修复了性癖/敏感部位嵌套对象污染');
+      console.warn('[规则] VARIABLE_UPDATE_ENDED: 修复了性癖/敏感点开发/敏感部位嵌套对象');
     }
   });
 }
@@ -44,7 +70,7 @@ $(async () => {
   // ⭐ 关键：等待 MVU 变量框架初始化完成
   await waitGlobalInitialized('Mvu');
 
-  // 注册 MVU 嵌套对象修复：在每次变量更新后立即规范化性癖/敏感部位字段
+  // 注册 MVU 嵌套对象修复：在每次变量更新后立即规范化性癖/敏感点开发/敏感部位字段
   registerMvuNestedObjectFix();
 
   // ⭐ 与 store 一致：live 宿主等 latest (-1)；历史层只等本层，短超时避免卡死

@@ -59,7 +59,7 @@
     </template>
 
     <template v-else-if="modalType === 'edit_character_fetish'">
-      <label class="eci-label">敏感部位（每行一条）</label>
+      <label class="eci-label">敏感点开发（每行一条）</label>
       <textarea v-model="form.characterPsychSensitiveParts" class="eci-textarea" rows="3" />
       <label class="eci-label">性癖（每行一条）</label>
       <textarea v-model="form.characterPsychFetishes" class="eci-textarea" rows="3" />
@@ -67,7 +67,7 @@
       <textarea v-model="form.characterPsychHiddenFetish" class="eci-textarea" rows="2" />
 
       <details class="ecf-details">
-        <summary>敏感部位详情（等级 / 反应 / 开发细节）</summary>
+        <summary>敏感点开发详情（等级 / 反应 / 开发细节）</summary>
         <div
           v-for="(part, idx) in form.sensitivePartDetails"
           :key="'sp-' + idx"
@@ -88,7 +88,7 @@
           class="ecf-add-btn"
           @click="form.sensitivePartDetails.push({ name: '', level: 1, reaction: '', devDetails: '' })"
         >
-          + 添加敏感部位
+          + 添加敏感点
         </button>
       </details>
 
@@ -124,6 +124,81 @@
       <textarea v-model="form.avatarUrl" class="eci-textarea" rows="3" placeholder="https:// 或 data:image/..." />
     </template>
 
+    <template v-else-if="modalType === 'edit_character_appearance'">
+      <p class="eci-hint">服装槽位与身体部位物理状态（与主弹窗一致）。</p>
+      <div
+        v-for="slotKey in appearanceSlotKeys"
+        :key="slotKey"
+        class="ecf-detail-block"
+      >
+        <div class="eci-label">{{ slotKey }}</div>
+        <input
+          v-model="form.appearanceClothing[slotKey].名称"
+          type="text"
+          class="eci-input"
+          placeholder="名称"
+        />
+        <input
+          v-model="form.appearanceClothing[slotKey].状态"
+          type="text"
+          class="eci-input"
+          placeholder="状态"
+        />
+        <textarea
+          v-model="form.appearanceClothing[slotKey].描述"
+          class="eci-textarea"
+          rows="2"
+          placeholder="描述"
+        />
+      </div>
+      <details class="ecf-details">
+        <summary>饰品</summary>
+        <div
+          v-for="(jw, jidx) in form.appearanceJewelryRows"
+          :key="'jw-' + jidx"
+          class="ecf-detail-row"
+        >
+          <input v-model="jw.name" type="text" class="eci-input" placeholder="名称" />
+          <input v-model="jw.状态" type="text" class="eci-input" placeholder="状态" />
+          <input v-model="jw.描述" type="text" class="eci-input" placeholder="描述" />
+          <button type="button" class="ecf-icon-btn" @click="form.appearanceJewelryRows.splice(jidx, 1)">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="ecf-add-btn"
+          @click="form.appearanceJewelryRows.push({ name: '', 状态: '正常', 描述: '' })"
+        >
+          + 饰品
+        </button>
+      </details>
+      <details class="ecf-details">
+        <summary>身体部位物理状态</summary>
+        <div
+          v-for="(bp, bpidx) in form.appearanceBodyPartRows"
+          :key="'bp-' + bpidx"
+          class="ecf-detail-block"
+        >
+          <div class="ecf-detail-row">
+            <input v-model="bp.key" type="text" class="eci-input" placeholder="部位名" />
+            <button type="button" class="ecf-icon-btn" @click="form.appearanceBodyPartRows.splice(bpidx, 1)">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+          <textarea v-model="bp.外观描述" class="eci-textarea" rows="2" placeholder="外观描述" />
+          <textarea v-model="bp.当前状态" class="eci-textarea" rows="2" placeholder="当前状态" />
+        </div>
+        <button
+          type="button"
+          class="ecf-add-btn"
+          @click="form.appearanceBodyPartRows.push({ key: '', 外观描述: '', 当前状态: '' })"
+        >
+          + 身体部位
+        </button>
+      </details>
+    </template>
+
     <template v-else-if="modalType === 'edit_identity_tags'">
       <div
         v-for="(tag, idx) in form.identityTags"
@@ -155,6 +230,8 @@ defineProps<{
   modalType: string;
   form: EditCartModalForm;
 }>();
+
+const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
 </script>
 
 <style scoped lang="scss">

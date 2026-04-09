@@ -693,7 +693,7 @@
             </div>
             <!-- 编辑性癖与敏感带 -->
             <div v-else-if="modalType === 'edit_character_fetish'" class="rule-form">
-              <label class="form-label">敏感部位（每行一条「部位：反应或敏感描述」）</label>
+              <label class="form-label">敏感点开发（每行一条「部位：反应或敏感描述」；兼容旧变量键「敏感部位」）</label>
               <textarea
                 v-model="modalForm.characterPsychSensitiveParts"
                 class="form-textarea"
@@ -717,7 +717,7 @@
                 placeholder="输入隐藏性癖描述..."
               />
 
-              <!-- 敏感部位详情编辑 -->
+              <!-- 敏感点开发详情编辑 -->
               <div class="detail-edit-section">
                 <button
                   type="button"
@@ -725,7 +725,7 @@
                   @click="modalForm.showSensitivePartDetails = !modalForm.showSensitivePartDetails"
                 >
                   <i :class="modalForm.showSensitivePartDetails ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down'"></i>
-                  <span>编辑敏感部位详情（等级、生理反应、开发细节）</span>
+                  <span>编辑敏感点开发详情（等级、生理反应、开发细节）</span>
                 </button>
                 <div v-if="modalForm.showSensitivePartDetails" class="detail-edit-content">
                   <div
@@ -787,7 +787,7 @@
                     @click="modalForm.sensitivePartDetails.push({ name: '', level: 1, reaction: '', devDetails: '' })"
                   >
                     <i class="fa-solid fa-plus"></i>
-                    添加敏感部位
+                    添加敏感点
                   </button>
                 </div>
               </div>
@@ -942,6 +942,138 @@
               >
                 <i class="fa-solid fa-plus"></i>
                 添加身份标签
+              </button>
+            </div>
+            <div v-else-if="modalType === 'edit_character_appearance'" class="rule-form character-appearance-form">
+              <p class="form-hint">编辑 MVU「服装状态」与「身体部位物理状态」。饰品以名称为键。</p>
+              <h4 class="appearance-section-title">服装槽位</h4>
+              <div
+                v-for="slotKey in appearanceSlotKeys"
+                :key="slotKey"
+                class="appearance-slot-block"
+              >
+                <div class="appearance-slot-label">{{ slotKey }}</div>
+                <div class="detail-edit-fields">
+                  <div class="detail-field">
+                    <label>名称</label>
+                    <input
+                      v-model="modalForm.appearanceClothing[slotKey].名称"
+                      type="text"
+                      class="form-input"
+                      placeholder="名称"
+                    />
+                  </div>
+                  <div class="detail-field">
+                    <label>状态</label>
+                    <input
+                      v-model="modalForm.appearanceClothing[slotKey].状态"
+                      type="text"
+                      class="form-input"
+                      placeholder="如：正常"
+                    />
+                  </div>
+                  <div class="detail-field full-width">
+                    <label>描述</label>
+                    <textarea
+                      v-model="modalForm.appearanceClothing[slotKey].描述"
+                      class="form-textarea"
+                      rows="2"
+                      placeholder="外观或穿着描述"
+                    />
+                  </div>
+                </div>
+              </div>
+              <h4 class="appearance-section-title">饰品</h4>
+              <div
+                v-for="(jw, jidx) in modalForm.appearanceJewelryRows"
+                :key="jidx"
+                class="identity-tag-edit-row"
+              >
+                <input
+                  v-model="jw.name"
+                  type="text"
+                  class="form-input identity-category-input"
+                  placeholder="饰品名称"
+                />
+                <input
+                  v-model="jw.状态"
+                  type="text"
+                  class="form-input identity-value-input"
+                  placeholder="状态"
+                />
+                <input
+                  v-model="jw.描述"
+                  type="text"
+                  class="form-input"
+                  placeholder="描述"
+                />
+                <button
+                  type="button"
+                  class="btn-icon btn-danger"
+                  @click="modalForm.appearanceJewelryRows.splice(jidx, 1)"
+                  title="删除"
+                >
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+              <button
+                type="button"
+                class="btn-secondary"
+                @click="modalForm.appearanceJewelryRows.push({ name: '', 状态: '正常', 描述: '' })"
+              >
+                <i class="fa-solid fa-plus"></i>
+                添加饰品
+              </button>
+              <h4 class="appearance-section-title">身体部位物理状态</h4>
+              <div
+                v-for="(bp, bpidx) in modalForm.appearanceBodyPartRows"
+                :key="bpidx"
+                class="detail-edit-row"
+              >
+                <div class="detail-edit-header">
+                  <input
+                    v-model="bp.key"
+                    type="text"
+                    class="form-input detail-name-input"
+                    placeholder="部位名称"
+                  />
+                  <button
+                    type="button"
+                    class="btn-icon btn-danger"
+                    @click="modalForm.appearanceBodyPartRows.splice(bpidx, 1)"
+                    title="删除"
+                  >
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+                <div class="detail-edit-fields">
+                  <div class="detail-field full-width">
+                    <label>外观描述</label>
+                    <textarea
+                      v-model="bp.外观描述"
+                      class="form-textarea"
+                      rows="2"
+                      placeholder="形态、颜色等"
+                    />
+                  </div>
+                  <div class="detail-field full-width">
+                    <label>当前状态</label>
+                    <textarea
+                      v-model="bp.当前状态"
+                      class="form-textarea"
+                      rows="2"
+                      placeholder="即时物理/体液状态"
+                    />
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="btn-secondary"
+                @click="modalForm.appearanceBodyPartRows.push({ key: '', 外观描述: '', 当前状态: '' })"
+              >
+                <i class="fa-solid fa-plus"></i>
+                添加身体部位
               </button>
             </div>
             <div v-else class="modal-placeholder">
@@ -1413,7 +1545,16 @@ import {
   stageItem,
 } from './utils/editCartFlow';
 import {
+  applyJewelryRowsToClothing,
+  bodyPartRowsFromMvuRaw,
+  clothingStateFromMvuRaw,
+  defaultEmptyClothingState,
+  jewelryRowsFromClothingState,
+  submitEditCharacterAppearance,
+} from './utils/dialogAndVariable';
+import {
   fetishRecordToEditableText,
+  getMergedSensitiveDevelopment,
   sensitiveRecordToEditableText,
   tagMapToEditableText,
 } from './utils/tagMap';
@@ -1579,7 +1720,12 @@ const modalForm = ref({
   // 身份标签编辑
   identityTags: [] as Array<{ category: string; value: string }>,
   avatarUrl: '',
+  appearanceClothing: defaultEmptyClothingState(),
+  appearanceJewelryRows: [] as Array<{ name: string; 状态: string; 描述: string }>,
+  appearanceBodyPartRows: [] as Array<{ key: string; 外观描述: string; 当前状态: string }>,
 });
+
+const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
 
 // 同层界面状态
 const userInput = ref('');
@@ -1998,6 +2144,7 @@ const modalTitles: Record<string, string> = {
   edit_character_mind: '编辑心理状态',
   edit_character_fetish: '编辑性癖与敏感带',
   edit_identity_tags: '编辑身份标签',
+  edit_character_appearance: '编辑服装与身体状态',
   edit_avatar: '编辑角色头像',
 };
 const modalTitle = computed(() => modalTitles[modalType.value] || (modalType.value.includes('add') ? '新增条目' : '编辑条目'));
@@ -2122,6 +2269,9 @@ async function openModal(type: string, payload?: Record<string, any>) {
     sensitivePartDetails: [],
     identityTags: [],
     avatarUrl: '',
+    appearanceClothing: defaultEmptyClothingState(),
+    appearanceJewelryRows: [],
+    appearanceBodyPartRows: [],
   };
 
   if (type === 'edit_avatar' && payload?.characterId) {
@@ -2154,7 +2304,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
           rawChar?.性癖 ?? rawChar?.fetishes ?? {},
         );
         modalForm.value.characterPsychSensitiveParts = sensitiveRecordToEditableText(
-          rawChar?.敏感部位 ?? rawChar?.sensitiveParts ?? {},
+          getMergedSensitiveDevelopment(rawChar ?? {}),
         );
         modalForm.value.characterPsychHiddenFetish = String(c.hiddenFetish ?? '');
 
@@ -2182,6 +2332,19 @@ async function openModal(type: string, payload?: Record<string, any>) {
       }
     } catch (e) {
       console.warn('预填角色心理字段失败', e);
+    }
+  }
+
+  if (type === 'edit_character_appearance' && payload?.characterId) {
+    try {
+      const store = useDataStore();
+      const rawChar = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
+      const cloth = clothingStateFromMvuRaw(rawChar?.服装状态);
+      modalForm.value.appearanceClothing = cloth;
+      modalForm.value.appearanceJewelryRows = jewelryRowsFromClothingState(cloth);
+      modalForm.value.appearanceBodyPartRows = bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态);
+    } catch (e) {
+      console.warn('预填外观与身体状态失败', e);
     }
   }
 
@@ -2436,6 +2599,22 @@ async function onModalComplete() {
           devDetails: p.devDetails ?? '',
         })));
       }
+    } else if (type === 'edit_character_appearance' && payload?.characterId) {
+      const base = form.appearanceClothing ?? defaultEmptyClothingState();
+      const clothing = applyJewelryRowsToClothing(base, form.appearanceJewelryRows ?? []);
+      const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
+      for (const row of form.appearanceBodyPartRows ?? []) {
+        const k = String(row.key ?? '').trim();
+        if (!k) continue;
+        body[k] = {
+          外观描述: String(row.外观描述 ?? ''),
+          当前状态: String(row.当前状态 ?? ''),
+        };
+      }
+      messageText = await submitEditCharacterAppearance(payload.characterId, {
+        服装状态: clothing,
+        身体部位物理状态: body,
+      });
     } else if (type === 'edit_identity_tags' && payload?.characterId) {
       const { updateCharacterIdentityTags, formatIdentityTagsMessage } = await import('./utils/dialogAndVariable');
       const validTags = form.identityTags?.filter(t => t.category?.trim() && t.value?.trim()) ?? [];
@@ -2461,7 +2640,7 @@ async function onModalComplete() {
       copyToInput(messageText, 'append');
 
       // 角色心理/性癖编辑：同时写入对话框（创建一条 user 消息）
-      if (type === 'edit_character_mind' || type === 'edit_character_fetish') {
+      if (type === 'edit_character_mind' || type === 'edit_character_fetish' || type === 'edit_character_appearance') {
         try {
           const { sendToDialog } = await import('./utils/dialogAndVariable');
           await sendToDialog(messageText);
@@ -3436,7 +3615,9 @@ async function handleRegenerateVariablesOnly() {
         const c = charData as any;
         if (!c.性格 || Object.keys(c.性格).length === 0) gaps.push('性格（空对象，需填充）');
         if (!c.性癖 || Object.keys(c.性癖).length === 0) gaps.push('性癖（空对象，需填充）');
-        if (!c.敏感部位 || Object.keys(c.敏感部位).length === 0) gaps.push('敏感部位（空对象，需填充）');
+        if (Object.keys(getMergedSensitiveDevelopment(c)).length === 0) {
+          gaps.push('敏感点开发（空对象，需填充；兼容旧键「敏感部位」）');
+        }
         if (!c.隐藏性癖 || c.隐藏性癖 === '') gaps.push('隐藏性癖（空字符串，需填充）');
         if (!c.当前内心想法 || c.当前内心想法 === '') gaps.push('当前内心想法（空，需基于正文推断）');
         if (!c.当前综合生理描述 || c.当前综合生理描述 === '') gaps.push('当前综合生理描述（空，需基于正文推断）');
@@ -3468,14 +3649,14 @@ ${maintext}
 </maintext>
 
 ## 核心任务（优先级从高到低）
-1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感部位、隐藏性癖、当前内心想法、当前综合生理描述）
+1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
 2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
 3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
 4. **更新世界规则**：如有新规则生效或规则状态变化
 
 ## 重要原则
 - **优先使用 replace 操作更新现有角色**，而非 insert 创建新条目
-- **绝对禁止**：让性格、性癖、敏感部位保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
+- **绝对禁止**：让性格、性癖、敏感点开发保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
 - **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
 
 ## 输出要求
@@ -8687,7 +8868,10 @@ body.has-dragging-fab {
   max-width: 440px;
   width: 100%;
   max-height: min(78vh, calc(100dvh - 88px));
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .tag-validation-modal.is-raw-maximized {
@@ -8771,6 +8955,7 @@ body.has-dragging-fab {
 }
 
 .tag-validation-modal .modal-header {
+  flex-shrink: 0;
   padding: 10px 14px;
 
   h2 {
@@ -8779,12 +8964,19 @@ body.has-dragging-fab {
 }
 
 .tag-validation-modal .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 10px 14px;
   min-height: auto;
 }
 
 .tag-validation-modal .modal-footer {
+  flex-shrink: 0;
   padding: 10px 14px;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
 }
 
 .tag-validation-content {

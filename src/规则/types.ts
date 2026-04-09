@@ -61,6 +61,28 @@ export interface CharacterBasic {
   [key: string]: any;
 }
 
+/** MVU「服装状态」单槽，与 schema 一致 */
+export interface ClothingSlotZh {
+  名称?: string;
+  状态?: string;
+  描述?: string;
+}
+
+/** MVU「服装状态」根对象 */
+export interface ClothingStateZh {
+  上装?: ClothingSlotZh;
+  下装?: ClothingSlotZh;
+  内衣?: ClothingSlotZh;
+  足部?: ClothingSlotZh;
+  饰品?: Record<string, { 状态?: string; 描述?: string }>;
+}
+
+/** MVU「身体部位物理状态」单条 */
+export interface BodyPartPhysicsZh {
+  外观描述?: string;
+  当前状态?: string;
+}
+
 export interface CharacterData {
   id: string;
   name: string;
@@ -88,6 +110,10 @@ export interface CharacterData {
   sensitivePartDetails?: SensitivePartDetails;
   /** 身份标签 */
   identityTags?: Record<string, string>;
+  /** MVU「服装状态」，与变量键名一致 */
+  服装状态?: ClothingStateZh;
+  /** MVU「身体部位物理状态」 */
+  身体部位物理状态?: Record<string, BodyPartPhysicsZh>;
   [key: string]: any;
 }
 

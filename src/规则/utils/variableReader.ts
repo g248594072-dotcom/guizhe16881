@@ -5,8 +5,8 @@
 
 import type { GameData, MvuData, CharacterData, RuleData, RegionData } from '../types';
 import {
+  getMergedSensitiveDevelopment,
   normalizeFetishRecord,
-  normalizeSensitivePartRecord,
   normalizeTagMap,
   normalize三围,
 } from './tagMap';
@@ -353,7 +353,7 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
     const 当前内心想法 = value?.['当前内心想法'] ?? value?.['currentThought'] ?? '';
     const 性格 = normalizeTagMap(value?.['性格'] ?? value?.['traits']);
     const fetishNorm = normalizeFetishRecord(value?.['性癖'] ?? value?.['fetishes']);
-    const sensitiveNorm = normalizeSensitivePartRecord(value?.['敏感部位'] ?? value?.['sensitiveParts']);
+    const sensitiveNorm = getMergedSensitiveDevelopment(value);
     const 隐藏性癖 = value?.['隐藏性癖'] ?? value?.['hiddenFetish'] ?? '';
 
     const 身体 = value?.['身体信息'] ?? {};
@@ -438,6 +438,17 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
     // 身份标签
     const identityTags = value?.['身份标签'] ?? value?.['identityTags'] ?? {};
 
+    const raw服装 = value?.['服装状态'];
+    const 服装状态 =
+      raw服装 != null && typeof raw服装 === 'object' && !Array.isArray(raw服装)
+        ? (raw服装 as CharacterData['服装状态'])
+        : undefined;
+    const raw身体 = value?.['身体部位物理状态'];
+    const 身体部位物理状态 =
+      raw身体 != null && typeof raw身体 === 'object' && !Array.isArray(raw身体)
+        ? (raw身体 as CharacterData['身体部位物理状态'])
+        : undefined;
+
     return {
       id,
       name,
@@ -454,6 +465,8 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       fetishDetails,
       sensitivePartDetails,
       identityTags,
+      服装状态,
+      身体部位物理状态,
     } as CharacterData;
   });
 }

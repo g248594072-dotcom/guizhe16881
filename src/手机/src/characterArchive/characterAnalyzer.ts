@@ -155,7 +155,7 @@ class CharacterAnalyzer {
         外貌细节: result.外貌细节,
         性格: result.personality,
         性癖: result.fetishes,
-        敏感部位: result.sensitiveParts,
+        敏感点开发: result.sensitiveParts,
         背景故事: result.背景故事,
         兴趣爱好: result.兴趣爱好,
         生活习惯: result.生活习惯,
@@ -670,7 +670,7 @@ ${tavernContextStr}
       "自我合理化": "角色如何合理化这一性癖"
     }
   },
-  "敏感部位": {
+  "敏感点开发": {
     "部位名": {
       "敏感等级": 1-10,
       "生理反应": "被刺激时的生理反应",
@@ -706,7 +706,7 @@ ${tavernContextStr}
 - 性格要分表面和内在两层描述
 - 背景故事要交代清楚角色的出身和当前处境
 - 说话风格要具体，并给出3-5个日常对话示例
-- 性癖和敏感部位的描述要足够详细（参考档案中的风格）`;
+- 性癖和敏感点开发的描述要足够详细（参考档案中的风格；**敏感点开发**与旧键「敏感部位」同义）`;
   }
 
   /** 解析分析结果 - 支持完整档案格式 */
@@ -875,7 +875,10 @@ ${tavernContextStr}
         personality: (parsed.性格 || parsed.personality) as Record<string, string>,
         // 性癖和敏感部位
         fetishes: (parsed.性癖 || parsed.fetishes) as Record<string, { 等级: number; 细节描述: string; 自我合理化: string }>,
-        sensitiveParts: (parsed.敏感部位 || parsed.sensitiveParts) as Record<string, { 敏感等级: number; 生理反应: string; 开发细节: string }>,
+        sensitiveParts: (parsed.敏感点开发 || parsed.敏感部位 || parsed.sensitiveParts) as Record<
+          string,
+          { 敏感等级: number; 生理反应: string; 开发细节: string }
+        >,
         // 背景故事
         背景故事: parsed.背景故事 as string,
         // 兴趣爱好

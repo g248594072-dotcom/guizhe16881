@@ -6,7 +6,14 @@
  * 修改会自动同步到酒馆变量，无需手动调用 updateVariablesWith
  */
 
-import type { RuleData, CharacterData, RegionData } from '../types';
+import type {
+  BodyPartPhysicsZh,
+  CharacterData,
+  ClothingSlotZh,
+  ClothingStateZh,
+  RegionData,
+  RuleData,
+} from '../types';
 import {
   useDataStore,
   bumpUpdateTime,
@@ -75,6 +82,7 @@ export function addCharacterToVariables(name: string, description: string): void
   const n = name.trim() || '未命名';
   const desc = description.trim();
 
+  const slot = () => ({ 名称: '', 状态: '正常', 描述: '' });
   store.data.角色档案[id] = {
     姓名: n,
     状态: '出场中',
@@ -82,7 +90,7 @@ export function addCharacterToVariables(name: string, description: string): void
     当前内心想法: '',
     性格: {},
     性癖: {},
-    敏感部位: {},
+    敏感点开发: {},
     隐藏性癖: '',
     身体信息: {
       年龄: 17,
@@ -91,11 +99,20 @@ export function addCharacterToVariables(name: string, description: string): void
       三围: '未知',
       体质特征: '普通',
     },
+    服装状态: {
+      上装: slot(),
+      下装: slot(),
+      内衣: slot(),
+      足部: slot(),
+      饰品: {},
+    },
+    身体部位物理状态: {},
     数值: {
       好感度: 0,
       发情值: 0,
       性癖开发值: 0,
     },
+    身份标签: {},
     当前综合生理描述: '',
   };
   
@@ -221,7 +238,7 @@ export async function submitEditCharacterAvatar(
   return '';
 }
 
-// ---------- 编辑角色心理/性癖/敏感部位 ----------
+// ---------- 编辑角色心理/性癖/敏感点开发 ----------
 
 function formatTagMapLine(label: string, rec: Record<string, string> | undefined): string | null {
   if (rec == null || Object.keys(rec).length === 0) return null;
@@ -250,7 +267,7 @@ function formatSensitivePsychLine(rec: Record<string, SensitiveEntryZh> | undefi
       return r ? `${k}：Lv.${o.敏感等级} ${r}` : `${k}：Lv.${o.敏感等级}`;
     })
     .join('、');
-  return `敏感部位：${s}`;
+  return `敏感点开发：${s}`;
 }
 
 export function formatEditCharacterPsychMessage(payload: {
@@ -258,7 +275,7 @@ export function formatEditCharacterPsychMessage(payload: {
   当前内心想法?: string;
   性格?: Record<string, string>;
   性癖?: Record<string, FetishEntryZh>;
-  敏感部位?: Record<string, SensitiveEntryZh>;
+  敏感点开发?: Record<string, SensitiveEntryZh>;
   隐藏性癖?: string;
 }): string {
   const lines = ['[编辑角色心理与性癖]', `角色ID：${payload.characterId}`];
@@ -267,7 +284,7 @@ export function formatEditCharacterPsychMessage(payload: {
   if (t1) lines.push(t1);
   const t2 = formatFetishPsychLine(payload.性癖);
   if (t2) lines.push(t2);
-  const t3 = formatSensitivePsychLine(payload.敏感部位);
+  const t3 = formatSensitivePsychLine(payload.敏感点开发);
   if (t3) lines.push(t3);
   if (payload.隐藏性癖 != null) lines.push(`隐藏性癖：${String(payload.隐藏性癖)}`);
   return lines.join('\n');
@@ -279,7 +296,7 @@ export function updateCharacterPsychInChineseVariables(
     当前内心想法?: string;
     性格?: Record<string, string>;
     性癖?: Record<string, FetishEntryZh>;
-    敏感部位?: Record<string, SensitiveEntryZh>;
+    敏感点开发?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
   },
 ): void {
@@ -291,7 +308,7 @@ export function updateCharacterPsychInChineseVariables(
   if (updates.当前内心想法 != null) char.当前内心想法 = updates.当前内心想法;
   if (updates.性格 != null) char.性格 = updates.性格;
   if (updates.性癖 != null) char.性癖 = updates.性癖;
-  if (updates.敏感部位 != null) char.敏感部位 = updates.敏感部位;
+  if (updates.敏感点开发 != null) char.敏感点开发 = updates.敏感点开发;
   if (updates.隐藏性癖 != null) char.隐藏性癖 = updates.隐藏性癖;
 
   bumpUpdateTime();
@@ -312,7 +329,7 @@ export async function submitEditCharacterPsych(
     当前内心想法?: string;
     性格?: Record<string, string>;
     性癖?: Record<string, FetishEntryZh>;
-    敏感部位?: Record<string, SensitiveEntryZh>;
+    敏感点开发?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
   } = {};
 
@@ -320,7 +337,7 @@ export async function submitEditCharacterPsych(
   if (payload.traitsText !== undefined) updates.性格 = parseEditableTextToTagMap(payload.traitsText ?? '');
   if (payload.fetishesText !== undefined) updates.性癖 = parseEditableTextToFetishRecord(payload.fetishesText ?? '');
   if (payload.sensitivePartsText !== undefined) {
-    updates.敏感部位 = parseEditableTextToSensitiveRecord(payload.sensitivePartsText ?? '');
+    updates.敏感点开发 = parseEditableTextToSensitiveRecord(payload.sensitivePartsText ?? '');
   }
   if (payload.hiddenFetish !== undefined) updates.隐藏性癖 = String(payload.hiddenFetish ?? '');
 
@@ -382,7 +399,7 @@ export function updateCharacterFetishDetails(
 }
 
 /**
- * 更新角色的敏感部位详情
+ * 更新角色的敏感点开发详情（MVU 键名「敏感点开发」；读侧仍合并旧键「敏感部位」）
  */
 export function updateCharacterSensitivePartDetails(
   characterId: string,
@@ -393,12 +410,11 @@ export function updateCharacterSensitivePartDetails(
   const char = store.data.角色档案[characterId];
   if (!char) return;
 
-  // 确保敏感部位对象存在
-  if (!char.敏感部位) char.敏感部位 = {};
+  if (!char.敏感点开发) char.敏感点开发 = {};
 
   for (const update of updates) {
-    const existing = char.敏感部位[update.name];
-    char.敏感部位[update.name] = {
+    const existing = char.敏感点开发[update.name];
+    char.敏感点开发[update.name] = {
       敏感等级: update.level ?? (existing?.敏感等级 ?? existing?.level ?? 1),
       生理反应: update.reaction ?? (existing?.生理反应 ?? existing?.reaction ?? ''),
       开发细节: update.devDetails ?? (existing?.开发细节 ?? existing?.devDetails ?? ''),
@@ -425,6 +441,165 @@ export function updateCharacterIdentityTags(
   bumpUpdateTime();
 }
 
+/** 新建角色 / 弹窗重置用：完整默认「服装状态」 */
+export function defaultEmptyClothingState(): ClothingStateZh {
+  const s: ClothingSlotZh = { 名称: '', 状态: '正常', 描述: '' };
+  return {
+    上装: { ...s },
+    下装: { ...s },
+    内衣: { ...s },
+    足部: { ...s },
+    饰品: {},
+  };
+}
+
+function mergeClothingState(incoming: ClothingStateZh): ClothingStateZh {
+  const base = defaultEmptyClothingState();
+  const slot = (a: ClothingSlotZh, b?: ClothingSlotZh): ClothingSlotZh => ({
+    名称: String(b?.名称 ?? a.名称 ?? ''),
+    状态: String(b?.状态 ?? a.状态 ?? '正常'),
+    描述: String(b?.描述 ?? a.描述 ?? ''),
+  });
+  const jewelry = { ...base.饰品, ...(incoming.饰品 && typeof incoming.饰品 === 'object' ? incoming.饰品 : {}) };
+  return {
+    上装: slot(base.上装!, incoming.上装),
+    下装: slot(base.下装!, incoming.下装),
+    内衣: slot(base.内衣!, incoming.内衣),
+    足部: slot(base.足部!, incoming.足部),
+    饰品: jewelry,
+  };
+}
+
+export function updateCharacterAppearanceInVariables(
+  characterId: string,
+  patch: { 服装状态?: ClothingStateZh; 身体部位物理状态?: Record<string, BodyPartPhysicsZh> },
+): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+
+  if (patch.服装状态 != null) {
+    char.服装状态 = mergeClothingState(patch.服装状态);
+  }
+  if (patch.身体部位物理状态 != null) {
+    const out: Record<string, BodyPartPhysicsZh> = {};
+    for (const [k, v] of Object.entries(patch.身体部位物理状态)) {
+      const key = String(k).trim();
+      if (!key) continue;
+      out[key] = {
+        外观描述: String(v?.外观描述 ?? ''),
+        当前状态: String(v?.当前状态 ?? ''),
+      };
+    }
+    char.身体部位物理状态 = out;
+  }
+
+  bumpUpdateTime();
+}
+
+export function formatEditCharacterAppearanceMessage(
+  characterId: string,
+  服装状态: ClothingStateZh,
+  身体部位物理状态: Record<string, BodyPartPhysicsZh>,
+): string {
+  const lines = ['[编辑角色外观与身体状态]', `角色ID：${characterId}`];
+  const keys = ['上装', '下装', '内衣', '足部'] as const;
+  for (const k of keys) {
+    const x = 服装状态[k];
+    if (x && (String(x.名称 || '').trim() || String(x.状态 || '').trim() || String(x.描述 || '').trim())) {
+      lines.push(`${k}：${x.名称 || '—'} / ${x.状态 || '—'} / ${x.描述 || ''}`.trim());
+    }
+  }
+  const acc = 服装状态.饰品;
+  if (acc && typeof acc === 'object') {
+    const entries = Object.entries(acc).filter(([n]) => String(n).trim());
+    if (entries.length > 0) {
+      lines.push(
+        `饰品：${entries.map(([n, o]) => `${n}（${o?.状态 ?? ''}）`).join('；')}`,
+      );
+    }
+  }
+  for (const [part, o] of Object.entries(身体部位物理状态)) {
+    const p = String(part).trim();
+    if (!p) continue;
+    if (String(o?.外观描述 || '').trim() || String(o?.当前状态 || '').trim()) {
+      lines.push(`部位「${p}」：外观 ${o?.外观描述 ?? ''}；状态 ${o?.当前状态 ?? ''}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+export async function submitEditCharacterAppearance(
+  characterId: string,
+  payload: { 服装状态: ClothingStateZh; 身体部位物理状态: Record<string, BodyPartPhysicsZh> },
+): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
+  const message = formatEditCharacterAppearanceMessage(
+    characterId,
+    payload.服装状态,
+    payload.身体部位物理状态,
+  );
+  updateCharacterAppearanceInVariables(characterId, payload);
+  return message;
+}
+
+/** 从 MVU 原始「服装状态」填弹窗（缺项补默认） */
+export function clothingStateFromMvuRaw(raw: unknown): ClothingStateZh {
+  if (raw != null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return mergeClothingState(raw as ClothingStateZh);
+  }
+  return defaultEmptyClothingState();
+}
+
+/** 从 MVU「身体部位物理状态」生成弹窗行列表 */
+export function bodyPartRowsFromMvuRaw(raw: unknown): Array<{ key: string; 外观描述: string; 当前状态: string }> {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return [];
+  return Object.entries(raw as Record<string, unknown>)
+    .map(([key, v]) => {
+      const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+      return {
+        key: String(key),
+        外观描述: String(o.外观描述 ?? ''),
+        当前状态: String(o.当前状态 ?? ''),
+      };
+    })
+    .filter(r => String(r.key).trim().length > 0);
+}
+
+export function jewelryRowsFromClothingState(c: ClothingStateZh): Array<{ name: string; 状态: string; 描述: string }> {
+  const acc = c.饰品;
+  if (acc == null || typeof acc !== 'object') return [];
+  return Object.entries(acc).map(([name, o]) => {
+    const row = o && typeof o === 'object' && !Array.isArray(o) ? (o as Record<string, unknown>) : {};
+    return {
+      name: String(name),
+      状态: String(row.状态 ?? '正常'),
+      描述: String(row.描述 ?? ''),
+    };
+  });
+}
+
+/** 将饰品行写回「服装状态.饰品」 */
+export function applyJewelryRowsToClothing(
+  clothing: ClothingStateZh,
+  rows: Array<{ name: string; 状态: string; 描述: string }>,
+): ClothingStateZh {
+  const jewelry: Record<string, { 状态: string; 描述: string }> = {};
+  for (const row of rows) {
+    const n = String(row.name ?? '').trim();
+    if (!n) continue;
+    jewelry[n] = {
+      状态: String(row.状态 ?? '正常'),
+      描述: String(row.描述 ?? ''),
+    };
+  }
+  return {
+    ...clothing,
+    饰品: jewelry,
+  };
+}
+
 /**
  * 格式化性癖详情更新消息
  */
@@ -441,10 +616,10 @@ export function formatFetishDetailMessage(characterId: string, updates: FetishDe
 }
 
 /**
- * 格式化敏感部位详情更新消息
+ * 格式化敏感点开发详情更新消息
  */
 export function formatSensitivePartDetailMessage(characterId: string, updates: SensitivePartDetailUpdate[]): string {
-  const lines = ['[编辑敏感部位详情]', `角色ID：${characterId}`];
+  const lines = ['[编辑敏感点开发详情]', `角色ID：${characterId}`];
   for (const u of updates) {
     const parts = [u.name];
     if (u.level != null) parts.push(`敏感等级${u.level}`);

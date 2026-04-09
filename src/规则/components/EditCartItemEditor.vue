@@ -105,7 +105,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { klona } from 'klona';
-import type { EditCartItem } from '../types/editCart';
+import type { EditCartItem, EditCartModalForm } from '../types/editCart';
+import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
 import { refreshEditCartItem } from '../utils/editCartFlow';
 import ModalCommitFields from './EditCartModalCommitFields.vue';
 
@@ -136,6 +137,12 @@ watch(
         const a = copy.action;
         if (a.characterName === undefined) a.characterName = '';
         if (a.ruleSummary === undefined) a.ruleSummary = '';
+      }
+      if (copy.action.kind === 'modal_commit' && copy.action.modalType === 'edit_character_appearance') {
+        const f = copy.action.form as EditCartModalForm;
+        f.appearanceClothing = clothingStateFromMvuRaw(f.appearanceClothing ?? {});
+        if (!f.appearanceJewelryRows) f.appearanceJewelryRows = [];
+        if (!f.appearanceBodyPartRows) f.appearanceBodyPartRows = [];
       }
       draft.value = copy;
     }

@@ -2,6 +2,8 @@
  * 编辑暂存购物车：条目类型（与 App 弹窗表单、归档、角色详情、随机规则对齐）
  */
 
+import type { ClothingStateZh } from '../types';
+
 export interface EditCartModalForm {
   addCharacterName: string;
   addCharacterDescription: string;
@@ -25,6 +27,10 @@ export interface EditCartModalForm {
   sensitivePartDetails: Array<{ name: string; level: number; reaction: string; devDetails: string }>;
   identityTags: Array<{ category: string; value: string }>;
   avatarUrl: string;
+  /** 编辑服装状态 + 身体部位物理状态 */
+  appearanceClothing: ClothingStateZh;
+  appearanceJewelryRows: Array<{ name: string; 状态: string; 描述: string }>;
+  appearanceBodyPartRows: Array<{ key: string; 外观描述: string; 当前状态: string }>;
 }
 
 /** 与 apply 顺序分区一致：world → region → character → personal → avatar */

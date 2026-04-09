@@ -10,6 +10,7 @@ import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
 import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
 import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
 import { getCharBoundWorldbookName } from './charBoundWorldbookName';
+import { getMergedSensitiveDevelopment } from './tagMap';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
 
@@ -505,7 +506,9 @@ function buildSecondaryApiPrompt(
     const c = charData as any;
     if (!c.性格 || Object.keys(c.性格).length === 0) gaps.push('性格（空对象，需填充）');
     if (!c.性癖 || Object.keys(c.性癖).length === 0) gaps.push('性癖（空对象，需填充）');
-    if (!c.敏感部位 || Object.keys(c.敏感部位).length === 0) gaps.push('敏感部位（空对象，需填充）');
+    if (Object.keys(getMergedSensitiveDevelopment(c)).length === 0) {
+      gaps.push('敏感点开发（空对象，需填充；兼容旧键「敏感部位」）');
+    }
     if (!c.隐藏性癖 || c.隐藏性癖 === '') gaps.push('隐藏性癖（空字符串，需填充）');
     if (!c.当前内心想法 || c.当前内心想法 === '') gaps.push('当前内心想法（空，需基于正文推断）');
     if (!c.当前综合生理描述 || c.当前综合生理描述 === '') gaps.push('当前综合生理描述（空，需基于正文推断）');
@@ -543,14 +546,14 @@ ${maintext}
 </maintext>
 
 ## 核心任务（优先级从高到低）
-1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感部位、隐藏性癖、当前内心想法、当前综合生理描述）
+1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
 2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
 3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
 4. **更新世界规则**：如有新规则生效或规则状态变化
 
 ## 重要原则
 - **优先使用 replace 操作更新现有角色**，而非 insert 创建新条目
-- **绝对禁止**：让性格、性癖、敏感部位保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
+- **绝对禁止**：让性格、性癖、敏感点开发保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
 - **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
 
 ## 输出要求

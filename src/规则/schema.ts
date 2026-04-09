@@ -40,10 +40,52 @@ const 敏感部位条目 = z
   .passthrough()
   .prefault({});
 
-const 敏感部位映射 = z.preprocess(
+/** 与旧键「敏感部位」同形；新存档统一用键名「敏感点开发」 */
+const 敏感点开发映射 = z.preprocess(
   (raw: unknown) => normalizeSensitivePartRecord(raw),
   z.record(z.string(), 敏感部位条目),
 ).prefault({});
+
+const 服装穿戴单项 = z
+  .object({
+    名称: z.string().prefault(''),
+    状态: z.string().prefault('正常'),
+    描述: z.string().prefault(''),
+  })
+  .passthrough()
+  .prefault({});
+
+const 服装状态结构 = z
+  .object({
+    上装: 服装穿戴单项,
+    下装: 服装穿戴单项,
+    内衣: 服装穿戴单项,
+    足部: 服装穿戴单项,
+    饰品: z
+      .record(
+        z.string(),
+        z
+          .object({
+            状态: z.string().prefault('正常'),
+            描述: z.string().prefault(''),
+          })
+          .passthrough()
+          .prefault({}),
+      )
+      .prefault({}),
+  })
+  .passthrough()
+  .prefault({});
+
+const 身体部位物理单项 = z
+  .object({
+    外观描述: z.string().prefault('未详细观察'),
+    当前状态: z.string().prefault('正常'),
+  })
+  .passthrough()
+  .prefault({});
+
+const 身体部位物理映射 = z.record(z.string(), 身体部位物理单项).prefault({});
 
 // 规则条目定义（世界规则、区域规则、个人规则共用）
 const 规则条目基础 = z.object({
@@ -82,7 +124,6 @@ const 核心结构 = z.object({
         当前内心想法: z.string().prefault(''),
         性格: 标签映射,
         性癖: 性癖映射,
-        敏感部位: 敏感部位映射,
         隐藏性癖: z.string().prefault(''),
 
         身体信息: z.object({
@@ -93,12 +134,17 @@ const 核心结构 = z.object({
           体质特征: z.string().prefault('普通'),
         }).prefault({}),
 
+        服装状态: 服装状态结构,
+        身体部位物理状态: 身体部位物理映射,
+        敏感点开发: 敏感点开发映射,
+
         数值: z.object({
           好感度: z.coerce.number().transform(v => _.clamp(v, -100, 100)).prefault(0),
           性癖开发值: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),
           发情值: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),
         }).prefault({}),
 
+        身份标签: z.record(z.string(), z.string()).prefault({}),
         当前综合生理描述: z.string().prefault(''),
       })
       .passthrough()

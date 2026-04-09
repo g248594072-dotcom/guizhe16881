@@ -124,6 +124,19 @@ export function normalizeFetishRecord(raw: unknown): Record<string, FetishEntryZ
   return out;
 }
 
+/**
+ * 读侧合并：`敏感点开发` 优先覆盖同名键，再并入旧键 `敏感部位`。
+ */
+export function getMergedSensitiveDevelopment(rawChar: unknown): Record<string, SensitiveEntryZh> {
+  if (rawChar == null || typeof rawChar !== 'object' || Array.isArray(rawChar)) {
+    return {};
+  }
+  const o = rawChar as Record<string, unknown>;
+  const legacy = normalizeSensitivePartRecord(o['敏感部位']);
+  const current = normalizeSensitivePartRecord(o['敏感点开发']);
+  return { ...legacy, ...current };
+}
+
 /** 将任意存档形态规范为「名 → { 敏感等级, 生理反应, 开发细节 }」。 */
 export function normalizeSensitivePartRecord(raw: unknown): Record<string, SensitiveEntryZh> {
   if (raw == null) return {};
@@ -175,7 +188,7 @@ export function normalizeSensitivePartRecord(raw: unknown): Record<string, Sensi
 }
 
 /**
- * 写入 MVU 前对 stat_data 做一次浅修正：保证「角色档案」内 性癖/敏感部位 为规范嵌套对象，
+ * 写入 MVU 前对 stat_data 做一次浅修正：保证「角色档案」内 性癖/敏感点开发/敏感部位 为规范嵌套对象，
  * 避免 MVU 变量树把子项显示成 [object Object] 或脏字符串长期残留。
  */
 export function sanitizeStatDataRoleArchivesNestedMaps(statData: unknown): unknown {
@@ -192,6 +205,7 @@ export function sanitizeStatDataRoleArchivesNestedMaps(statData: unknown): unkno
     if (ch == null || typeof ch !== 'object' || Array.isArray(ch)) continue;
     const c = { ...(ch as Record<string, unknown>) };
     if ('性癖' in c) c['性癖'] = normalizeFetishRecord(c['性癖']);
+    if ('敏感点开发' in c) c['敏感点开发'] = normalizeSensitivePartRecord(c['敏感点开发']);
     if ('敏感部位' in c) c['敏感部位'] = normalizeSensitivePartRecord(c['敏感部位']);
     chars[id] = c;
   }

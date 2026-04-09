@@ -30,6 +30,7 @@ export function categoryForModalType(modalType: string): EditCartCategory {
     case 'edit_character_mind':
     case 'edit_character_fetish':
     case 'edit_identity_tags':
+    case 'edit_character_appearance':
       return 'character';
     case 'add_personal_rule':
     case 'edit_personal_rule':
@@ -371,6 +372,10 @@ export function buildCartItemFromModal(
   if (modalType === 'edit_identity_tags' && p?.characterId) {
     const cid = String(p.characterId);
     return buildModalCartItem(modalType, form, p, `编辑身份标签：${cid}`, `identity:${cid}`);
+  }
+  if (modalType === 'edit_character_appearance' && p?.characterId) {
+    const cid = String(p.characterId);
+    return buildModalCartItem(modalType, form, p, `编辑外观与身体状态：${cid}`, `appearance:${cid}`);
   }
   if (modalType === 'edit_avatar' && p?.characterId) {
     const cid = String(p.characterId);

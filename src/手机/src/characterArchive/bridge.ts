@@ -144,7 +144,11 @@ interface MvuCharacterData {
   当前内心想法?: string;
   性格?: Record<string, string>;
   性癖?: Record<string, { 等级?: number; level?: number; 细节描述?: string; description?: string; 自我合理化?: string; justification?: string }>;
+  /** MVU 新键名；旧档可能仅有「敏感部位」 */
+  敏感点开发?: Record<string, { 敏感等级?: number; level?: number; 生理反应?: string; reaction?: string; 开发细节?: string; devDetails?: string }>;
   敏感部位?: Record<string, { 敏感等级?: number; level?: number; 生理反应?: string; reaction?: string; 开发细节?: string; devDetails?: string }>;
+  服装状态?: Record<string, unknown>;
+  身体部位物理状态?: Record<string, { 外观描述?: string; 当前状态?: string }>;
   身体信息?: {
     年龄?: number;
     身高?: number;

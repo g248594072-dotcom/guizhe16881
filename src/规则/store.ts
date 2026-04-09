@@ -6,7 +6,11 @@
 import { defineMvuDataStore } from '@util/mvu';
 import { Schema } from './schema';
 import type { CharacterData, RuleData, RegionData } from './types';
-import { normalizeFetishRecord, normalizeSensitivePartRecord, normalizeTagMap } from './utils/tagMap';
+import {
+  getMergedSensitiveDevelopment,
+  normalizeFetishRecord,
+  normalizeTagMap,
+} from './utils/tagMap';
 
 /** 首次 `useDataStore()` 时写入：本 iframe 是否绑定 latest 并可写回（历史层为 false） */
 let rulesMvuLiveHostAtInit: boolean | null = null;
@@ -74,7 +78,7 @@ export function useCharacters() {
 
       const currentThought = char.当前内心想法 || char.currentThought || '';
       const traits = normalizeTagMap(char.性格 ?? char.traits);
-      // 性癖和敏感部位是复杂对象结构（含等级/细节描述等），不走 normalizeTagMap
+      // 性癖和敏感点开发（旧键「敏感部位」）是复杂对象结构，不走 normalizeTagMap
       // 它们在下面的 fetishDetails / sensitivePartDetails 中正确解析
       const hiddenFetish = char.隐藏性癖 || char.hiddenFetish || '';
 
@@ -94,9 +98,9 @@ export function useCharacters() {
         }
       }
 
-      // 敏感部位详情（含敏感等级、生理反应、开发细节）
+      // 敏感点开发详情（含敏感等级、生理反应、开发细节）；合并旧键「敏感部位」
       const sensitivePartDetails: Record<string, { level: number; reaction: string; devDetails: string }> = {};
-      const rawSensitiveParts = normalizeSensitivePartRecord(char.敏感部位 || char.sensitiveParts || {});
+      const rawSensitiveParts = getMergedSensitiveDevelopment(char);
       if (rawSensitiveParts && typeof rawSensitiveParts === 'object') {
         for (const [key, val] of Object.entries(rawSensitiveParts)) {
           sensitivePartDetails[key] = {
@@ -109,6 +113,17 @@ export function useCharacters() {
 
       // 身份标签
       const identityTags = char.身份标签 || char.identityTags || {};
+
+      const 服装状态 =
+        char.服装状态 != null && typeof char.服装状态 === 'object' && !Array.isArray(char.服装状态)
+          ? (char.服装状态 as CharacterData['服装状态'])
+          : undefined;
+      const 身体部位物理状态 =
+        char.身体部位物理状态 != null &&
+        typeof char.身体部位物理状态 === 'object' &&
+        !Array.isArray(char.身体部位物理状态)
+          ? (char.身体部位物理状态 as CharacterData['身体部位物理状态'])
+          : undefined;
 
       return {
         id,
@@ -129,7 +144,7 @@ export function useCharacters() {
         },
         currentThought,
         traits,
-        // 性癖和敏感部位：从复杂对象生成可读的字符串格式供UI展示
+        // 性癖和敏感点开发：从复杂对象生成可读的字符串格式供UI展示
         fetishes: Object.fromEntries(
           Object.entries(fetishDetails).map(([k, v]) => [
             k,
@@ -147,6 +162,8 @@ export function useCharacters() {
         fetishDetails,
         sensitivePartDetails,
         identityTags,
+        服装状态,
+        身体部位物理状态,
       };
     });
   });

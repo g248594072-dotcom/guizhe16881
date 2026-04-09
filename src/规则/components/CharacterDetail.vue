@@ -185,7 +185,7 @@
         </div>
         <div class="fetish-content">
           <div class="sensitive-section">
-            <span class="section-label">敏感部位</span>
+            <span class="section-label">敏感点开发</span>
             <div class="badges">
               <template v-if="displaySensitiveParts.length > 0">
                 <Badge
@@ -194,34 +194,34 @@
                   :text="String(p)"
                   :highlight="idx === 0"
                   class="clickable-badge"
-                  @click="toggleSensitivePartDetail(String(p))"
+                  @click="toggleSensitivePartDetail(sensitiveBadgeKey(String(p)))"
                 />
               </template>
               <template v-else>
                 <span class="empty-hint">暂无</span>
               </template>
             </div>
-            <!-- 敏感部位详情展开区域 -->
+            <!-- 敏感点开发详情展开区域 -->
             <template v-if="expandedSensitivePart">
               <div class="detail-expand-panel">
                 <div class="detail-header">
-                  <span class="detail-title">{{ expandedSensitivePart }}</span>
+                  <span class="detail-title">{{ sensitiveBadgeKey(expandedSensitivePart) }}</span>
                   <button type="button" class="close-btn" @click="expandedSensitivePart = null">
                     <i class="fa-solid fa-xmark"></i>
                   </button>
                 </div>
                 <div class="detail-body">
-                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.level">
+                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.level">
                     <span class="detail-label">敏感等级</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.level }}</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.level }}</span>
                   </div>
-                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.reaction">
+                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.reaction">
                     <span class="detail-label">生理反应</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.reaction }}</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.reaction }}</span>
                   </div>
-                  <div class="detail-row" v-if="getSensitivePartDetail(expandedSensitivePart)?.devDetails">
+                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.devDetails">
                     <span class="detail-label">开发细节</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(expandedSensitivePart)?.devDetails }}</span>
+                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.devDetails }}</span>
                   </div>
                 </div>
               </div>
@@ -273,6 +273,79 @@
           <div class="hidden-fetish">
             <span class="section-label">隐藏性癖</span>
             <p>{{ displayHiddenFetish }}</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- 服装与身体状态：紧挨「性癖与敏感带」，与身份标签同屏出现（双列时一般在性癖右侧） -->
+      <article
+        id="panel-character-appearance"
+        class="detail-card character-appearance-card"
+        :class="{ 'cyber-card': isDarkMode }"
+      >
+        <div class="card-title">
+          <i class="fa-solid fa-shirt"></i>
+          <h3>服装与身体状态</h3>
+          <button
+            type="button"
+            class="edit-mini-btn"
+            @click="$emit('openModal', 'edit_character_appearance', { characterId })"
+          >
+            编辑
+          </button>
+        </div>
+        <div class="appearance-content">
+          <div class="appearance-block">
+            <span class="section-label">服装槽位</span>
+            <div class="appearance-slots">
+              <template v-for="slotKey in appearanceSlotKeys" :key="slotKey">
+                <div v-if="clothingSlotSummary(slotKey)" class="appearance-slot-line">
+                  <span class="slot-name">{{ slotKey }}</span>
+                  <span class="slot-text">{{ clothingSlotSummary(slotKey) }}</span>
+                </div>
+              </template>
+              <span v-if="!hasAnyClothingSlot" class="empty-hint">暂无（点「编辑」填写上装/下装/内衣/足部）</span>
+            </div>
+            <template v-if="jewelryDisplayLines.length > 0">
+              <span class="section-label sub">饰品</span>
+              <ul class="appearance-list">
+                <li v-for="(line, idx) in jewelryDisplayLines" :key="'jw-' + idx">{{ line }}</li>
+              </ul>
+            </template>
+          </div>
+          <div class="appearance-block">
+            <span class="section-label">身体部位物理状态</span>
+            <div v-if="bodyPartBadgeLines.length > 0" class="badges">
+              <Badge
+                v-for="(line, idx) in bodyPartBadgeLines"
+                :key="'bp-' + idx"
+                :text="line"
+                :highlight="idx === 0"
+                class="clickable-badge"
+                @click="toggleBodyPartExpand(line)"
+              />
+            </div>
+            <span v-else class="empty-hint">暂无（点「编辑」添加部位）</span>
+            <template v-if="expandedBodyPart">
+              <div class="detail-expand-panel">
+                <div class="detail-header">
+                  <span class="detail-title">{{ expandedBodyPart }}</span>
+                  <button type="button" class="close-btn" @click="expandedBodyPart = null">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+                <div class="detail-body">
+                  <div v-if="getBodyPartPhysics(expandedBodyPart)?.外观描述" class="detail-row">
+                    <span class="detail-label">外观描述</span>
+                    <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.外观描述 }}</span>
+                  </div>
+                  <div v-if="getBodyPartPhysics(expandedBodyPart)?.当前状态" class="detail-row">
+                    <span class="detail-label">当前状态</span>
+                    <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.当前状态 }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
       </article>
@@ -368,7 +441,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.css';
-import type { CharacterData, RuleData } from '../types';
+import type { CharacterData, ClothingStateZh, RuleData } from '../types';
 import StatRow from './StatRow.vue';
 import StatBar from './StatBar.vue';
 import Badge from './Badge.vue';
@@ -401,6 +474,8 @@ function onBrowserAvatarStorageChange() {
 
 const defaultName = computed(() => '未知');
 
+const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
+
 const currentExtra = ref<{
   currentThought?: string;
   traits?: string[];
@@ -411,7 +486,11 @@ const currentExtra = ref<{
   fetishDetails?: Record<string, { level: number; description: string; justification: string }>;
   sensitivePartDetails?: Record<string, { level: number; reaction: string; devDetails: string }>;
   identityTags?: Record<string, string>;
+  clothingState?: ClothingStateZh;
+  bodyPartPhysics?: Record<string, { 外观描述?: string; 当前状态?: string }>;
 }>({});
+
+const expandedBodyPart = ref<string | null>(null);
 
 // 展开的性癖详情
 const expandedFetish = ref<string | null>(null);
@@ -422,7 +501,8 @@ function toggleFetishDetail(fetishName: string) {
     expandedFetish.value = null;
   } else {
     expandedFetish.value = fetishName;
-    expandedSensitivePart.value = null; // 关闭其他展开
+    expandedSensitivePart.value = null;
+    expandedBodyPart.value = null;
   }
 }
 
@@ -431,9 +511,53 @@ function toggleSensitivePartDetail(partName: string) {
     expandedSensitivePart.value = null;
   } else {
     expandedSensitivePart.value = partName;
-    expandedFetish.value = null; // 关闭其他展开
+    expandedFetish.value = null;
+    expandedBodyPart.value = null;
   }
 }
+
+function toggleBodyPartExpand(partName: string) {
+  if (expandedBodyPart.value === partName) {
+    expandedBodyPart.value = null;
+  } else {
+    expandedBodyPart.value = partName;
+    expandedFetish.value = null;
+    expandedSensitivePart.value = null;
+  }
+}
+
+function getBodyPartPhysics(name: string) {
+  return currentExtra.value.bodyPartPhysics?.[name];
+}
+
+function clothingSlotSummary(slotKey: (typeof appearanceSlotKeys)[number]): string {
+  const c = currentExtra.value.clothingState;
+  const s = c?.[slotKey];
+  if (!s) return '';
+  const parts = [s.名称, s.状态, s.描述].map(x => String(x ?? '').trim()).filter(Boolean);
+  return parts.join(' · ');
+}
+
+const hasAnyClothingSlot = computed(() =>
+  appearanceSlotKeys.some(k => Boolean(clothingSlotSummary(k).trim())),
+);
+
+const jewelryDisplayLines = computed(() => {
+  const acc = currentExtra.value.clothingState?.饰品;
+  if (!acc || typeof acc !== 'object') return [];
+  return Object.entries(acc).map(([name, o]) => {
+    const st = String(o?.状态 ?? '').trim();
+    const d = String(o?.描述 ?? '').trim();
+    const a = `${name}${st ? `（${st}）` : ''}`;
+    return d ? `${a}：${d}` : a;
+  });
+});
+
+const bodyPartBadgeLines = computed(() => {
+  const m = currentExtra.value.bodyPartPhysics;
+  if (!m || typeof m !== 'object') return [];
+  return Object.keys(m).map(k => String(k).trim()).filter(Boolean);
+});
 
 function getFetishDetail(name: string) {
   return currentExtra.value.fetishDetails?.[name];
@@ -441,6 +565,12 @@ function getFetishDetail(name: string) {
 
 function getSensitivePartDetail(name: string) {
   return currentExtra.value.sensitivePartDetails?.[name];
+}
+
+/** Badge 文案形如「部位：Lv.x …」，取键名供详情展开 */
+function sensitiveBadgeKey(line: string) {
+  const m = String(line).match(/^([^：]+)/);
+  return m ? m[1].trim() : String(line).trim();
 }
 
 const displayIdentityTags = computed(() => {
@@ -581,6 +711,8 @@ onMounted(() => {
         fetishDetails: (current as any).fetishDetails || {},
         sensitivePartDetails: (current as any).sensitivePartDetails || {},
         identityTags: (current as any).identityTags || {},
+        clothingState: (current as any).服装状态,
+        bodyPartPhysics: (current as any).身体部位物理状态 || {},
       };
       characterStatusText.value = (current as any).status === 'active' ? '出场中' : '暂时退场';
 
@@ -1486,7 +1618,57 @@ const emit = defineEmits<{
   }
 }
 
+.appearance-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.appearance-block {
+  .section-label.sub {
+    margin-top: 12px;
+  }
+}
+
+.appearance-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.appearance-slot-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+
+  .slot-name {
+    flex-shrink: 0;
+    min-width: 2.5em;
+    color: #a78bfa;
+    font-weight: 500;
+  }
+
+  .slot-text {
+    color: #d4d4d8;
+  }
+}
+
+.appearance-list {
+  margin: 0;
+  padding-left: 1.25em;
+  font-size: 14px;
+  color: #d4d4d8;
+  line-height: 1.6;
+}
+
 :global(.light) {
+  .appearance-slot-line .slot-text,
+  .appearance-list {
+    color: #3f3f46;
+  }
+
   .detail-expand-panel {
     background: rgba(0, 0, 0, 0.03);
     border-color: rgba(0, 0, 0, 0.1);
