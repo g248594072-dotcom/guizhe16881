@@ -88,7 +88,7 @@
           class="shujuku-inject-hint"
           :class="{ dark: isDarkMode, light: !isDarkMode }"
         >
-          将本界面内置的表格模板写入数据库扩展（与扩展「导入模板」等效），会替换当前聊天所用的表格模板结构。
+          将本界面内置的变量规则表格模板写入数据库扩展（与扩展「导入模板」等效），会替换当前聊天所用的表格模板结构。结构：元信息、游戏时间、世界/区域/个人规则、角色核心（身体部位、敏感点、服装、饰品、性癖均在角色核心行的 JSON 列）、可选游戏状态扩展。
         </p>
         <div class="shujuku-inject-actions">
           <button
@@ -98,7 +98,7 @@
             @click="runInjectBundledTemplate"
           >
             <i class="fa-solid fa-file-import"></i>
-            {{ injectTemplateLoading ? '注入中…' : '注入内置数据库模板' }}
+            {{ injectTemplateLoading ? '注入中…' : '注入内置表格模板' }}
           </button>
         </div>
       </div>
@@ -494,7 +494,7 @@ import {
 } from '../utils/localSettings';
 import { getOtherSettings, saveOtherSettings } from '../utils/otherSettings';
 import { injectBundledTavernDbTemplate } from '../utils/shujukuBridge';
-import tavernDbBundledTemplate from '../data/tavernDbBundledTemplate.json';
+import tavernDbVariablesRuleV2 from '../../../测试文件/TavernDB_template_变量规则_V2.json';
 import { useEditCartStore } from '../stores/editCart';
 import {
   loadFontSettings,
@@ -702,9 +702,9 @@ async function runFetchModels() {
 async function runInjectBundledTemplate() {
   injectTemplateLoading.value = true;
   try {
-    const { ok, message } = await injectBundledTavernDbTemplate(tavernDbBundledTemplate);
+    const { ok, message } = await injectBundledTavernDbTemplate(tavernDbVariablesRuleV2);
     if (ok) {
-      toastr.success(message?.trim() ? message : '数据库模板已注入');
+      toastr.success(message?.trim() ? message : '表格模板已注入');
     } else {
       toastr.error(message?.trim() ? message : '注入失败');
     }

@@ -1,0 +1,486 @@
+{
+  "sheet_v2_meta": {
+    "uid": "sheet_v2_meta",
+    "name": "元信息与进度",
+    "sourceData": {
+      "note": "【对应变量】元信息.*、元信息.最近更新时间\n\n【检查清单】\n1. 本表有且仅有一行；禁止 insertRow/deleteRow。\n2. 玩家名称、玩家设置JSON、当前阶段、进度：随剧情切页、规则掌控度或主角设定推进而更新。\n3. 最近更新时间：Unix 毫秒时间戳；本轮任意相关表有实质更新时须刷新。\n4. 玩家设置JSON 无内容时填 {}（合法 JSON 对象字符串）。\n5. 进度建议为整数且 ≥1。\n6. 与「游戏时间」分工：剧情时刻五元组只写在游戏时间表；跨日结算时须联动更新本表最近更新时间，并驱动子表批量更新。",
+      "initNode": "插入唯一一行：玩家名称、玩家设置JSON、当前阶段、进度、最近更新时间。",
+      "deleteNode": "禁止。",
+      "updateNode": "按变量更新规则更新各列；有实质数据变更时刷新最近更新时间。",
+      "insertNode": "禁止。"
+    },
+    "content": [
+      [
+        null,
+        "玩家名称",
+        "玩家设置JSON",
+        "当前阶段",
+        "进度",
+        "最近更新时间"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "元信息与进度",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "元信息与进度-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99981
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99982
+      }
+    },
+    "orderNo": 0
+  },
+  "sheet_v2_game_time": {
+    "uid": "sheet_v2_game_time",
+    "name": "游戏时间",
+    "sourceData": {
+      "note": "【对应变量】游戏时间.年|月|日|时|分\n\n【检查清单】\n1. 本表单行；禁止增删行。\n2. 每次生成须审视正文：出现时间跳跃描写则强制换算并写入五列。\n3. 对话、探索等微观推进须累加「分」并完整进位：分→时→日→月→年（月内可按 31 日简化，与常见 MVU 约定一致）。\n4. 若进位导致「日」变更：跨日结算——须在本轮内更新所有「出场中」角色（角色核心表）：当前内心想法、发情值（自然发酵）、当前综合生理描述；并刷新元信息.最近更新时间。\n5. 格式约束：月∈[1,12]，日∈[1,31]，时∈[0,23]，分∈[0,59]。格内写数字或可解析的十进制字符串。",
+      "initNode": "插入唯一一行：填入剧情起始年/月/日/时/分。",
+      "deleteNode": "禁止。",
+      "updateNode": "随正文时间推进更新；跨日时按规则联动角色子表与元信息最近更新时间。",
+      "insertNode": "禁止。"
+    },
+    "content": [
+      [
+        null,
+        "年",
+        "月",
+        "日",
+        "时",
+        "分"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "游戏时间",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "游戏时间-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99979
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99980
+      }
+    },
+    "orderNo": 1
+  },
+  "sheet_v2_world_rules": {
+    "uid": "sheet_v2_world_rules",
+    "name": "世界规则",
+    "sourceData": {
+      "note": "【对应变量】世界规则\n\n【检查清单】\n1. 每行一条规则；「规则键」= 变量 Record 中的键名，唯一。\n2. 仅当主角主动提出、修改或提交规则时，方可 insertRow/updateRow/deleteRow；禁止凭 NPC 或旁白擅自改规则表。\n3. 新规则须在「效果描述」「细分规则JSON」中体现对常识、物理或指定角色认知底线的覆写（与正文一致）。\n4. 状态列只能是：生效中 | 已归档。\n5. 细分规则JSON 须为合法 JSON 字符串，形状：{\"细分名\":{\"描述\":\"...\",\"状态\":\"生效中|已归档\"}}。\n\n【JSON 样例】\n{\"宵禁\":{\"描述\":\"22:00后禁止外出\",\"状态\":\"生效中\"}}",
+      "initNode": "按世界观插入若干规则行；规则键唯一。",
+      "deleteNode": "仅主角明确表示废除且剧情不再引用时可删行。",
+      "updateNode": "仅因主角主动修改规则而更新。",
+      "insertNode": "主角设定新世界级规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "世界规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "世界规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 2
+  },
+  "sheet_v2_region_rules": {
+    "uid": "sheet_v2_region_rules",
+    "name": "区域规则",
+    "sourceData": {
+      "note": "【对应变量】区域规则\n\n【检查清单】\n1. 每行一条规则；「规则键」= 变量 Record 中的键名，唯一。\n2. 仅当主角主动提出、修改或提交规则时，方可 insertRow/updateRow/deleteRow；禁止凭 NPC 或旁白擅自改规则表。\n3. 新规则须在「效果描述」「细分规则JSON」中体现对常识、物理或指定角色认知底线的覆写（与正文一致）。\n4. 状态列只能是：生效中 | 已归档。\n5. 细分规则JSON 须为合法 JSON 字符串，形状：{\"细分名\":{\"描述\":\"...\",\"状态\":\"生效中|已归档\"}}。\n\n【JSON 样例】\n{\"宵禁\":{\"描述\":\"22:00后禁止外出\",\"状态\":\"生效中\"}}",
+      "initNode": "为可玩区域插入规则行。",
+      "deleteNode": "主角废除或区域永久废弃时可删。",
+      "updateNode": "仅主角主动修改区域规则时更新。",
+      "insertNode": "主角确立新区域规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "区域规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "区域规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 3
+  },
+  "sheet_v2_personal_rules": {
+    "uid": "sheet_v2_personal_rules",
+    "name": "个人规则",
+    "sourceData": {
+      "note": "【对应变量】个人规则\n\n【检查清单】\n1. 每行一条规则；「规则键」= 变量 Record 中的键名，唯一。\n2. 仅当主角主动提出、修改或提交规则时，方可 insertRow/updateRow/deleteRow；禁止凭 NPC 或旁白擅自改规则表。\n3. 新规则须在「效果描述」「细分规则JSON」中体现对常识、物理或指定角色认知底线的覆写（与正文一致）。\n4. 状态列只能是：生效中 | 已归档。\n5. 细分规则JSON 须为合法 JSON 字符串，形状：{\"细分名\":{\"描述\":\"...\",\"状态\":\"生效中|已归档\"}}。\n\n【JSON 样例】\n{\"宵禁\":{\"描述\":\"22:00后禁止外出\",\"状态\":\"生效中\"}}",
+      "initNode": "插入个人/契约类规则行。",
+      "deleteNode": "主角废除时可删。",
+      "updateNode": "仅主角主动修改时更新。",
+      "insertNode": "主角新增个人层面规则时插入。"
+    },
+    "content": [
+      [
+        null,
+        "规则键",
+        "名称",
+        "效果描述",
+        "状态",
+        "适用对象",
+        "标记",
+        "细分规则JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "orderNo": 4,
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "个人规则",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "个人规则-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99991
+      }
+    }
+  },
+  "sheet_v2_character_core": {
+    "uid": "sheet_v2_character_core",
+    "name": "角色核心",
+    "sourceData": {
+      "note": "【对应变量】角色档案.<档案ID> 全量字段。身体部位、敏感点、服装槽位、饰品、性癖条目均在本表同一行的五个 JSON 列中维护，禁止再拆到其它 sheet。\n\n【单表约束】本模板顶层仅：元信息、游戏时间、世界/区域/个人规则、角色核心、游戏状态扩展。每名角色一行。\n\n【检查清单 · 登场】\n1. 正文出现有戏份、有对话、高颜值或性格特殊的女性角色时：本回合必须 insertRow 一行并写满所有列；禁止空列；性格JSON、身份标签JSON 须合法；五个嵌套 JSON 列须为合法 JSON：身体部位与敏感点须覆盖必建部位；饰品无则饰品JSON 可用 {}；性癖条目JSON 至少含一条对象。\n2. 档案ID 唯一，可与姓名相同。\n\n【检查清单 · 标量字段】\n3. 状态：出场中 | 暂时退场；场景切换、进出干涉范围或时间大幅跳跃时更新。\n4. 当前内心想法：高频短对话可更新；随游戏时间可向顺从/发情侧偏移。\n5. 隐藏性癖：文本摘要；极端羞耻显露后：将内容并入性癖条目JSON（可见性改为明面），并清空或缩短本列。\n6. 年龄/身高/体重：数字或可解析字符串；三围、体质特征：文本。\n7. 好感度 ±(1~3)；发情值言语撩拨 +(5~15)，随时间发酵，发泄后可回落；性癖开发值 +(2~8)，达 100 时在性癖条目JSON 内新增或升级条目后本列归零。\n8. 当前综合生理描述：发情值、敏感点、服装破损变化时汇总更新。\n9. 级联：规则表、跨日结算须同步更新本行相关 JSON 与标量。\n\n【身体部位物理状态JSON】\n对象，键=部位名，值={\"外观描述\":\"\",\"当前状态\":\"\"}。建档至少含：脸部、手部、乳房、乳头、小穴、脚部。仅客观物理，禁止主观情绪。服装剥夺/摩擦/规则干涉时更新对应键的当前状态。\n\n【敏感点开发JSON】\n对象，键=部位名（建议与身体部位键对齐），值={\"敏感等级\":0,\"生理反应\":\"\",\"开发细节\":\"\"}。随视线、触碰、规则更新；与性癖开发值增长配合。\n\n【服装槽位JSON】\n对象，固定键：上装、下装、内衣、足部。每键值={\"名称\":\"\",\"状态\":\"\",\"描述\":\"\"}。剥夺/破损只改对应键。未穿着某槽可写 名称空、状态「无」。\n\n【饰品JSON】\n对象，键=饰品名，值={\"状态\":\"\",\"描述\":\"\"}。装备变化时增删改键。\n\n【性癖条目JSON】\n数组，元素={\"性癖名\":\"\",\"等级\":0,\"细节描述\":\"\",\"自我合理化\":\"\",\"可见性\":\"明面|隐藏\"}。隐藏可改为明面或合并；等级质变与性癖开发值归零同一轮完成。\n\n【性格JSON 样例】\n{\"傲娇\":\"嘴硬但会偷看主角\",\"认真\":\"对学业极度执着\"}\n\n【身份标签JSON 样例】\n{\"学姐\":\"同社团前辈\",\"邻居\":\"对门住户\"}",
+      "initNode": "开局每人一行；新角色登场 insertRow 并一次性写满标量列与五个 JSON 列。",
+      "deleteNode": "角色永久退场且不再引用时可删行。",
+      "updateNode": "随剧情、规则、时间更新；可只 updateRow 改部分列，但五个 JSON 须保持合法 JSON；性癖开发值 100 质变后归零。",
+      "insertNode": "新角色登场；档案ID 唯一。"
+    },
+    "content": [
+      [
+        null,
+        "档案ID",
+        "姓名",
+        "状态",
+        "描写",
+        "当前内心想法",
+        "隐藏性癖",
+        "年龄",
+        "身高",
+        "体重",
+        "三围",
+        "体质特征",
+        "好感度",
+        "性癖开发值",
+        "发情值",
+        "性格JSON",
+        "身份标签JSON",
+        "当前综合生理描述",
+        "身体部位物理状态JSON",
+        "敏感点开发JSON",
+        "服装槽位JSON",
+        "饰品JSON",
+        "性癖条目JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": true,
+      "splitByRow": true,
+      "entryName": "角色核心",
+      "entryType": "keyword",
+      "keywords": "姓名",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": true,
+      "extraIndexEntryName": "角色核心-索引",
+      "extraIndexColumns": [
+        "姓名",
+        "档案ID"
+      ],
+      "extraIndexColumnModes": {
+        "姓名": "both",
+        "档案ID": "index_only"
+      },
+      "extraIndexInjectionTemplate": "<已登场角色索引>\n$1\n</已登场角色索引>",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99983
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99984
+      }
+    },
+    "orderNo": 5
+  },
+  "sheet_v2_game_state": {
+    "uid": "sheet_v2_game_state",
+    "name": "游戏状态扩展",
+    "sourceData": {
+      "note": "【对应变量】未建模的临时键值（可选）\n\n【检查清单】\n1. 每行：状态键 + 状态值JSON 字符串。\n2. 角色相关数据应优先写入「角色核心」表内 JSON 列；确无列可放时再使用本表。\n3. 默认可无行。",
+      "initNode": "按需插入；可无。",
+      "deleteNode": "键不再使用删行。",
+      "updateNode": "值变更新。",
+      "insertNode": "新剧情键插入。"
+    },
+    "content": [
+      [
+        null,
+        "状态键",
+        "状态值JSON"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": -1,
+      "updateFrequency": -1,
+      "batchSize": -1,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "游戏状态扩展",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "游戏状态扩展-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "before_character_definition",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 6
+  },
+  "mate": {
+    "type": "chatSheets",
+    "version": 1,
+    "updateConfigUiSentinel": -1,
+    "globalInjectionConfig": {
+      "readableEntryPlacement": {
+        "position": "before_char",
+        "depth": 2,
+        "order": 99981
+      },
+      "wrapperPlacement": {
+        "position": "before_char",
+        "depth": 2,
+        "order": 99982
+      }
+    }
+  }
+}
