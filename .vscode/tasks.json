@@ -41,6 +41,7 @@
       "isBackground": true
     },
     {
+<<<<<<< HEAD
       "label": "开始监听手机界面 (Vite)",
       "type": "shell",
       "command": "pnpm",
@@ -78,6 +79,12 @@
       "label": "开始任务",
       "dependsOn": ["开始监听源代码并编译"],
       "dependsOrder": "parallel"
+=======
+      "label": "开始任务",
+      "dependsOn": [
+        "开始监听源代码并编译",
+      ]
+>>>>>>> 304e8c08c9a8646568197fb30d79c23676d3a5a0
     },
     {
       "label": "结束任务",
