@@ -7,6 +7,111 @@ type AcuApi = {
   manualUpdate: () => Promise<boolean>;
 };
 
+type AcuTemplateInjectResult = { success?: boolean; message?: string };
+
+type AcuTemplateApi = {
+  importTemplateFromData?: (data: unknown) => Promise<AcuTemplateInjectResult>;
+  initGameSession?: (
+    session: Record<string, unknown>,
+    options: { injectTemplate: boolean; loadPreset: boolean; templateData: unknown },
+  ) => Promise<AcuTemplateInjectResult>;
+};
+
+function pickTemplateApi(raw: unknown): AcuTemplateApi | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const api = raw as AcuTemplateApi;
+  if (typeof api.importTemplateFromData === 'function' || typeof api.initGameSession === 'function') {
+    return api;
+  }
+  return null;
+}
+
+/**
+ * 查找可提供模板导入的 `AutoCardUpdaterAPI`（支持 `importTemplateFromData` 或 `initGameSession`）。
+ * 顺序：当前 window → parent → top。
+ */
+export function resolveAutoCardUpdaterTemplateApi(): AcuTemplateApi | null {
+  try {
+    const api = pickTemplateApi((window as unknown as { AutoCardUpdaterAPI?: unknown }).AutoCardUpdaterAPI);
+    if (api) {
+      return api;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const candidates: Window[] = [];
+  try {
+    candidates.push(window.parent);
+  } catch {
+    /* cross-origin */
+  }
+  try {
+    if (window.top !== window) {
+      candidates.push(window.top);
+    }
+  } catch {
+    /* cross-origin */
+  }
+
+  for (const w of candidates) {
+    try {
+      const api = pickTemplateApi((w as unknown as { AutoCardUpdaterAPI?: unknown }).AutoCardUpdaterAPI);
+      if (api) {
+        return api;
+      }
+    } catch {
+      /* cross-origin */
+    }
+  }
+  return null;
+}
+
+/**
+ * 将内置 JSON 模板注入数据库扩展（与扩展「导入模板」或正则示例中 initGameSession 等效）。
+ */
+export async function injectBundledTavernDbTemplate(
+  template: unknown,
+): Promise<{ ok: boolean; message?: string }> {
+  const api = resolveAutoCardUpdaterTemplateApi();
+  if (!api) {
+    return {
+      ok: false,
+      message: '未检测到 AutoCardUpdaterAPI，请安装数据库扩展并在酒馆中打开本界面。',
+    };
+  }
+
+  try {
+    if (typeof api.importTemplateFromData === 'function') {
+      const result = await api.importTemplateFromData(template);
+      return {
+        ok: Boolean(result?.success),
+        message: result?.message,
+      };
+    }
+    if (typeof api.initGameSession === 'function') {
+      const result = await api.initGameSession(
+        {},
+        { injectTemplate: true, loadPreset: false, templateData: template },
+      );
+      return {
+        ok: Boolean(result?.success),
+        message: result?.message,
+      };
+    }
+    return {
+      ok: false,
+      message: '当前扩展版本不支持 importTemplateFromData 或 initGameSession。',
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.warn('[规则] injectBundledTavernDbTemplate 失败:', e);
+    return { ok: false, message };
+  }
+}
+
 /**
  * 在父窗口 / top / 当前窗口查找 `window.AutoCardUpdaterAPI`（酒馆扩展注入位置因环境而异）。
  * 注意：优先检查当前 window，因为数据库可能已直接注入到前端 iframe 中。

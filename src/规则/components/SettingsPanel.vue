@@ -83,6 +83,24 @@
             <span class="toggle-slider"></span>
           </label>
         </div>
+
+        <p
+          class="shujuku-inject-hint"
+          :class="{ dark: isDarkMode, light: !isDarkMode }"
+        >
+          将本界面内置的表格模板写入数据库扩展（与扩展「导入模板」等效），会替换当前聊天所用的表格模板结构。
+        </p>
+        <div class="shujuku-inject-actions">
+          <button
+            type="button"
+            class="btn-api btn-api-secondary"
+            :disabled="injectTemplateLoading"
+            @click="runInjectBundledTemplate"
+          >
+            <i class="fa-solid fa-file-import"></i>
+            {{ injectTemplateLoading ? '注入中…' : '注入内置数据库模板' }}
+          </button>
+        </div>
       </div>
 
       <!-- API 模式选择卡片 -->
@@ -475,6 +493,8 @@ import {
   saveUiLayout,
 } from '../utils/localSettings';
 import { getOtherSettings, saveOtherSettings } from '../utils/otherSettings';
+import { injectBundledTavernDbTemplate } from '../utils/shujukuBridge';
+import tavernDbBundledTemplate from '../data/tavernDbBundledTemplate.json';
 import { useEditCartStore } from '../stores/editCart';
 import {
   loadFontSettings,
@@ -521,6 +541,8 @@ const secondaryTestLoading = ref(false);
 const secondaryModelsLoading = ref(false);
 const secondaryTestMessage = ref('');
 const secondaryTestOk = ref(false);
+
+const injectTemplateLoading = ref(false);
 
 const lastErrorToastTime = ref(0);
 const ERROR_TOAST_THROTTLE = 5000;
@@ -674,6 +696,22 @@ async function runFetchModels() {
     toastr.error('获取模型列表失败');
   } finally {
     secondaryModelsLoading.value = false;
+  }
+}
+
+async function runInjectBundledTemplate() {
+  injectTemplateLoading.value = true;
+  try {
+    const { ok, message } = await injectBundledTavernDbTemplate(tavernDbBundledTemplate);
+    if (ok) {
+      toastr.success(message?.trim() ? message : '数据库模板已注入');
+    } else {
+      toastr.error(message?.trim() ? message : '注入失败');
+    }
+  } catch (e) {
+    toastr.error(e instanceof Error ? e.message : '注入失败');
+  } finally {
+    injectTemplateLoading.value = false;
   }
 }
 
@@ -1021,6 +1059,28 @@ async function selectMode(mode: OutputMode) {
 
 .light .shujuku-toggle-hint {
   color: #52525b;
+}
+
+.shujuku-inject-hint {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  opacity: 0.88;
+}
+
+.dark .shujuku-inject-hint {
+  color: #a1a1aa;
+}
+
+.light .shujuku-inject-hint {
+  color: #52525b;
+}
+
+.shujuku-inject-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .shujuku-options-hint {
