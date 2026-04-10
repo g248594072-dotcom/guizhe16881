@@ -3243,7 +3243,11 @@ $(() => {
           const scriptVars = getVariables({ type: 'script', script_id: getScriptId() }) as Record<string, unknown>;
           const current = scriptVars.auto_analyze_interval;
           if (current !== interval) {
-            replaceVariables({ auto_analyze_interval: interval }, { type: 'script', script_id: getScriptId() });
+            updateVariablesWith(vars => {
+              if (!vars) vars = {};
+              vars.auto_analyze_interval = interval;
+              return vars;
+            }, { type: 'script', script_id: getScriptId() });
             console.info(`[tavern-phone] ✅ 已保存自动分析间隔: ${interval} 楼`);
           }
         } catch (err) {

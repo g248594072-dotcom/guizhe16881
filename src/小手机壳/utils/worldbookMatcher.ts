@@ -36,7 +36,11 @@ function addToCreatedWorldbookList(worldbookName: string): void {
     const currentList = getCreatedWorldbookList();
     if (!currentList.includes(worldbookName)) {
       const newList = [...currentList, worldbookName];
-      replaceVariables({ [CREATED_WORLDBOOKS_KEY]: newList }, { type: 'script', script_id: getScriptId() });
+      updateVariablesWith(vars => {
+        if (!vars) vars = {};
+        vars[CREATED_WORLDBOOKS_KEY] = newList;
+        return vars;
+      }, { type: 'script', script_id: getScriptId() });
       console.log(MODULE_NAME, '已记录创建的世界书:', worldbookName);
     }
   } catch (e) {
@@ -52,7 +56,11 @@ function removeFromCreatedWorldbookList(worldbookName: string): void {
     const currentList = getCreatedWorldbookList();
     const newList = currentList.filter(name => name !== worldbookName);
     if (newList.length !== currentList.length) {
-      replaceVariables({ [CREATED_WORLDBOOKS_KEY]: newList }, { type: 'script', script_id: getScriptId() });
+      updateVariablesWith(vars => {
+        if (!vars) vars = {};
+        vars[CREATED_WORLDBOOKS_KEY] = newList;
+        return vars;
+      }, { type: 'script', script_id: getScriptId() });
     }
   } catch (e) {
     console.warn(MODULE_NAME, '从记录中移除世界书失败:', e);

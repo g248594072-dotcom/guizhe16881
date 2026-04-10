@@ -2995,9 +2995,13 @@ async function applyMvuParseToMessageFloor(
       await Mvu.replaceMvuData(parsed, { type: 'message', message_id: messageId });
       console.log('✅ [App] 已解析消息中 <UpdateVariable> 并写入 MVU，楼层:', messageId);
     } catch (e) {
-      console.warn('⚠️ [App] replaceMvuData 失败，尝试 replaceVariables:', e);
-      await replaceVariables(parsed, { type: 'message', message_id: messageId });
-      console.log('✅ [App] MVU 已通过 replaceVariables 写入楼层:', messageId);
+      console.warn('⚠️ [App] replaceMvuData 失败，尝试合并写入消息变量:', e);
+      await updateVariablesWith(
+        existing =>
+          Object.assign({}, existing && typeof existing === 'object' ? existing : {}, parsed as object),
+        { type: 'message', message_id: messageId },
+      );
+      console.log('✅ [App] MVU 已合并写入楼层变量:', messageId);
     }
     scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
     scheduleResidentLifeFlushAfterStatCommit(parsed.stat_data);
@@ -3779,8 +3783,8 @@ async function confirmVariableRerollApply() {
         console.warn('⚠️ [App] MVU 解析返回空，跳过写回变量');
       }
     } catch (e) {
-      console.warn('⚠️ [App] MVU 方式更新变量失败，尝试降级到 replaceVariables:', e);
-      // 降级方案：使用 replaceVariables
+      console.warn('⚠️ [App] MVU 方式更新变量失败，尝试降级到合并写入:', e);
+      // 降级方案：合并写入，保留楼层上非 MVU 标准顶层键
       try {
         await waitGlobalInitialized('Mvu');
         const base = pending.baseData ?? Mvu.getMvuData({ type: 'message', message_id: Math.max(pending.messageId - 1, 0) });
@@ -3796,8 +3800,12 @@ async function confirmVariableRerollApply() {
         }
 
         if (parsed) {
-          await replaceVariables(parsed, { type: 'message', message_id: pending.messageId });
-          console.log('✅ [App] 变量已通过 replaceVariables 降级方案应用到楼层');
+          await updateVariablesWith(
+            existing =>
+              Object.assign({}, existing && typeof existing === 'object' ? existing : {}, parsed as object),
+            { type: 'message', message_id: pending.messageId },
+          );
+          console.log('✅ [App] 变量已通过合并写入降级方案应用到楼层');
           appliedParsed = parsed;
         }
       } catch (e2) {
@@ -4485,7 +4493,11 @@ async function refineOpeningAssistantWithSecondaryApi(
     }
 
     if (parsed) {
-      await replaceVariables(parsed, { type: 'message', message_id: assistantMessageId });
+      await updateVariablesWith(
+        existing =>
+          Object.assign({}, existing && typeof existing === 'object' ? existing : {}, parsed as object),
+        { type: 'message', message_id: assistantMessageId },
+      );
       scheduleWorldLifeAfterJsonPatchIfNeeded(jsonPatches, parsed.stat_data);
       scheduleResidentLifeFlushAfterStatCommit(parsed.stat_data);
     }
@@ -4663,7 +4675,10 @@ async function normalizeLatestChineseStatData(): Promise<void> {
     delete vars.stat_data.stat_data;
 
     if (moved > 0) {
-      await replaceVariables(vars, { type: 'message', message_id: 'latest' });
+      await updateVariablesWith(
+        existing => Object.assign({}, existing && typeof existing === 'object' ? existing : {}, vars),
+        { type: 'message', message_id: 'latest' },
+      );
       console.log(`✅ [App] 已修正最新楼层变量套娃，提升字段数: ${moved}`);
     }
   } catch (e) {

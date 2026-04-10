@@ -550,12 +550,14 @@ export async function createOpeningStoryMessage(formData: OpeningFormData): Prom
  */
 export async function resetGame(): Promise<boolean> {
   try {
-    // 重置0层变量
-    await replaceVariables(
-      {
-        stat_data: {},
-        display_data: {},
-        delta_data: {},
+    // 重置 0 层 MVU 三字段，保留同层其它键（如 schema、initialized_lorebooks）
+    await updateVariablesWith(
+      vars => {
+        if (!vars) vars = {};
+        vars.stat_data = {};
+        vars.display_data = {};
+        vars.delta_data = {};
+        return vars;
       },
       { type: 'message', message_id: 0 },
     );

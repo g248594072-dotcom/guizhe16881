@@ -199,13 +199,15 @@ const loadStatusFromVariables = () => {
   }
 };
 
-// 监听变量变化并保存
+// 监听变量变化并保存（合并写入，避免 replaceVariables 整表替换冲掉 MVU 等同层字段）
 watchEffect(() => {
   try {
-    replaceVariables(
-      { characterStatus: klona(characterStatus.value) },
-      { type: 'message', message_id: getCurrentMessageId() }
-    );
+    const mid = getCurrentMessageId();
+    updateVariablesWith(vars => {
+      if (!vars) vars = {};
+      vars.characterStatus = klona(characterStatus.value);
+      return vars;
+    }, { type: 'message', message_id: mid });
   } catch (e) {
     console.warn('无法保存角色状态到变量:', e);
   }

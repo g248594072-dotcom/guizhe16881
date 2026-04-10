@@ -423,9 +423,12 @@ export async function executeVariableCommands(commands: Array<{ name: string; va
         parsedValue = false;
       }
 
-      // 使用酒馆变量接口设置变量
-      if (typeof replaceVariables === 'function') {
-        replaceVariables({ [cmd.name]: parsedValue }, { type: 'chat' });
+      if (typeof updateVariablesWith === 'function') {
+        updateVariablesWith(vars => {
+          if (!vars) vars = {};
+          vars[cmd.name] = parsedValue;
+          return vars;
+        }, { type: 'chat' });
         console.log(`📊 [gameFlow] 设置变量: ${cmd.name} = ${parsedValue}`);
       }
     } catch (error) {

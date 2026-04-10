@@ -74,7 +74,8 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         return {};
       }
 
-      // 辅助函数：设置 stat_data，统一使用 MVU 格式，修复双重嵌套
+      // 辅助函数：设置 stat_data，统一使用 MVU 格式，修复双重嵌套。
+      // 在 `stat_data` / `display_data` / `delta_data` 之外合并保留消息楼层变量上的其它顶层键（如 schema、initialized_lorebooks），避免写回时整表被裁成只剩三块。
       function setStatData(variables: any, newData: any): any {
         if (!variables) variables = {};
 
@@ -82,21 +83,20 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         if (variables.stat_data && typeof variables.stat_data === 'object' &&
             variables.stat_data.stat_data && typeof variables.stat_data.stat_data === 'object') {
           console.warn('[mvu] 写入时检测到双重嵌套，自动修复');
-          // 重建正确的单层 MVU 格式
           const displayData = variables.stat_data.display_data || {};
           const deltaData = variables.stat_data.delta_data || {};
           return {
+            ...variables,
             stat_data: newData,
             display_data: displayData,
             delta_data: deltaData,
           };
         }
 
-        // 统一使用 MVU 格式（单层）
-        // 如果已经有 display_data/delta_data，保留它们
         const displayData = variables.display_data || {};
         const deltaData = variables.delta_data || {};
         return {
+          ...variables,
           stat_data: newData,
           display_data: displayData,
           delta_data: deltaData,
