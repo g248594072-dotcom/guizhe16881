@@ -73,6 +73,16 @@ export function buildArchiveWorldItem(title: string): EditCartItem {
   };
 }
 
+export function buildDeleteWorldItem(title: string): EditCartItem {
+  return {
+    id: newId(),
+    dedupeKey: `delete_world:${title}`,
+    label: `删除世界规则：${title}`,
+    category: 'world',
+    action: { kind: 'delete_world_rule', title },
+  };
+}
+
 export function buildArchiveRegionItem(name: string): EditCartItem {
   return {
     id: newId(),
@@ -80,6 +90,46 @@ export function buildArchiveRegionItem(name: string): EditCartItem {
     label: `归档区域：${name}`,
     category: 'region',
     action: { kind: 'archive_region', name },
+  };
+}
+
+export function buildDeleteRegionItem(name: string): EditCartItem {
+  return {
+    id: newId(),
+    dedupeKey: `delete_region:${name}`,
+    label: `删除区域：${name}`,
+    category: 'region',
+    action: { kind: 'delete_region', name },
+  };
+}
+
+export function buildArchiveRegionalRuleItem(
+  regionName: string,
+  ruleIdOrTitle: string,
+  ruleSummary?: string,
+): EditCartItem {
+  const key = `archive_rr:${regionName}:${ruleIdOrTitle}`;
+  return {
+    id: newId(),
+    dedupeKey: key,
+    label: `归档区域规则：${regionName} / ${ruleSummary ?? ruleIdOrTitle}`,
+    category: 'region',
+    action: { kind: 'archive_regional_rule', regionName, ruleIdOrTitle, ruleSummary },
+  };
+}
+
+export function buildDeleteRegionalRuleItem(
+  regionName: string,
+  ruleIdOrTitle: string,
+  ruleSummary?: string,
+): EditCartItem {
+  const key = `delete_rr:${regionName}:${ruleIdOrTitle}`;
+  return {
+    id: newId(),
+    dedupeKey: key,
+    label: `删除区域规则：${regionName} / ${ruleSummary ?? ruleIdOrTitle}`,
+    category: 'region',
+    action: { kind: 'delete_regional_rule', regionName, ruleIdOrTitle, ruleSummary },
   };
 }
 
@@ -129,6 +179,41 @@ export function buildArchivePersonalFromPayload(payload: Record<string, unknown>
   const title = payload.title != null ? String(payload.title) : undefined;
   const ruleSummary = title !== character ? title : undefined;
   return buildArchivePersonalItem(id, character, ruleSummary);
+}
+
+export function buildDeletePersonalFromPayload(payload: Record<string, unknown>): EditCartItem {
+  const id = String(payload.id ?? payload.title ?? payload.character ?? '');
+  const character = payload.character != null ? String(payload.character) : undefined;
+  const title = payload.title != null ? String(payload.title) : undefined;
+  const ruleSummary = title !== character ? title : undefined;
+  const key = `delete_personal:${id}:${character ?? ''}`;
+  return {
+    id: newId(),
+    dedupeKey: key,
+    label: `删除个人规则：${character ?? id}`,
+    category: 'personal',
+    action: { kind: 'delete_personal_rule', idOrTitle: id, characterName: character, ruleSummary },
+  };
+}
+
+export function buildArchivePersonalRulesGroupItem(groupName: string): EditCartItem {
+  return {
+    id: newId(),
+    dedupeKey: `archive_personal_group:${groupName}`,
+    label: `归档个人规则（本对象）：${groupName}`,
+    category: 'personal',
+    action: { kind: 'archive_personal_rules_group', groupName },
+  };
+}
+
+export function buildDeletePersonalRulesGroupItem(groupName: string): EditCartItem {
+  return {
+    id: newId(),
+    dedupeKey: `delete_personal_group:${groupName}`,
+    label: `删除个人规则（本对象）：${groupName}`,
+    category: 'personal',
+    action: { kind: 'delete_personal_rules_group', groupName },
+  };
 }
 
 export function buildRandomWorldItem(title: string, desc: string): EditCartItem {
@@ -186,6 +271,14 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
         category: 'world',
         action: { kind: 'archive_world_rule', title: a.title },
       };
+    case 'delete_world_rule':
+      return {
+        ...item,
+        dedupeKey: `delete_world:${a.title}`,
+        label: `删除世界规则：${a.title}`,
+        category: 'world',
+        action: { kind: 'delete_world_rule', title: a.title },
+      };
     case 'archive_region':
       return {
         ...item,
@@ -193,6 +286,30 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
         label: `归档区域：${a.name}`,
         category: 'region',
         action: { kind: 'archive_region', name: a.name },
+      };
+    case 'delete_region':
+      return {
+        ...item,
+        dedupeKey: `delete_region:${a.name}`,
+        label: `删除区域：${a.name}`,
+        category: 'region',
+        action: { kind: 'delete_region', name: a.name },
+      };
+    case 'archive_regional_rule':
+      return {
+        ...item,
+        dedupeKey: `archive_rr:${a.regionName}:${a.ruleIdOrTitle}`,
+        label: `归档区域规则：${a.regionName} / ${a.ruleSummary ?? a.ruleIdOrTitle}`,
+        category: 'region',
+        action: { ...a },
+      };
+    case 'delete_regional_rule':
+      return {
+        ...item,
+        dedupeKey: `delete_rr:${a.regionName}:${a.ruleIdOrTitle}`,
+        label: `删除区域规则：${a.regionName} / ${a.ruleSummary ?? a.ruleIdOrTitle}`,
+        category: 'region',
+        action: { ...a },
       };
     case 'archive_personal_rule': {
       const key = `archive_personal:${a.idOrTitle}:${a.characterName ?? ''}`;
@@ -204,6 +321,32 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
         action: { ...a },
       };
     }
+    case 'delete_personal_rule': {
+      const key = `delete_personal:${a.idOrTitle}:${a.characterName ?? ''}`;
+      return {
+        ...item,
+        dedupeKey: key,
+        label: `删除个人规则：${a.characterName ?? a.idOrTitle}`,
+        category: 'personal',
+        action: { ...a },
+      };
+    }
+    case 'archive_personal_rules_group':
+      return {
+        ...item,
+        dedupeKey: `archive_personal_group:${a.groupName}`,
+        label: `归档个人规则（本对象）：${a.groupName}`,
+        category: 'personal',
+        action: { kind: 'archive_personal_rules_group', groupName: a.groupName },
+      };
+    case 'delete_personal_rules_group':
+      return {
+        ...item,
+        dedupeKey: `delete_personal_group:${a.groupName}`,
+        label: `删除个人规则（本对象）：${a.groupName}`,
+        category: 'personal',
+        action: { kind: 'delete_personal_rules_group', groupName: a.groupName },
+      };
     case 'character_basic': {
       const dn = String(a.data.name ?? '').trim() || item.label;
       return {

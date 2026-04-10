@@ -162,11 +162,40 @@ export async function applyEditCartAction(action: EditCartAction): Promise<strin
     case 'archive_world_rule':
       await m.submitArchiveWorldRule(action.title);
       return '';
+    case 'delete_world_rule':
+      await m.submitDeleteWorldRule(action.title);
+      return '';
     case 'archive_region':
       await m.submitArchiveRegion(action.name);
       return '';
+    case 'delete_region':
+      await m.submitDeleteRegion(action.name);
+      return '';
+    case 'archive_regional_rule':
+      await m.submitArchiveRegionalRule(
+        action.regionName,
+        action.ruleIdOrTitle,
+        action.ruleSummary,
+      );
+      return '';
+    case 'delete_regional_rule':
+      await m.submitDeleteRegionalRule(
+        action.regionName,
+        action.ruleIdOrTitle,
+        action.ruleSummary,
+      );
+      return '';
     case 'archive_personal_rule':
       await m.submitArchivePersonalRule(action.idOrTitle, action.characterName, action.ruleSummary);
+      return '';
+    case 'delete_personal_rule':
+      await m.submitDeletePersonalRule(action.idOrTitle, action.characterName, action.ruleSummary);
+      return '';
+    case 'archive_personal_rules_group':
+      await m.submitArchivePersonalRulesForGroup(action.groupName);
+      return '';
+    case 'delete_personal_rules_group':
+      await m.submitDeletePersonalRulesForGroup(action.groupName);
       return '';
     case 'character_basic':
       return await m.submitEditCharacterBasic(action.characterId, action.data);

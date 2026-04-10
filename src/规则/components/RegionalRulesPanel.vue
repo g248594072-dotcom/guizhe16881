@@ -82,6 +82,26 @@
               <span class="rule-count">{{ activeRulesList(region).length }} / {{ (region.rules || []).length }} 条</span>
               <i class="fa-solid fa-chevron-down header-chevron"></i>
             </button>
+            <div class="region-toolbar" @click.stop>
+              <button
+                type="button"
+                class="toolbar-btn archive"
+                title="归档区域（不生效，可复原）"
+                @click="$emit('openModal', 'archive_region', { name: region.name, id: region.id })"
+              >
+                <i class="fa-solid fa-box-archive"></i>
+                <span>归档区域</span>
+              </button>
+              <button
+                type="button"
+                class="toolbar-btn delete"
+                title="从变量中删除该区域及全部细分规则"
+                @click="$emit('openModal', 'delete_region', { name: region.name, id: region.id })"
+              >
+                <i class="fa-solid fa-trash"></i>
+                <span>删除区域</span>
+              </button>
+            </div>
             <div v-show="expandedRegions.has(region.name)" class="card-body">
               <div
                 v-for="rule in activeRulesList(region)"
@@ -101,9 +121,16 @@
                   <button
                     class="action archive"
                     title="归档"
-                    @click="onArchive(region.name, rule)"
+                    @click="$emit('openModal', 'archive_region_rule', { regionName: region.name, rule, ruleSummary: ruleSummary(rule) })"
                   >
                     <i class="fa-solid fa-archive"></i>
+                  </button>
+                  <button
+                    class="action delete"
+                    title="删除"
+                    @click="$emit('openModal', 'delete_region_rule', { regionName: region.name, rule, ruleSummary: ruleSummary(rule) })"
+                  >
+                    <i class="fa-solid fa-trash"></i>
                   </button>
                 </div>
               </div>
@@ -128,7 +155,7 @@
 import { ref, computed, watch } from 'vue';
 import type { RegionData, RuleData } from '../types';
 import { useRegionalRules, useRegionalArchivedGrouped } from '../store';
-import { submitArchiveRegionalRule, submitRestoreRegionalRule } from '../utils/dialogAndVariable';
+import { submitRestoreRegionalRule } from '../utils/dialogAndVariable';
 
 withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
@@ -179,11 +206,6 @@ function toggleRegion(name: string) {
   if (next.has(name)) next.delete(name);
   else next.add(name);
   expandedRegions.value = next;
-}
-
-async function onArchive(regionName: string, rule: RuleData) {
-  await submitArchiveRegionalRule(regionName, rule.id, ruleSummary(rule));
-  // 无需手动刷新，store 会自动更新
 }
 
 async function onRestore(regionName: string, rule: RuleData) {
@@ -476,6 +498,49 @@ async function onRestore(regionName: string, rule: RuleData) {
   }
 }
 
+.region-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+:global(.light) .region-toolbar {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &.archive {
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.12);
+
+    &:hover {
+      background: rgba(234, 179, 8, 0.22);
+    }
+  }
+
+  &.delete {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+  }
+}
+
 .card-body {
   padding: 0 16px 16px;
 }
@@ -538,6 +603,15 @@ async function onRestore(regionName: string, rule: RuleData) {
 
       &:hover {
         background: rgba(245, 158, 11, 0.2);
+      }
+    }
+
+    &.delete {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.1);
+
+      &:hover {
+        background: rgba(239, 68, 68, 0.2);
       }
     }
   }

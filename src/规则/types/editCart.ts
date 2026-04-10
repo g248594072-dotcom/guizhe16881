@@ -39,13 +39,35 @@ export type EditCartCategory = 'world' | 'region' | 'character' | 'personal' | '
 export type EditCartAction =
   | { kind: 'modal_commit'; modalType: string; form: EditCartModalForm; payload: Record<string, unknown> | null }
   | { kind: 'archive_world_rule'; title: string }
+  | { kind: 'delete_world_rule'; title: string }
   | { kind: 'archive_region'; name: string }
+  | { kind: 'delete_region'; name: string }
+  | {
+      kind: 'archive_regional_rule';
+      regionName: string;
+      ruleIdOrTitle: string;
+      ruleSummary?: string;
+    }
+  | {
+      kind: 'delete_regional_rule';
+      regionName: string;
+      ruleIdOrTitle: string;
+      ruleSummary?: string;
+    }
   | {
       kind: 'archive_personal_rule';
       idOrTitle: string;
       characterName?: string;
       ruleSummary?: string;
     }
+  | {
+      kind: 'delete_personal_rule';
+      idOrTitle: string;
+      characterName?: string;
+      ruleSummary?: string;
+    }
+  | { kind: 'archive_personal_rules_group'; groupName: string }
+  | { kind: 'delete_personal_rules_group'; groupName: string }
   | {
       kind: 'character_basic';
       characterId: string;

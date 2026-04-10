@@ -1521,6 +1521,7 @@ import {
 import { GamePhase, type OpeningFormData, type OutputMode } from './types';
 import type { EditCartItem, EditCartModalForm } from './types/editCart';
 import { klona } from 'klona';
+import Swal from 'sweetalert2';
 import {
   initializeGameVariables,
   createOpeningStoryMessage,
@@ -1531,6 +1532,10 @@ import {
   isSecondaryApiConfigured,
   SECONDARY_API_START_EVENT,
 } from './utils/apiSettings';
+import {
+  formatPersonalRuleKeysSection,
+  VARIABLE_JSON_PATCH_RUNTIME_RULES,
+} from './utils/variableUpdatePromptExtras';
 import { startIframeHeightFix } from './utils/iframeHeightFix';
 import type { UiLayoutSettings } from './utils/uiLayoutLimits';
 import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits';
@@ -1541,9 +1546,16 @@ import { useEditCartStore } from './stores/editCart';
 import { getOtherSettings } from './utils/otherSettings';
 import {
   buildArchivePersonalFromPayload,
+  buildArchivePersonalRulesGroupItem,
   buildArchiveRegionItem,
+  buildArchiveRegionalRuleItem,
   buildArchiveWorldItem,
   buildCartItemFromModal,
+  buildDeletePersonalFromPayload,
+  buildDeletePersonalRulesGroupItem,
+  buildDeleteRegionItem,
+  buildDeleteRegionalRuleItem,
+  buildDeleteWorldItem,
   isEditCartEnabled,
   stageItem,
 } from './utils/editCartFlow';
@@ -2187,6 +2199,19 @@ function toggleTab(tabId: string) {
   }
 }
 
+async function confirmRuleDestructive(title: string, html: string): Promise<boolean> {
+  const r = await Swal.fire({
+    title,
+    html,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: '确认',
+    cancelButtonText: '取消',
+    confirmButtonColor: '#dc2626',
+  });
+  return r.isConfirmed;
+}
+
 async function openModal(type: string, payload?: Record<string, any>) {
   if (type === 'manage_rules') {
     activeTab.value = 'personal_rules';
@@ -2199,8 +2224,11 @@ async function openModal(type: string, payload?: Record<string, any>) {
     return;
   }
 
-  // 删除/归档类：直接执行并关闭，不弹窗（购物车开启时先入队）
-  if (type === 'delete_world_rule' && payload?.title) {
+  // 归档 vs 删除（不可混用）：
+  // - 归档：仅把条目标为「已归档」，变量里仍保留；走 archive_* / submitArchive* / buildArchive*。
+  // - 删除：从 MVU 对象上删掉对应键，不可复原；走 delete_* / submitDelete* / buildDelete*（破坏性操作先 confirmRuleDestructive）。
+  // 以上不打开表单弹窗；开启编辑暂存时先入队。
+  if (type === 'archive_world_rule' && payload?.title) {
     try {
       if (isEditCartEnabled()) {
         stageItem(buildArchiveWorldItem(String(payload.title)));
@@ -2214,7 +2242,28 @@ async function openModal(type: string, payload?: Record<string, any>) {
     }
     return;
   }
-  if (type === 'delete_region' && payload?.name) {
+  if (type === 'delete_world_rule' && payload?.title) {
+    const title = String(payload.title);
+    const ok = await confirmRuleDestructive(
+      '确认删除世界规则？',
+      `将<strong>从变量中永久删除</strong>「${title}」，不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildDeleteWorldItem(title));
+      } else {
+        const { submitDeleteWorldRule } = await import('./utils/dialogAndVariable');
+        await submitDeleteWorldRule(title);
+      }
+    } catch (e) {
+      console.error('删除世界规则失败', e);
+      toastr.error('删除失败');
+    }
+    return;
+  }
+
+  if (type === 'archive_region' && payload?.name) {
     try {
       if (isEditCartEnabled()) {
         stageItem(buildArchiveRegionItem(String(payload.name)));
@@ -2228,7 +2277,79 @@ async function openModal(type: string, payload?: Record<string, any>) {
     }
     return;
   }
-  if (type === 'delete_personal_rule' && (payload?.id ?? payload?.title ?? payload?.character)) {
+  if (type === 'delete_region' && payload?.name) {
+    const name = String(payload.name);
+    const ok = await confirmRuleDestructive(
+      '确认删除区域？',
+      `将<strong>从变量中永久删除</strong>区域「${name}」及其下<strong>全部细分规则</strong>，不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildDeleteRegionItem(name));
+      } else {
+        const { submitDeleteRegion } = await import('./utils/dialogAndVariable');
+        await submitDeleteRegion(name);
+      }
+    } catch (e) {
+      console.error('删除区域失败', e);
+      toastr.error('删除失败');
+    }
+    return;
+  }
+
+  if (
+    type === 'archive_region_rule' &&
+    payload?.regionName &&
+    (payload?.rule?.id ?? payload?.rule?.title)
+  ) {
+    const regionName = String(payload.regionName);
+    const ruleId = String(payload.rule.id ?? payload.rule.title);
+    const ruleSummary =
+      payload.ruleSummary != null ? String(payload.ruleSummary) : undefined;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildArchiveRegionalRuleItem(regionName, ruleId, ruleSummary));
+      } else {
+        const { submitArchiveRegionalRule } = await import('./utils/dialogAndVariable');
+        await submitArchiveRegionalRule(regionName, ruleId, ruleSummary);
+      }
+    } catch (e) {
+      console.error('归档区域规则失败', e);
+      toastr.error('归档失败');
+    }
+    return;
+  }
+  if (
+    type === 'delete_region_rule' &&
+    payload?.regionName &&
+    (payload?.rule?.id ?? payload?.rule?.title)
+  ) {
+    const regionName = String(payload.regionName);
+    const ruleId = String(payload.rule.id ?? payload.rule.title);
+    const ruleSummary =
+      payload.ruleSummary != null ? String(payload.ruleSummary) : undefined;
+    const label = ruleSummary || ruleId;
+    const ok = await confirmRuleDestructive(
+      '确认删除区域规则？',
+      `将<strong>从变量中永久删除</strong>区域「${regionName}」下的规则「${label}」，不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildDeleteRegionalRuleItem(regionName, ruleId, ruleSummary));
+      } else {
+        const { submitDeleteRegionalRule } = await import('./utils/dialogAndVariable');
+        await submitDeleteRegionalRule(regionName, ruleId, ruleSummary);
+      }
+    } catch (e) {
+      console.error('删除区域规则失败', e);
+      toastr.error('删除失败');
+    }
+    return;
+  }
+
+  if (type === 'archive_personal_rule' && (payload?.id ?? payload?.title ?? payload?.character)) {
     try {
       if (isEditCartEnabled()) {
         stageItem(buildArchivePersonalFromPayload(payload as Record<string, unknown>));
@@ -2237,12 +2358,75 @@ async function openModal(type: string, payload?: Record<string, any>) {
         await submitArchivePersonalRule(
           payload.id ?? payload.title ?? payload.character,
           payload.character ?? payload.title,
-          payload.title !== payload.character ? payload.title : undefined
+          payload.title !== payload.character ? String(payload.title) : undefined,
         );
       }
     } catch (e) {
       console.error('归档个人规则失败', e);
       toastr.error('归档失败');
+    }
+    return;
+  }
+  if (type === 'delete_personal_rule' && (payload?.id ?? payload?.title ?? payload?.character)) {
+    const id = String(payload.id ?? payload.title ?? payload.character);
+    const ch = payload.character != null ? String(payload.character) : '';
+    const ok = await confirmRuleDestructive(
+      '确认删除个人规则？',
+      `将<strong>从变量中永久删除</strong>该条个人规则（${ch || id}），不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildDeletePersonalFromPayload(payload as Record<string, unknown>));
+      } else {
+        const { submitDeletePersonalRule } = await import('./utils/dialogAndVariable');
+        await submitDeletePersonalRule(
+          payload.id ?? payload.title ?? payload.character,
+          payload.character ?? payload.title,
+          payload.title !== payload.character ? String(payload.title) : undefined,
+        );
+      }
+    } catch (e) {
+      console.error('删除个人规则失败', e);
+      toastr.error('删除失败');
+    }
+    return;
+  }
+
+  if (type === 'archive_personal_rules_group' && payload?.groupName) {
+    const g = String(payload.groupName).trim();
+    if (!g) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildArchivePersonalRulesGroupItem(g));
+      } else {
+        const { submitArchivePersonalRulesForGroup } = await import('./utils/dialogAndVariable');
+        await submitArchivePersonalRulesForGroup(g);
+      }
+    } catch (e) {
+      console.error('归档个人规则（分组）失败', e);
+      toastr.error('归档失败');
+    }
+    return;
+  }
+  if (type === 'delete_personal_rules_group' && payload?.groupName) {
+    const g = String(payload.groupName).trim();
+    if (!g) return;
+    const ok = await confirmRuleDestructive(
+      '确认删除该对象下全部个人规则？',
+      `将<strong>从变量中永久删除</strong>对象「${g}」下的<strong>全部</strong>个人规则条目，不可恢复。`,
+    );
+    if (!ok) return;
+    try {
+      if (isEditCartEnabled()) {
+        stageItem(buildDeletePersonalRulesGroupItem(g));
+      } else {
+        const { submitDeletePersonalRulesForGroup } = await import('./utils/dialogAndVariable');
+        await submitDeletePersonalRulesForGroup(g);
+      }
+    } catch (e) {
+      console.error('删除个人规则（分组）失败', e);
+      toastr.error('删除失败');
     }
     return;
   }
@@ -3645,7 +3829,8 @@ async function handleRegenerateVariablesOnly() {
 ${JSON.stringify(currentVariables, null, 2)}
 \`\`\`
 
-${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}${characterGapSection}## 变量输出格式
+${formatPersonalRuleKeysSection(currentVariables)}${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+## 变量输出格式
 请严格按照以下 JSON Patch 格式输出变量更新：
 \`\`\`json
 ${outputFormat}
@@ -3670,7 +3855,7 @@ ${maintext}
 ## 输出要求
 1. 只输出 <UpdateVariable> 标签及其内容
 2. 不要输出正文、解释或任何其他内容
-3. 使用标准的 JSON Patch 格式（op: replace/add/remove）
+3. 使用标准的 JSON Patch 格式（op: 仅 replace / add / remove / move；**禁止 delta**）
 4. 确保 JSON 格式正确无误
 5. 检查确认：所有现有角色的空缺字段都已被填充
 

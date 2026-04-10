@@ -3,14 +3,17 @@
  * 管理输出模式设置、世界书条目切换、双API流程处理
  */
 
-import type { OutputMode, SecondaryApiConfig } from '../types';
-import type { WorldbookEntry } from '../types';
-import { normalizeOpenAiUrl } from './openaiUrl';
-import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
-import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
-import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
+import type { OutputMode, SecondaryApiConfig, WorldbookEntry } from '../types';
 import { getCharBoundWorldbookName } from './charBoundWorldbookName';
+import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
+import { normalizeOpenAiUrl } from './openaiUrl';
+import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
 import { getMergedSensitiveDevelopment } from './tagMap';
+import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
+import {
+  formatPersonalRuleKeysSection,
+  VARIABLE_JSON_PATCH_RUNTIME_RULES,
+} from './variableUpdatePromptExtras';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
 
@@ -50,13 +53,13 @@ export const MVU_WORLDBOOK_ENTRY_PREFIXES = ['[mvu_update]', '[mvu]'] as const;
  */
 export function isMvUVariableWorldbookEntryName(entryName: string): boolean {
   const n = String(entryName || '').trim();
-  return MVU_WORLDBOOK_ENTRY_PREFIXES.some((p) => n.startsWith(p));
+  return MVU_WORLDBOOK_ENTRY_PREFIXES.some(p => n.startsWith(p));
 }
 
 function joinWorldbookEntryBlocks(entries: WorldbookEntry[]): string {
   return entries
-    .map((e) => `## ${(e.name || '').trim()}\n${(e.content || '').trim()}`)
-    .filter((block) => block.replace(/^##\s[^\n]*\n/, '').trim().length > 0)
+    .map(e => `## ${(e.name || '').trim()}\n${(e.content || '').trim()}`)
+    .filter(block => block.replace(/^##\s[^\n]*\n/, '').trim().length > 0)
     .join('\n\n---\n\n');
 }
 
@@ -70,7 +73,7 @@ export function collectVariableWorldbookContentsFromEntries(entries: WorldbookEn
   variableList: string;
   variableOutputFormat: string;
 } {
-  const mvu = entries.filter((e) => isMvUVariableWorldbookEntryName(e.name || ''));
+  const mvu = entries.filter(e => isMvUVariableWorldbookEntryName(e.name || ''));
   if (mvu.length > 0) {
     const formatEntries: WorldbookEntry[] = [];
     const listEntries: WorldbookEntry[] = [];
@@ -92,7 +95,7 @@ export function collectVariableWorldbookContentsFromEntries(entries: WorldbookEn
     };
   }
 
-  const findByIncludes = (sub: string) => entries.find((e) => (e.name || '').includes(sub));
+  const findByIncludes = (sub: string) => entries.find(e => (e.name || '').includes(sub));
   return {
     variableUpdateRule: (findByIncludes(WORLDBOOK_ENTRIES.variableUpdateRule)?.content || '').trim(),
     variableList: (findByIncludes(WORLDBOOK_ENTRIES.variableList)?.content || '').trim(),
@@ -124,7 +127,7 @@ export async function updateWorldbookEntriesByMode(mode: OutputMode): Promise<bo
     }
 
     // 根据模式更新条目启用状态
-    const updatedEntries = entries.map((entry) => {
+    const updatedEntries = entries.map(entry => {
       const entryName = entry.name || '';
 
       if (mode === 'dual') {
@@ -144,10 +147,12 @@ export async function updateWorldbookEntriesByMode(mode: OutputMode): Promise<bo
         }
       } else {
         // 单API模式：启用单API相关条目，关闭双API格式条目
-        if (entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
-            entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
-            entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
-            entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat)) {
+        if (
+          entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
+          entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
+          entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
+          entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat)
+        ) {
           return { ...entry, enabled: true };
         }
         if (entryName.includes(WORLDBOOK_ENTRIES.dualApiMainFormat)) {
@@ -204,7 +209,7 @@ export async function saveSecondaryApiConfig(config: SecondaryApiConfig): Promis
   try {
     const { updateStatData } = await import('./dialogAndVariable');
 
-    updateStatData((stat) => {
+    updateStatData(stat => {
       if (!stat.player) {
         stat.player = { name: '玩家', settings: {} };
       }
@@ -230,7 +235,8 @@ export function isSecondaryApiConfigured(config: SecondaryApiConfig | null | und
   return Boolean(String(config.url || '').trim());
 }
 
-const SECONDARY_SYSTEM_PROMPT = '你是一个专业的游戏变量更新助手。';
+const SECONDARY_SYSTEM_PROMPT =
+  '你是一个专业的游戏变量更新助手。必须严格遵守用户消息中的变量更新规则与 JSON Patch 约定：path 相对 stat_data 根，仅使用 replace/add/remove/move，禁止使用 delta；路径与字段名须与当前变量 JSON 的 schema 一致。';
 
 /**
  * 自定义 OpenAI 兼容端点：第二路一律走 `generateRaw` + `custom_api`（短上下文，不附带完整预设/聊天记录）。
@@ -346,10 +352,7 @@ export function notifySecondaryApiStart(detail?: { attempt?: number }): void {
  * @param config 第二API配置
  * @returns 生成的变量更新内容
  */
-export async function processWithSecondaryApi(
-  maintext: string,
-  config: SecondaryApiConfig,
-): Promise<string> {
+export async function processWithSecondaryApi(maintext: string, config: SecondaryApiConfig): Promise<string> {
   const retryCount = clampSecondaryApiRetries(config.maxRetries);
   const maxAttempts = 1 + retryCount;
   let lastError: Error | null = null;
@@ -398,12 +401,7 @@ export async function processWithSecondaryApi(
       console.log(`🔄 [apiSettings] 第二API调用尝试 ${attempt + 1}/${maxAttempts}`);
 
       // 构建完整提示词（包含变量数据+世界书内容+正文）
-      const prompt = buildSecondaryApiPrompt(
-        maintext,
-        config.tasks,
-        currentVariables,
-        worldbookContents,
-      );
+      const prompt = buildSecondaryApiPrompt(maintext, config.tasks, currentVariables, worldbookContents);
 
       notifySecondaryApiStart({ attempt: attempt + 1 });
 
@@ -427,7 +425,7 @@ export async function processWithSecondaryApi(
 
       if (attempt < maxAttempts - 1) {
         // 等待后重试
-        await new Promise((resolve) => setTimeout(resolve, 1000 * (attempt + 1)));
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
       }
     }
   }
@@ -493,7 +491,9 @@ function buildSecondaryApiPrompt(
   const variablesJson = JSON.stringify(currentVariables, null, 2);
 
   // 使用世界书中的格式要求，如果没有则使用默认格式
-  const outputFormat = worldbookContents.variableOutputFormat || `[
+  const outputFormat =
+    worldbookContents.variableOutputFormat ||
+    `[
   { "op": "replace", "path": "/路径", "value": 值 },
   { "op": "add", "path": "/路径", "value": 值 }
 ]`;
@@ -517,9 +517,10 @@ function buildSecondaryApiPrompt(
     }
   }
 
-  const characterGapSection = characterGaps.length > 0
-    ? `## ⚠️ 现有角色档案空缺检测\n以下角色存在空缺的字段，请**务必基于正文内容**进行推断和填充：\n${characterGaps.join('\n')}\n\n`
-    : '';
+  const characterGapSection =
+    characterGaps.length > 0
+      ? `## ⚠️ 现有角色档案空缺检测\n以下角色存在空缺的字段，请**务必基于正文内容**进行推断和填充：\n${characterGaps.join('\n')}\n\n`
+      : '';
 
   return `你是一位专门负责游戏变量更新的AI助手。你的任务是根据提供的游戏正文和当前变量数据，生成变量更新指令。
 
@@ -528,13 +529,22 @@ function buildSecondaryApiPrompt(
 ${variablesJson}
 \`\`\`
 
-${worldbookContents.variableList ? `## 变量列表
+${formatPersonalRuleKeysSection(currentVariables)}${
+  worldbookContents.variableList
+    ? `## 变量列表
 ${worldbookContents.variableList}
 
-` : ''}${worldbookContents.variableUpdateRule ? `## 变量更新规则
+`
+    : ''
+}${
+    worldbookContents.variableUpdateRule
+      ? `## 变量更新规则
 ${worldbookContents.variableUpdateRule}
 
-` : ''}${characterGapSection}## 变量输出格式
+`
+      : ''
+  }${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+## 变量输出格式
 请严格按照以下JSON Patch格式输出变量更新：
 \`\`\`json
 ${outputFormat}
@@ -559,7 +569,7 @@ ${maintext}
 ## 输出要求
 1. 只输出 <UpdateVariable> 标签及其内容
 2. 不要输出正文、解释或任何其他内容
-3. 使用标准的 JSON Patch 格式（op: replace/add/remove）
+3. 使用标准的 JSON Patch 格式（op: 仅 replace / add / remove / move；**禁止 delta**）
 4. 确保 JSON 格式正确无误
 5. 检查确认：所有现有角色的空缺字段都已被填充
 
@@ -567,7 +577,8 @@ ${maintext}
 <UpdateVariable>
 [
   { "op": "replace", "path": "/元信息/进度", "value": 5 },
-  { "op": "replace", "path": "/角色档案/角色键/数值/好感度", "value": 10 }
+  { "op": "replace", "path": "/角色档案/CHR-001/数值/发情值", "value": 12 },
+  { "op": "replace", "path": "/区域规则/警局/细分规则/执法/描述", "value": "……" }
 ]
 </UpdateVariable>`;
 }
@@ -575,10 +586,7 @@ ${maintext}
 /**
  * 通过酒馆助手 `generateRaw` 调用当前聊天补全连接（与主对话同一「插头」）
  */
-async function callSecondaryApiViaGenerateRaw(
-  prompt: string,
-  config: SecondaryApiConfig,
-): Promise<string> {
+async function callSecondaryApiViaGenerateRaw(prompt: string, config: SecondaryApiConfig): Promise<string> {
   if (typeof generateRaw !== 'function') {
     throw new Error('generateRaw 不可用，无法使用酒馆相同 API');
   }

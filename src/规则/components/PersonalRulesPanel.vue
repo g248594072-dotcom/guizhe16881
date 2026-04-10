@@ -70,16 +70,36 @@
           class="group-card"
           :class="{ 'cyber-card': isDarkMode }"
         >
-          <button
-            class="group-header"
-            :class="{ expanded: expandedGroups.has(grp.groupName) }"
-            @click="toggleGroup(grp.groupName)"
-          >
-            <i class="fa-solid fa-user-circle"></i>
-            <span class="group-name">{{ grp.groupName }}</span>
-            <span class="group-count">{{ grp.active.length }} / {{ grp.active.length + grp.archived.length }} 条</span>
-            <i class="fa-solid fa-chevron-down header-chevron"></i>
-          </button>
+          <div class="group-header-row">
+            <button
+              class="group-header"
+              :class="{ expanded: expandedGroups.has(grp.groupName) }"
+              @click="toggleGroup(grp.groupName)"
+            >
+              <i class="fa-solid fa-user-circle"></i>
+              <span class="group-name">{{ grp.groupName }}</span>
+              <span class="group-count">{{ grp.active.length }} / {{ grp.active.length + grp.archived.length }} 条</span>
+              <i class="fa-solid fa-chevron-down header-chevron"></i>
+            </button>
+            <div class="group-header-actions" @click.stop>
+              <button
+                type="button"
+                class="group-action archive"
+                title="归档本对象下全部个人规则"
+                @click="$emit('openModal', 'archive_personal_rules_group', { groupName: grp.groupName })"
+              >
+                <i class="fa-solid fa-box-archive"></i>
+              </button>
+              <button
+                type="button"
+                class="group-action delete"
+                title="删除本对象下全部个人规则"
+                @click="$emit('openModal', 'delete_personal_rules_group', { groupName: grp.groupName })"
+              >
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </div>
+          </div>
           <div v-show="expandedGroups.has(grp.groupName)" class="group-body">
             <div
               v-for="rule in grp.active"
@@ -99,7 +119,7 @@
                 <button
                   class="action archive"
                   title="归档"
-                  @click="onArchive(rule, grp.groupName)"
+                  @click="$emit('openModal', 'archive_personal_rule', rulePayload(rule, grp.groupName))"
                 >
                   <i class="fa-solid fa-archive"></i>
                 </button>
@@ -123,7 +143,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import type { RuleData } from '../types';
 import { usePersonalRulesByCharacter } from '../store';
-import { submitArchivePersonalRule, submitRestorePersonalRule } from '../utils/dialogAndVariable';
+import { submitRestorePersonalRule } from '../utils/dialogAndVariable';
 
 const props = defineProps<{
   /** 从角色详情「管理规则影响」跳转时要展开的分组名（与 rule.target 一致） */
@@ -209,11 +229,6 @@ watch(
   },
   { deep: true },
 );
-
-async function onArchive(rule: RuleData, groupName: string) {
-  await submitArchivePersonalRule(rule.id, groupName, ruleSummary(rule));
-  // 无需手动刷新，store 会自动更新
-}
 
 async function onRestore(rule: RuleData, groupName: string) {
   await submitRestorePersonalRule(rule.id, groupName, ruleSummary(rule));
@@ -447,11 +462,61 @@ async function onRestore(rule: RuleData, groupName: string) {
   border-color: rgba(0, 0, 0, 0.06);
 }
 
+.group-header-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+:global(.light) .group-header-row {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px 0 4px;
+  flex-shrink: 0;
+}
+
+.group-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &.archive {
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.12);
+
+    &:hover {
+      background: rgba(234, 179, 8, 0.22);
+    }
+  }
+
+  &.delete {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+  }
+}
+
 .group-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 12px 16px;
   background: transparent;
   border: none;

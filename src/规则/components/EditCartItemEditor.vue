@@ -25,9 +25,37 @@
               <input v-model="draft.action.title" type="text" class="eci-input" />
             </template>
 
+            <template v-else-if="draft.action.kind === 'delete_world_rule'">
+              <label class="eci-label">要删除的世界规则名称</label>
+              <input v-model="draft.action.title" type="text" class="eci-input" />
+            </template>
+
             <template v-else-if="draft.action.kind === 'archive_region'">
               <label class="eci-label">要归档的区域名称</label>
               <input v-model="draft.action.name" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'delete_region'">
+              <label class="eci-label">要删除的区域名称（将移除该区域及全部细分规则）</label>
+              <input v-model="draft.action.name" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'archive_regional_rule'">
+              <label class="eci-label">区域名称</label>
+              <input v-model="draft.action.regionName" type="text" class="eci-input" />
+              <label class="eci-label">规则 ID / 标题</label>
+              <input v-model="draft.action.ruleIdOrTitle" type="text" class="eci-input" />
+              <label class="eci-label">规则摘要（可选）</label>
+              <input v-model="draft.action.ruleSummary" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'delete_regional_rule'">
+              <label class="eci-label">区域名称</label>
+              <input v-model="draft.action.regionName" type="text" class="eci-input" />
+              <label class="eci-label">规则 ID / 标题</label>
+              <input v-model="draft.action.ruleIdOrTitle" type="text" class="eci-input" />
+              <label class="eci-label">规则摘要（可选）</label>
+              <input v-model="draft.action.ruleSummary" type="text" class="eci-input" />
             </template>
 
             <template v-else-if="draft.action.kind === 'archive_personal_rule'">
@@ -37,6 +65,25 @@
               <input v-model="draft.action.characterName" type="text" class="eci-input" />
               <label class="eci-label">规则摘要（可选）</label>
               <input v-model="draft.action.ruleSummary" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'delete_personal_rule'">
+              <p class="eci-hint">规则标识（一般勿改）</p>
+              <input v-model="draft.action.idOrTitle" type="text" class="eci-input" disabled />
+              <label class="eci-label">角色 / 分组名</label>
+              <input v-model="draft.action.characterName" type="text" class="eci-input" />
+              <label class="eci-label">规则摘要（可选）</label>
+              <input v-model="draft.action.ruleSummary" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'archive_personal_rules_group'">
+              <label class="eci-label">对象 / 分组名（归档该对象下全部个人规则）</label>
+              <input v-model="draft.action.groupName" type="text" class="eci-input" />
+            </template>
+
+            <template v-else-if="draft.action.kind === 'delete_personal_rules_group'">
+              <label class="eci-label">对象 / 分组名（删除该对象下全部个人规则）</label>
+              <input v-model="draft.action.groupName" type="text" class="eci-input" />
             </template>
 
             <template v-else-if="draft.action.kind === 'character_basic'">

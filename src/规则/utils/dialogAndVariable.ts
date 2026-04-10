@@ -643,9 +643,14 @@ export function formatIdentityTagsMessage(characterId: string, tags: Record<stri
 
 // ---------- 世界规则 ----------
 
-export function formatWorldRuleMessage(type: 'add' | 'edit' | 'archive' | 'restore', name: string, detail?: string): string {
+export function formatWorldRuleMessage(
+  type: 'add' | 'edit' | 'archive' | 'restore' | 'delete',
+  name: string,
+  detail?: string,
+): string {
   if (type === 'archive') return `[归档世界规则]\n名称：${name}`;
   if (type === 'restore') return `[复原世界规则]\n名称：${name}`;
+  if (type === 'delete') return `[删除世界规则]\n名称：${name}`;
   const prefix = type === 'add' ? '[新增世界规则]' : '[编辑世界规则]';
   return `${prefix}\n名称：${name}\n细节：${detail ?? ''}`;
 }
@@ -732,6 +737,23 @@ export function restoreWorldRuleInVariables(idOrTitle: string): void {
   }
 }
 
+export function deleteWorldRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const rules = store.data.世界规则;
+
+  let key = idOrTitle;
+  if (!rules[idOrTitle] && idOrTitle.startsWith('world-')) {
+    const t = idOrTitle.slice('world-'.length);
+    if (rules[t]) key = t;
+  }
+
+  if (rules[key]) {
+    delete rules[key];
+    bumpUpdateTime();
+  }
+}
+
 export async function submitAddWorldRule(name: string, detail: string): Promise<string> {
   const n = name.trim();
   if (!n) {
@@ -788,6 +810,14 @@ export async function submitRestoreWorldRule(name: string): Promise<void> {
   toastr.success(`已复原世界规则「${name}」并写入对话框`);
 }
 
+export async function submitDeleteWorldRule(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const message = formatWorldRuleMessage('delete', name);
+  await sendToDialog(message);
+  deleteWorldRuleInVariables(name);
+  toastr.success(`已删除世界规则「${name}」并写入对话框`);
+}
+
 // ---------- 区域规则 ----------
 
 export function formatRegionRuleMessage(
@@ -805,6 +835,16 @@ export function formatRegionRuleMessage(
     return `${prefix}\n区域名称：${regionName}\n规则名字：${rn}\n规则细节：${detail ?? ''}`;
   }
   return `${prefix}\n区域名称：${regionName}\n规则细节：${detail ?? ''}`;
+}
+
+/** 从变量中移除整个区域（含细分规则） */
+export function formatDeleteRegionMessage(regionName: string): string {
+  return `[删除区域]\n区域：${regionName}`;
+}
+
+/** 删除区域下的某条细分规则（变量中移除子键） */
+export function formatDeleteRegionalSubRuleMessage(regionName: string, ruleSummary: string): string {
+  return `[删除区域规则]\n区域：${regionName}\n规则：${ruleSummary}`;
 }
 
 export function addRegionToVariables(name: string, detail: string, firstRuleTitle?: string): void {
@@ -898,6 +938,24 @@ export function restoreRegionInVariables(idOrName: string): void {
   
   if (regions[key]) {
     regions[key] = { ...regions[key], 状态: '生效中' };
+    store.data.区域规则 = regions;
+    bumpUpdateTime();
+  }
+}
+
+export function deleteRegionFromVariables(idOrName: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const regions = { ...store.data.区域规则 };
+
+  let key = idOrName;
+  if (!regions[idOrName] && idOrName.startsWith('region-')) {
+    const n = idOrName.slice('region-'.length);
+    if (regions[n]) key = n;
+  }
+
+  if (regions[key]) {
+    delete regions[key];
     store.data.区域规则 = regions;
     bumpUpdateTime();
   }
@@ -1063,6 +1121,42 @@ export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   }
 }
 
+export function deleteRegionalRuleFromVariables(regionIdOrName: string, ruleIdOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const regions = { ...store.data.区域规则 };
+
+  let regionKey = regionIdOrName;
+  if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
+    const n = regionIdOrName.slice('region-'.length);
+    if (regions[n]) regionKey = n;
+  }
+
+  if (!regions[regionKey]) return;
+
+  const region = { ...regions[regionKey] };
+  const subRules = { ...region.细分规则 };
+
+  let subKey = ruleIdOrTitle;
+  const prefix = `regional-${regionKey}-`;
+  if (!subRules[ruleIdOrTitle]) {
+    if (ruleIdOrTitle.startsWith(prefix)) {
+      const k = ruleIdOrTitle.slice(prefix.length);
+      if (subRules[k]) subKey = k;
+    }
+  }
+
+  if (!subRules[subKey]) return;
+
+  delete subRules[subKey];
+  regions[regionKey] = {
+    ...region,
+    细分规则: subRules,
+  };
+  store.data.区域规则 = regions;
+  bumpUpdateTime();
+}
+
 export async function submitAddRegion(name: string, detail: string, firstRuleName?: string): Promise<string> {
   const n = name.trim();
   if (!n) {
@@ -1184,13 +1278,55 @@ export async function submitRestoreRegionalRule(regionName: string, ruleIdOrTitl
   toastr.success(`已复原「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}并写入对话框`);
 }
 
+export async function submitDeleteRegion(name: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const message = formatDeleteRegionMessage(name);
+  await sendToDialog(message);
+  deleteRegionFromVariables(name);
+  toastr.success(`已删除区域「${name}」并写入对话框`);
+}
+
+export async function submitDeleteRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const summary = ruleSummary ?? ruleIdOrTitle;
+  const message = formatDeleteRegionalSubRuleMessage(regionName, summary);
+  await sendToDialog(message);
+  deleteRegionalRuleFromVariables(regionName, ruleIdOrTitle);
+  toastr.success(`已删除「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}并写入对话框`);
+}
+
 // ---------- 个人规则 ----------
 
-export function formatPersonalRuleMessage(type: 'add' | 'edit' | 'archive' | 'restore', characterName: string, detail?: string): string {
+export function formatPersonalRuleMessage(
+  type: 'add' | 'edit' | 'archive' | 'restore' | 'delete',
+  characterName: string,
+  detail?: string,
+): string {
   if (type === 'archive') return `[归档个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
   if (type === 'restore') return `[复原个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
+  if (type === 'delete') return `[删除个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
   const prefix = type === 'add' ? '[新增个人规则]' : '[编辑个人规则]';
   return `${prefix}\n对象：${characterName}\n规则细节：${detail ?? ''}`;
+}
+
+/** 与 usePersonalRulesByCharacter 分组键一致 */
+export function personalRuleEntryGroupKey(
+  id: string,
+  rule: { 名称?: string; 适用对象?: string },
+): string {
+  const target = String(rule?.适用对象 ?? '').trim();
+  const title = String(rule?.名称 ?? '').trim() || String(rule?.适用对象 ?? '').trim() || id;
+  return target || title || '未命名';
+}
+
+export function listPersonalRuleStoreKeysForGroup(groupName: string): string[] {
+  const store = useDataStore();
+  const rules = store.data.个人规则 || {};
+  const keys: string[] = [];
+  for (const id of Object.keys(rules)) {
+    if (personalRuleEntryGroupKey(id, rules[id]!) === groupName) keys.push(id);
+  }
+  return keys;
 }
 
 export function addPersonalRuleToVariables(characterName: string, detail: string): void {
@@ -1268,6 +1404,23 @@ export function restorePersonalRuleInVariables(idOrTitle: string): void {
   }
 }
 
+export function deletePersonalRuleInVariables(idOrTitle: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const rules = store.data.个人规则;
+
+  let key = idOrTitle;
+  if (!rules[idOrTitle] && idOrTitle.startsWith('personal-')) {
+    const k = idOrTitle.slice('personal-'.length);
+    if (rules[k]) key = k;
+  }
+
+  if (rules[key]) {
+    delete rules[key];
+    bumpUpdateTime();
+  }
+}
+
 export async function submitAddPersonalRule(characterName: string, detail: string): Promise<string> {
   const c = characterName.trim();
   if (!c) {
@@ -1316,7 +1469,61 @@ export async function submitRestorePersonalRule(idOrTitle: string, characterName
   toastr.success(`已复原「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
 }
 
-// ---------- 世界书同步 ----------
+export async function submitDeletePersonalRule(
+  idOrTitle: string,
+  characterName?: string,
+  ruleSummary?: string,
+): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const label = characterName ?? idOrTitle;
+  const message = formatPersonalRuleMessage('delete', label, ruleSummary);
+  await sendToDialog(message);
+  deletePersonalRuleInVariables(idOrTitle);
+  markResidentLifePendingPersonalRule();
+  toastr.success(`已删除「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
+}
+
+export async function submitArchivePersonalRulesForGroup(groupName: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const keys = listPersonalRuleStoreKeysForGroup(groupName);
+  if (keys.length === 0) {
+    toastr.warning('未找到该对象下的个人规则');
+    return;
+  }
+  const lines = [
+    `[归档个人规则（本对象所有条目）]`,
+    `对象：${groupName}`,
+    `条数：${keys.length}`,
+    ...keys.map((k) => `- ${k}`),
+  ];
+  await sendToDialog(lines.join('\n'));
+  for (const k of keys) {
+    archivePersonalRuleInVariables(k);
+  }
+  markResidentLifePendingPersonalRule();
+  toastr.success(`已归档对象「${groupName}」下 ${keys.length} 条个人规则并写入对话框`);
+}
+
+export async function submitDeletePersonalRulesForGroup(groupName: string): Promise<void> {
+  if (!tryRulesMvuWritable()) return;
+  const keys = listPersonalRuleStoreKeysForGroup(groupName);
+  if (keys.length === 0) {
+    toastr.warning('未找到该对象下的个人规则');
+    return;
+  }
+  const lines = [
+    `[删除个人规则（本对象所有条目）]`,
+    `对象：${groupName}`,
+    `条数：${keys.length}`,
+    ...keys.map((k) => `- ${k}`),
+  ];
+  await sendToDialog(lines.join('\n'));
+  for (const k of keys) {
+    deletePersonalRuleInVariables(k);
+  }
+  markResidentLifePendingPersonalRule();
+  toastr.success(`已删除对象「${groupName}」下 ${keys.length} 条个人规则并写入对话框`);
+}
 
 /**
  * 将当前回合的剧情摘要同步到世界书「编年史」条目

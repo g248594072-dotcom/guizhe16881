@@ -13,7 +13,18 @@
       <button class="action-btn edit" @click="$emit('openModal', 'edit_world_rule', rule)">
         <i class="fa-solid fa-pen"></i>
       </button>
-      <button class="action-btn delete" @click="$emit('openModal', 'delete_world_rule', rule)">
+      <button
+        class="action-btn archive"
+        title="归档"
+        @click="$emit('openModal', 'archive_world_rule', rule)"
+      >
+        <i class="fa-solid fa-box-archive"></i>
+      </button>
+      <button
+        class="action-btn delete"
+        title="删除"
+        @click="$emit('openModal', 'delete_world_rule', rule)"
+      >
         <i class="fa-solid fa-trash"></i>
       </button>
     </div>
@@ -147,6 +158,11 @@ defineEmits<{
   &:hover {
     background: rgba(255, 255, 255, 0.1);
     color: #fff;
+  }
+
+  &.archive:hover {
+    background: rgba(234, 179, 8, 0.2);
+    color: #eab308;
   }
 
   &.delete:hover {

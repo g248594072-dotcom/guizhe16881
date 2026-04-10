@@ -417,7 +417,7 @@
                   type="button"
                   class="action archive"
                   title="归档"
-                  @click="onArchivePersonalRule(r)"
+                  @click="$emit('openModal', 'archive_personal_rule', personalRulePayload(r))"
                 >
                   <i class="fa-solid fa-archive"></i>
                 </button>
@@ -456,7 +456,6 @@ import {
   resolveCharacterAvatarFromBrowserOnly,
 } from '../../shared/phoneCharacterAvatarStorage';
 import {
-  buildArchivePersonalItem,
   buildCharacterBasicItem,
   buildDeleteCharacterItem,
   isEditCartEnabled,
@@ -767,25 +766,6 @@ function personalRulePayload(rule: RuleData): Record<string, any> {
     character: groupName,
     desc: rule.desc,
   };
-}
-
-function ruleSummary(rule: RuleData): string {
-  if (rule.title && rule.title !== (rule as any).target) return rule.title;
-  const d = (rule.desc || '').trim();
-  return d.length > 40 ? d.slice(0, 40) + '…' : d || '（无描述）';
-}
-
-async function onArchivePersonalRule(rule: RuleData) {
-  const groupName = rule.target || name.value || props.characterId;
-  const summary = ruleSummary(rule);
-  if (isEditCartEnabled()) {
-    stageItem(
-      buildArchivePersonalItem(rule.id, groupName, summary, `归档个人规则：${rule.title || groupName}`),
-    );
-    return;
-  }
-  const { submitArchivePersonalRule } = await import('../utils/dialogAndVariable');
-  await submitArchivePersonalRule(rule.id, groupName, summary);
 }
 
 function startEditBasic() {

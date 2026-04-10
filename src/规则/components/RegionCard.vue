@@ -18,6 +18,10 @@
         <i class="fa-solid fa-pen"></i>
         <span>编辑</span>
       </button>
+      <button class="footer-btn archive" @click="$emit('openModal', 'archive_region', regionPayload)">
+        <i class="fa-solid fa-box-archive"></i>
+        <span>归档</span>
+      </button>
       <button class="footer-btn delete" @click="$emit('openModal', 'delete_region', regionPayload)">
         <i class="fa-solid fa-trash"></i>
         <span>删除</span>
@@ -157,6 +161,11 @@ defineEmits<{
     &:hover {
       color: #fff;
       background: rgba(255, 255, 255, 0.05);
+    }
+
+    &.archive:hover {
+      color: #eab308;
+      background: rgba(234, 179, 8, 0.15);
     }
 
     &.delete:hover {
