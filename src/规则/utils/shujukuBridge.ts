@@ -15,7 +15,46 @@ type AcuTemplateApi = {
     session: Record<string, unknown>,
     options: { injectTemplate: boolean; loadPreset: boolean; templateData: unknown },
   ) => Promise<AcuTemplateInjectResult>;
+  /**
+   * 星数据库 xingv3+：清除「手动更新表选择」的显式状态，恢复为「未曾选择 → 默认全选当前所有表」。
+   * 注入新模板后若不调用，旧版全不选/旧表 key 会导致复选框全空。
+   */
+  clearManualSelectedTables?: () => boolean;
+  /** 将手动更新勾选设为指定表（全部为 true 即等价全选）。较旧扩展可能仅有此项而无 clear。 */
+  setManualSelectedTables?: (sheetKeys: string[]) => boolean;
 };
+
+function sheetKeysFromTavernDbTemplate(template: unknown): string[] {
+  let obj: Record<string, unknown> | null = null;
+  if (template && typeof template === 'object') {
+    obj = template as Record<string, unknown>;
+  } else if (typeof template === 'string') {
+    try {
+      const p = JSON.parse(template) as unknown;
+      if (p && typeof p === 'object') obj = p as Record<string, unknown>;
+    } catch {
+      return [];
+    }
+  }
+  if (!obj) return [];
+  return Object.keys(obj).filter(k => k.startsWith('sheet_'));
+}
+
+/** 注入成功后让「手动更新表选择」回到全选当前表（依赖星数据库 API）。 */
+function resetManualTableSelectionAfterInject(api: AcuTemplateApi, template: unknown): void {
+  try {
+    if (typeof api.clearManualSelectedTables === 'function') {
+      api.clearManualSelectedTables();
+      return;
+    }
+    const keys = sheetKeysFromTavernDbTemplate(template);
+    if (keys.length > 0 && typeof api.setManualSelectedTables === 'function') {
+      api.setManualSelectedTables(keys);
+    }
+  } catch (e) {
+    console.warn('[规则] 重置手动更新表选择失败（可忽略）:', e);
+  }
+}
 
 function pickTemplateApi(raw: unknown): AcuTemplateApi | null {
   if (!raw || typeof raw !== 'object') {
@@ -86,8 +125,12 @@ export async function injectBundledTavernDbTemplate(
   try {
     if (typeof api.importTemplateFromData === 'function') {
       const result = await api.importTemplateFromData(template);
+      const ok = Boolean(result?.success);
+      if (ok) {
+        resetManualTableSelectionAfterInject(api, template);
+      }
       return {
-        ok: Boolean(result?.success),
+        ok,
         message: result?.message,
       };
     }
@@ -96,8 +139,12 @@ export async function injectBundledTavernDbTemplate(
         {},
         { injectTemplate: true, loadPreset: false, templateData: template },
       );
+      const ok = Boolean(result?.success);
+      if (ok) {
+        resetManualTableSelectionAfterInject(api, template);
+      }
       return {
-        ok: Boolean(result?.success),
+        ok,
         message: result?.message,
       };
     }
