@@ -1685,8 +1685,18 @@ const emit = defineEmits<{
 
 .appearance-block {
   .section-label.sub {
+    display: block;
     margin-top: 12px;
+    margin-bottom: 6px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f87171;
+    letter-spacing: 0.02em;
   }
+}
+
+:global(.light) .appearance-block .section-label.sub {
+  color: #dc2626;
 }
 
 .appearance-slots {
