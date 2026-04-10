@@ -2,7 +2,7 @@
  * 编辑暂存购物车：条目类型（与 App 弹窗表单、归档、角色详情、随机规则对齐）
  */
 
-import type { ClothingStateZh } from '../types';
+import type { ClothingStateZh, JewelryEditRow } from '../types';
 
 export interface EditCartModalForm {
   addCharacterName: string;
@@ -29,7 +29,7 @@ export interface EditCartModalForm {
   avatarUrl: string;
   /** 编辑服装状态 + 身体部位物理状态 */
   appearanceClothing: ClothingStateZh;
-  appearanceJewelryRows: Array<{ name: string; 状态: string; 描述: string }>;
+  appearanceJewelryRows: JewelryEditRow[];
   appearanceBodyPartRows: Array<{ key: string; 外观描述: string; 当前状态: string }>;
 }
 

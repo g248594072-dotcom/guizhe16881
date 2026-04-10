@@ -153,7 +153,7 @@
 import { ref, watch, computed } from 'vue';
 import { klona } from 'klona';
 import type { EditCartItem, EditCartModalForm } from '../types/editCart';
-import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
+import { clothingStateFromMvuRaw, normalizeJewelryEditRow } from '../utils/dialogAndVariable';
 import { refreshEditCartItem } from '../utils/editCartFlow';
 import ModalCommitFields from './EditCartModalCommitFields.vue';
 
@@ -188,7 +188,7 @@ watch(
       if (copy.action.kind === 'modal_commit' && copy.action.modalType === 'edit_character_appearance') {
         const f = copy.action.form as EditCartModalForm;
         f.appearanceClothing = clothingStateFromMvuRaw(f.appearanceClothing ?? {});
-        if (!f.appearanceJewelryRows) f.appearanceJewelryRows = [];
+        f.appearanceJewelryRows = (f.appearanceJewelryRows ?? []).map(r => normalizeJewelryEditRow(r));
         if (!f.appearanceBodyPartRows) f.appearanceBodyPartRows = [];
       }
       draft.value = copy;

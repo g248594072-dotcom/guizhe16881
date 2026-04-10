@@ -66,8 +66,9 @@ const 服装状态结构 = z
         z.string(),
         z
           .object({
-            状态: z.string().prefault('正常'),
+            部位: z.string().prefault(''),
             描述: z.string().prefault(''),
+            状态: z.string().optional(),
           })
           .passthrough()
           .prefault({}),

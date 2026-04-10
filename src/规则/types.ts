@@ -68,13 +68,28 @@ export interface ClothingSlotZh {
   描述?: string;
 }
 
+/** 饰品单条：名字为对象键；兼容旧档仅有「状态」无「部位」 */
+export interface JewelryItemZh {
+  部位?: string;
+  描述?: string;
+  /** @deprecated 旧版佩戴/状态文案，读取时若「部位」为空则回退到此键 */
+  状态?: string;
+}
+
 /** MVU「服装状态」根对象 */
 export interface ClothingStateZh {
   上装?: ClothingSlotZh;
   下装?: ClothingSlotZh;
   内衣?: ClothingSlotZh;
   足部?: ClothingSlotZh;
-  饰品?: Record<string, { 状态?: string; 描述?: string }>;
+  饰品?: Record<string, JewelryItemZh>;
+}
+
+/** 弹窗/购物车中饰品一行编辑态 */
+export interface JewelryEditRow {
+  name: string;
+  部位: string;
+  描述: string;
 }
 
 /** MVU「身体部位物理状态」单条 */

@@ -308,12 +308,11 @@
               </template>
               <span v-if="!hasAnyClothingSlot" class="empty-hint">暂无（点「编辑」填写上装/下装/内衣/足部）</span>
             </div>
-            <template v-if="jewelryDisplayLines.length > 0">
-              <span class="section-label sub">饰品</span>
-              <ul class="appearance-list">
-                <li v-for="(line, idx) in jewelryDisplayLines" :key="'jw-' + idx">{{ line }}</li>
-              </ul>
-            </template>
+            <span class="section-label sub">饰品</span>
+            <ul v-if="jewelryDisplayLines.length > 0" class="appearance-list">
+              <li v-for="(line, idx) in jewelryDisplayLines" :key="'jw-' + idx">{{ line }}</li>
+            </ul>
+            <span v-else class="empty-hint">暂无（点「编辑」添加：名字、部位、描述）</span>
           </div>
           <div class="appearance-block">
             <span class="section-label">身体部位物理状态</span>
@@ -549,10 +548,10 @@ const jewelryDisplayLines = computed(() => {
   const acc = currentExtra.value.clothingState?.饰品;
   if (!acc || typeof acc !== 'object') return [];
   return Object.entries(acc).map(([name, o]) => {
-    const st = String(o?.状态 ?? '').trim();
+    const part = String(o?.部位 ?? o?.状态 ?? '').trim();
     const d = String(o?.描述 ?? '').trim();
-    const a = `${name}${st ? `（${st}）` : ''}`;
-    return d ? `${a}：${d}` : a;
+    const head = part ? `${name}（${part}）` : name;
+    return d ? `${head}：${d}` : head;
   });
 });
 

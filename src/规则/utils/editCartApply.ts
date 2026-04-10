@@ -123,10 +123,12 @@ export async function runModalCommit(
       submitEditCharacterAppearance,
       defaultEmptyClothingState,
       applyJewelryRowsToClothing,
+      normalizeJewelryEditRow,
     } = await import('./dialogAndVariable');
     const characterId = String(p.characterId);
     const base = form.appearanceClothing ?? defaultEmptyClothingState();
-    const clothing = applyJewelryRowsToClothing(base, form.appearanceJewelryRows ?? []);
+    const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
+    const clothing = applyJewelryRowsToClothing(base, jewelryRows);
     const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
     for (const row of form.appearanceBodyPartRows ?? []) {
       const k = String(row.key ?? '').trim();

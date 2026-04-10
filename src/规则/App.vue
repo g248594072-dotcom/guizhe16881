@@ -948,7 +948,7 @@
               </button>
             </div>
             <div v-else-if="modalType === 'edit_character_appearance'" class="rule-form character-appearance-form">
-              <p class="form-hint">编辑 MVU「服装状态」与「身体部位物理状态」。饰品以名称为键。</p>
+              <p class="form-hint">编辑 MVU「服装状态」与「身体部位物理状态」。饰品以<strong>名字</strong>为键，并填写<strong>部位</strong>与<strong>描述</strong>。</p>
               <h4 class="appearance-section-title">服装槽位</h4>
               <div
                 v-for="slotKey in appearanceSlotKeys"
@@ -989,40 +989,54 @@
               <h4 class="appearance-section-title">饰品</h4>
               <div
                 v-for="(jw, jidx) in modalForm.appearanceJewelryRows"
-                :key="jidx"
-                class="identity-tag-edit-row"
+                :key="'jw-' + jidx"
+                class="appearance-jewelry-block"
               >
-                <input
-                  v-model="jw.name"
-                  type="text"
-                  class="form-input identity-category-input"
-                  placeholder="饰品名称"
-                />
-                <input
-                  v-model="jw.状态"
-                  type="text"
-                  class="form-input identity-value-input"
-                  placeholder="状态"
-                />
-                <input
-                  v-model="jw.描述"
-                  type="text"
-                  class="form-input"
-                  placeholder="描述"
-                />
-                <button
-                  type="button"
-                  class="btn-icon btn-danger"
-                  @click="modalForm.appearanceJewelryRows.splice(jidx, 1)"
-                  title="删除"
-                >
-                  <i class="fa-solid fa-trash"></i>
-                </button>
+                <div class="appearance-jewelry-toolbar">
+                  <span class="appearance-slot-label">第 {{ jidx + 1 }} 件</span>
+                  <button
+                    type="button"
+                    class="btn-icon btn-danger"
+                    @click="modalForm.appearanceJewelryRows.splice(jidx, 1)"
+                    title="删除"
+                  >
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+                <div class="detail-edit-fields">
+                  <div class="detail-field">
+                    <label>名字</label>
+                    <input
+                      v-model="jw.name"
+                      type="text"
+                      class="form-input"
+                      placeholder="如：金丝眼镜"
+                    />
+                  </div>
+                  <div class="detail-field">
+                    <label>部位</label>
+                    <input
+                      v-model="jw.部位"
+                      type="text"
+                      class="form-input"
+                      placeholder="如：鼻梁、手腕"
+                    />
+                  </div>
+                  <div class="detail-field full-width">
+                    <label>描述</label>
+                    <textarea
+                      v-model="jw.描述"
+                      class="form-textarea"
+                      rows="2"
+                      placeholder="外观或佩戴方式等"
+                    />
+                  </div>
+                </div>
               </div>
               <button
                 type="button"
                 class="btn-secondary"
-                @click="modalForm.appearanceJewelryRows.push({ name: '', 状态: '正常', 描述: '' })"
+                @click="modalForm.appearanceJewelryRows.push({ name: '', 部位: '', 描述: '' })"
               >
                 <i class="fa-solid fa-plus"></i>
                 添加饰品
@@ -1518,7 +1532,7 @@ import {
   type Option,
   type TagCheckResult
 } from './utils/messageParser';
-import { GamePhase, type OpeningFormData, type OutputMode } from './types';
+import { GamePhase, type JewelryEditRow, type OpeningFormData, type OutputMode } from './types';
 import type { EditCartItem, EditCartModalForm } from './types/editCart';
 import { klona } from 'klona';
 import Swal from 'sweetalert2';
@@ -1565,6 +1579,7 @@ import {
   clothingStateFromMvuRaw,
   defaultEmptyClothingState,
   jewelryRowsFromClothingState,
+  normalizeJewelryEditRow,
   submitEditCharacterAppearance,
 } from './utils/dialogAndVariable';
 import {
@@ -1736,7 +1751,7 @@ const modalForm = ref({
   identityTags: [] as Array<{ category: string; value: string }>,
   avatarUrl: '',
   appearanceClothing: defaultEmptyClothingState(),
-  appearanceJewelryRows: [] as Array<{ name: string; 状态: string; 描述: string }>,
+  appearanceJewelryRows: [] as JewelryEditRow[],
   appearanceBodyPartRows: [] as Array<{ key: string; 外观描述: string; 当前状态: string }>,
 });
 
@@ -2789,7 +2804,8 @@ async function onModalComplete() {
       }
     } else if (type === 'edit_character_appearance' && payload?.characterId) {
       const base = form.appearanceClothing ?? defaultEmptyClothingState();
-      const clothing = applyJewelryRowsToClothing(base, form.appearanceJewelryRows ?? []);
+      const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
+      const clothing = applyJewelryRowsToClothing(base, jewelryRows);
       const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
       for (const row of form.appearanceBodyPartRows ?? []) {
         const k = String(row.key ?? '').trim();
@@ -8574,6 +8590,38 @@ body.has-dragging-fab {
     color: #71717a;
     margin-bottom: 16px;
     line-height: 1.5;
+  }
+}
+
+.character-appearance-form {
+  .appearance-jewelry-block {
+    margin-bottom: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .appearance-jewelry-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .appearance-slot-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #a1a1aa;
+  }
+}
+
+.light .character-appearance-form {
+  .appearance-jewelry-block {
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+  }
+
+  .appearance-slot-label {
+    color: #52525b;
   }
 }
 

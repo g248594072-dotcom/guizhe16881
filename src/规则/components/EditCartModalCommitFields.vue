@@ -153,15 +153,15 @@
         />
       </div>
       <details class="ecf-details">
-        <summary>饰品</summary>
+        <summary>饰品（名字 · 部位 · 描述）</summary>
         <div
           v-for="(jw, jidx) in form.appearanceJewelryRows"
           :key="'jw-' + jidx"
-          class="ecf-detail-row"
+          class="ecf-detail-row ecf-jewelry-detail-row"
         >
-          <input v-model="jw.name" type="text" class="eci-input" placeholder="名称" />
-          <input v-model="jw.状态" type="text" class="eci-input" placeholder="状态" />
-          <input v-model="jw.描述" type="text" class="eci-input" placeholder="描述" />
+          <input v-model="jw.name" type="text" class="eci-input" placeholder="名字" aria-label="饰品名字" />
+          <input v-model="jw.部位" type="text" class="eci-input" placeholder="部位" aria-label="饰品部位" />
+          <input v-model="jw.描述" type="text" class="eci-input" placeholder="描述" aria-label="饰品描述" />
           <button type="button" class="ecf-icon-btn" @click="form.appearanceJewelryRows.splice(jidx, 1)">
             <i class="fa-solid fa-trash"></i>
           </button>
@@ -169,7 +169,7 @@
         <button
           type="button"
           class="ecf-add-btn"
-          @click="form.appearanceJewelryRows.push({ name: '', 状态: '正常', 描述: '' })"
+          @click="form.appearanceJewelryRows.push({ name: '', 部位: '', 描述: '' })"
         >
           + 饰品
         </button>
@@ -297,6 +297,15 @@ const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
 
   .eci-input {
     flex: 1;
+  }
+}
+
+.ecf-jewelry-detail-row {
+  flex-wrap: wrap;
+
+  .eci-input {
+    flex: 1 1 22%;
+    min-width: 4.5rem;
   }
 }
 
