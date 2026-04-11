@@ -1,7 +1,5 @@
 import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';
 
-// 根 Schema 使用「核心结构 + .passthrough()」，与酒馆助手 MVU 合并行为一致；避免 z.intersection(核心, record) 与顶层扩展键冲突。
-
 const 规则条目 = z.object({
   名称: z.string().prefault(''),
   效果描述: z.string().prefault(''),
@@ -115,13 +113,11 @@ const 核心结构 = z.object({
         足部: z.object({ 名称: z.string().prefault(''), 状态: z.string().prefault('正常'), 描述: z.string().prefault('') }).prefault({}),
         饰品: z.record(
           z.string().describe('饰品或道具名'),
-          z
-            .object({
-              部位: z.string().min(1).describe('佩戴或关联的身体部位，必填'),
-              状态: z.string().prefault('正常'),
-              描述: z.string().prefault(''),
-            })
-            .prefault({})
+          z.object({
+            部位: z.string().describe('须填写关联的身体部位，允许使用占位文案如"未知"').prefault('未知'),
+            状态: z.string().prefault('正常'),
+            描述: z.string().prefault(''),
+          }).prefault({})
         ).prefault({}),
       }).prefault({}),
 
@@ -161,8 +157,8 @@ const 核心结构 = z.object({
     玩家名称: z.string().prefault('玩家'),
     玩家设置: z.record(z.string(), z.unknown()).prefault({}),
     当前阶段: z.string().prefault('开局'),
-    世界类型: z.string().max(64).describe('可填入现代、西幻等预设，或玩家自定义世界名称，最长 64 字').prefault('现代'),
-    世界简介: z.string().max(2000).describe('自定义或补充的世界观简介，建议开局由玩家填写').prefault(''),
+    世界类型: z.coerce.string().describe('可填入现代、西幻等预设，或玩家自定义世界名称，最长 64 字').transform(v => String(v).slice(0, 64)).prefault('现代'),
+    世界简介: z.coerce.string().describe('自定义或补充的世界观简介，建议开局由玩家填写').transform(v => String(v).slice(0, 2000)).prefault(''),
     进度: z.coerce.number().transform(v => Math.max(v, 1)).prefault(1),
     最近更新时间: z.coerce.number().prefault(() => Date.now()),
   }).prefault({}),
@@ -171,11 +167,9 @@ const 核心结构 = z.object({
     z.string().describe('状态名'),
     z.unknown()
   ).prefault({}),
-})
-  .passthrough()
-  .prefault({});
+}).prefault({});
 
-export const Schema = 核心结构;
+export const Schema = z.intersection(核心结构, z.record(z.string(), z.unknown()));
 
 export const schema = Schema;
 

@@ -333,6 +333,13 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
     n += 1;
   }
 
+  if (worldIntroBlock) {
+    checklist.push(
+      `${n}. 【世界简介】须与上文「一、配置摘要」中的【世界简介】一致：用现场叙事自然体现其中的基调、核心张力或矛盾、禁忌或边界（禁止说明书式复述原文句；须与上述场景设定相容）。`,
+    );
+    n += 1;
+  }
+
   if (openingDetail) {
     checklist.push(`${n}. 开场时刻、空间与情节须体现以下补充（不可省略）：${openingDetail}`);
     n += 1;

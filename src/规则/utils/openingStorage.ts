@@ -29,6 +29,8 @@ export type OpeningSceneSnippet = RuleSnippet;
 export interface OpeningPresetPayload {
   sceneMode: 'preset' | 'custom';
   sceneId: string | null;
+  /** 自定义场景名称（与 customSceneDesc 成对；旧预设可能缺省） */
+  customSceneName?: string;
   customSceneDesc: string;
   selectedRules: string[];
   customRules: { name: string; desc: string }[];
@@ -102,6 +104,7 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
   const o = x as Record<string, unknown>;
   const sceneMode = o.sceneMode === 'custom' ? 'custom' : 'preset';
   const sceneId = o.sceneId === null || typeof o.sceneId === 'string' ? o.sceneId : null;
+  const customSceneName = typeof o.customSceneName === 'string' ? o.customSceneName : '';
   const customSceneDesc = typeof o.customSceneDesc === 'string' ? o.customSceneDesc : '';
   const openingSceneDetail = typeof o.openingSceneDetail === 'string' ? o.openingSceneDetail : '';
   const selectedRules = Array.isArray(o.selectedRules)
@@ -144,6 +147,7 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
   return {
     sceneMode,
     sceneId,
+    customSceneName,
     customSceneDesc,
     selectedRules,
     customRules,

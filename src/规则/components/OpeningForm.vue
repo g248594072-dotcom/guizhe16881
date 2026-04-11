@@ -243,7 +243,7 @@
         <div class="page-content">
           <h2 class="chapter-title">世界类型</h2>
           <p class="chapter-desc">
-            先选择世界观；下一步仅显示与该类型匹配的预设场景（选「自定义」时显示全部预设）。选「自定义」时须在点击「开始游戏」后填写世界名称与世界简介。
+            先选择世界观；下一步仅显示与该类型匹配的预设场景（选「自定义」时显示全部预设）。选「自定义」时会弹出窗口填写世界名称与世界简介；也可在点击「开始游戏」时再填写。
           </p>
 
           <div class="scene-grid world-type-grid">
@@ -252,7 +252,7 @@
               :key="wt.value"
               class="scene-card world-type-card"
               :class="{ active: selectedWorldType === wt.value }"
-              @click="selectedWorldType = wt.value"
+              @click="onWorldTypeCardClick(wt)"
             >
               <div class="scene-icon">
                 <i :class="wt.icon"></i>
@@ -304,16 +304,25 @@
             </button>
             <button type="button" class="library-toolbar-btn" @click="saveNewSceneToLibrary">
               <i class="fa-solid fa-bookmark"></i>
-              将当前描述加入场景库
+              将当前场景加入场景库
             </button>
           </div>
 
           <div class="custom-scene">
             <label class="custom-label">或创建自定义场景</label>
+            <label class="custom-label custom-label--sub">场景名称</label>
+            <input
+              v-model="customSceneName"
+              type="text"
+              class="custom-textarea custom-world-type-input"
+              placeholder="例如：云端魔法学院、雨夜便利店…"
+              maxlength="64"
+            />
+            <label class="custom-label custom-label--sub">场景简介</label>
             <textarea
               v-model="customSceneDesc"
               class="custom-textarea"
-              placeholder="描述你想要的场景（如：一座漂浮在云端的魔法学院，学生们正在上课...）"
+              placeholder="用几句话描述氛围、空间与关键元素（如：浮岛之上钟声回荡，新生们挤在廊下等待分班…）"
               rows="3"
             ></textarea>
           </div>
@@ -575,7 +584,7 @@
             </div>
             <div class="summary-item">
               <span class="summary-label">场景</span>
-              <span class="summary-value">{{ selectedScene?.name || '自定义场景' }}</span>
+              <span class="summary-value">{{ displaySceneSummaryLabel }}</span>
             </div>
             <div class="summary-item">
               <span class="summary-label">开局场景细节</span>
@@ -622,14 +631,14 @@
                   <span class="particle"></span>
                 </span>
               </button>
-              <p v-if="!canSubmit" class="hint-text">请选择一个场景或填写自定义场景描述</p>
+              <p v-if="!canSubmit" class="hint-text">{{ canSubmitHint }}</p>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- 自定义世界：开始游戏前填写（写入 MVU 元信息.世界类型 / 世界简介） -->
+    <!-- 自定义世界：点击「自定义」卡片或开始游戏时填写（写入 MVU 元信息.世界类型 / 世界简介） -->
     <div
       v-if="customWorldModalOpen"
       class="chronicle-dialog-backdrop"
@@ -658,7 +667,9 @@
         ></textarea>
         <div class="chronicle-dialog-actions" style="margin-top: 12px">
           <button type="button" class="chronicle-dialog-btn cancel" @click="customWorldModalOpen = false">取消</button>
-          <button type="button" class="chronicle-dialog-btn" @click="confirmCustomWorldModal">确定并开始</button>
+          <button type="button" class="chronicle-dialog-btn" @click="confirmCustomWorldModal">
+            {{ customWorldSubmitAfterConfirm ? '确定并开始' : '确定' }}
+          </button>
         </div>
       </div>
     </div>
@@ -928,8 +939,8 @@
     >
       <div class="chronicle-dialog-panel opening-dialog-panel opening-dialog-panel--wide">
         <h3 class="chronicle-dialog-title">场景库</h3>
-        <p class="chronicle-dialog-desc">取用后会切换到「自定义场景」并填入下方文案（会取消已选卡片场景）。</p>
-        <div v-if="sceneSnippets.length === 0" class="opening-dialog-empty">场景库为空，先在「或创建自定义场景」中写好描述后点「将当前描述加入场景库」</div>
+        <p class="chronicle-dialog-desc">取用后会切换到「自定义场景」并填入名称与简介（会取消已选卡片场景）。</p>
+        <div v-if="sceneSnippets.length === 0" class="opening-dialog-empty">场景库为空，先在「或创建自定义场景」中填写名称与简介后点「将当前场景加入场景库」</div>
         <ul v-else class="opening-dialog-list opening-dialog-list--scroll">
           <li v-for="s in sceneSnippets" :key="s.id" class="opening-dialog-list-item opening-dialog-list-item--stack">
             <div class="opening-dialog-list-main">
@@ -1361,19 +1372,56 @@ const worldTypeCards: { value: PresetWorldTag; hint: string; icon: string }[] = 
   { value: '自定义', hint: '不锁定世界观；下页显示全部预设场景', icon: 'fa-solid fa-circle-question' },
 ];
 
+const selectedScene = ref<OpeningSceneCard | null>(null);
+const customSceneName = ref('');
+const customSceneDesc = ref('');
+
 const selectedWorldType = ref<WorldType>('现代');
 /** 选「自定义」卡片并经弹窗确认后写入 MVU 的世界名称 */
 const worldCustomName = ref('');
 const worldCustomIntro = ref('');
 const customWorldModalOpen = ref(false);
+/** 为 true 时弹窗「确定」后立刻执行开局提交；为 false 时仅保存名称与简介并关闭 */
+const customWorldSubmitAfterConfirm = ref(false);
 const customWorldNameDraft = ref('');
 const customWorldIntroDraft = ref('');
+
+function onWorldTypeCardClick(wt: { value: PresetWorldTag; hint: string; icon: string }) {
+  selectedWorldType.value = wt.value;
+  if (wt.value === '自定义') {
+    openCustomWorldModal(false);
+  }
+}
+
+/** 与预设卡片一致：「名称：简介」，供 MVU 开局与开场白清单使用 */
+function buildCustomSceneDescription(): string {
+  const name = customSceneName.value.trim();
+  const desc = customSceneDesc.value.trim();
+  if (name && desc) return `${name}：${desc}`;
+  if (desc) return desc;
+  if (name) return `${name}：`;
+  return '';
+}
+
+const displaySceneSummaryLabel = computed(() => {
+  if (selectedScene.value) return selectedScene.value.name;
+  const merged = buildCustomSceneDescription();
+  if (merged) return merged.length > 48 ? `${merged.slice(0, 48)}…` : merged;
+  return '自定义场景';
+});
+
+const canSubmitHint = computed(() => {
+  const name = customSceneName.value.trim();
+  const desc = customSceneDesc.value.trim();
+  if (!selectedScene.value && name && !desc) return '请填写场景简介（仅填简介不写名称也可兼容旧存档）';
+  return '请选择一个场景，或填写自定义场景的名称与简介';
+});
 
 const displayWorldTypeLabel = computed(() => {
   if (selectedWorldType.value === '自定义' && worldCustomName.value.trim()) {
     return `${worldCustomName.value.trim()}（自定义）`;
   }
-  if (selectedWorldType.value === '自定义') return '自定义（开始游戏时填写世界名称与简介）';
+  if (selectedWorldType.value === '自定义') return '自定义（点击卡片或开始游戏时填写名称与简介）';
   return selectedWorldType.value;
 });
 
@@ -1406,8 +1454,6 @@ const presetRules = [
 ];
 
 // 数据
-const selectedScene = ref<OpeningSceneCard | null>(null);
-const customSceneDesc = ref('');
 const openingSceneDetail = ref('');
 const selectedRules = ref<string[]>(['rule_001', 'rule_002']); // 默认选中前两条
 const customRules = ref<{ name: string; desc: string }[]>([]);
@@ -1478,6 +1524,7 @@ function capturePresetPayload(): OpeningPresetPayload {
   return {
     sceneMode: selectedScene.value ? 'preset' : 'custom',
     sceneId: selectedScene.value?.id ?? null,
+    customSceneName: customSceneName.value,
     customSceneDesc: customSceneDesc.value,
     selectedRules: [...selectedRules.value],
     customRules: customRules.value.map(r => ({ name: r.name, desc: r.desc })),
@@ -1525,13 +1572,16 @@ function applyPresetPayload(p: OpeningPresetPayload) {
     const sc = sceneOptions.find(s => s.id === p.sceneId);
     if (sc) {
       selectedScene.value = sc;
+      customSceneName.value = '';
       customSceneDesc.value = '';
     } else {
       selectedScene.value = null;
+      customSceneName.value = typeof p.customSceneName === 'string' ? p.customSceneName : '';
       customSceneDesc.value = p.customSceneDesc ?? '';
     }
   } else {
     selectedScene.value = null;
+    customSceneName.value = typeof p.customSceneName === 'string' ? p.customSceneName : '';
     customSceneDesc.value = p.customSceneDesc ?? '';
   }
 }
@@ -1658,19 +1708,20 @@ function sceneBodyKey(body: string) {
 }
 
 function saveNewSceneToLibrary() {
+  const name = customSceneName.value.trim();
   const body = customSceneDesc.value.trim();
-  if (!body) {
-    toastr.warning('请先在「或创建自定义场景」中填写描述');
+  if (!name || !body) {
+    toastr.warning('请先在「或创建自定义场景」中填写场景名称与场景简介');
     return;
   }
-  const key = sceneBodyKey(body);
-  if (sceneSnippets.value.some(s => sceneBodyKey(s.desc) === key)) {
-    toastr.info('场景库中已有相同文案');
+  const key = ruleSnippetKey(name, body);
+  if (sceneSnippets.value.some(s => ruleSnippetKey(s.name, s.desc) === key)) {
+    toastr.info('场景库中已有相同条目');
     return;
   }
   sceneSnippets.value.push({
     id: createStorageId(),
-    name: autoSnippetTitle(body),
+    name,
     desc: body,
   });
   toastr.success('已加入场景库');
@@ -1678,6 +1729,7 @@ function saveNewSceneToLibrary() {
 
 function addSceneFromLibrary(s: SceneSnippet) {
   selectedScene.value = null;
+  customSceneName.value = s.name.trim();
   customSceneDesc.value = s.desc;
   sceneSnippetPickerOpen.value = false;
   toastr.success('已取用场景');
@@ -1957,8 +2009,13 @@ const totalRulesCount = computed(() => {
 });
 
 const canSubmit = computed(() => {
-  // 只需要选择场景或填写自定义场景描述即可开始游戏
-  return (selectedScene.value || customSceneDesc.value.trim()) && !isSubmitting.value;
+  const name = customSceneName.value.trim();
+  const desc = customSceneDesc.value.trim();
+  const customOk =
+    !!selectedScene.value ||
+    (name && desc) ||
+    (!name && desc); /* 旧预设：仅有一段「简介」文案 */
+  return customOk && !isSubmitting.value;
 });
 
 // 翻页动画
@@ -1977,7 +2034,8 @@ function goToPage(page: typeof currentPage.value) {
 // 选择场景
 function selectScene(scene: OpeningSceneCard) {
   selectedScene.value = scene;
-  customSceneDesc.value = ''; // 清空自定义场景
+  customSceneName.value = '';
+  customSceneDesc.value = '';
 }
 
 // 添加自定义规则
@@ -2021,7 +2079,8 @@ function removeCharacter(index: number) {
   characters.value.splice(index, 1);
 }
 
-function openCustomWorldModal() {
+function openCustomWorldModal(submitAfterConfirm = true) {
+  customWorldSubmitAfterConfirm.value = submitAfterConfirm;
   customWorldNameDraft.value = worldCustomName.value;
   customWorldIntroDraft.value = worldCustomIntro.value;
   customWorldModalOpen.value = true;
@@ -2049,7 +2108,9 @@ async function confirmCustomWorldModal() {
   worldCustomName.value = n;
   worldCustomIntro.value = intro;
   customWorldModalOpen.value = false;
-  await runOpeningSubmit();
+  if (customWorldSubmitAfterConfirm.value) {
+    await runOpeningSubmit();
+  }
 }
 
 /** 非「自定义」卡片或弹窗已确认后执行 */
@@ -2078,7 +2139,7 @@ async function runOpeningSubmit() {
   if (selectedScene.value) {
     sceneDescription = `${selectedScene.value.name}：${selectedScene.value.desc}`;
   } else {
-    sceneDescription = customSceneDesc.value.trim();
+    sceneDescription = buildCustomSceneDescription();
   }
 
   const rules = [
@@ -2117,8 +2178,12 @@ async function runOpeningSubmit() {
 async function handleSubmit() {
   if (isSubmitting.value || !canSubmit.value) return;
   if (selectedWorldType.value === '自定义') {
-    openCustomWorldModal();
-    return;
+    const wn = worldCustomName.value.trim();
+    const wi = worldCustomIntro.value.trim();
+    if (!wn || !wi) {
+      openCustomWorldModal(true);
+      return;
+    }
   }
   await runOpeningSubmit();
 }
@@ -3608,6 +3673,14 @@ defineExpose({
   font-size: 13px;
   font-weight: 600;
   color: var(--text-soft);
+}
+
+.custom-label--sub {
+  margin-top: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.92;
 }
 
 .custom-textarea,
