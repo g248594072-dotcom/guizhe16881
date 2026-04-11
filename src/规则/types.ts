@@ -361,6 +361,11 @@ export interface SecondaryApiConfig {
   maxRetries: number;
   /** 为 true 时运行时从 SillyTavern 当前聊天补全（插头）读取 URL / 密钥 / 模型，不保存密钥到变量 */
   useTavernMainConnection?: boolean;
+  /**
+   * 开启「正文美化」时，每回合要求生成 &lt;htmlcontent&gt; 小前端块的概率 0–100。
+   * 每次美化调用独立随机；0 = 永不出块，100 = 每回必出。
+   */
+  maintextBeautifyHtmlcontentChance: number;
   tasks: {
     includeVariableUpdate: boolean;
     /** 第二路 generateRaw：根据原始 maintext 生成 HTML 展示层，合并进 `<maintext>`；变量仍基于原始正文 */

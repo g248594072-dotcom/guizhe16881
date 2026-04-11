@@ -263,6 +263,29 @@
         />
         <span>正文美化（第二 API，将 HTML 写回 &lt;maintext&gt;；变量仍按美化前正文计算）</span>
       </label>
+      <div
+        v-if="secondaryApi.tasks.includeMaintextBeautification"
+        class="beautify-html-chance-block"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <label class="field-label" for="beautify-html-chance-range">小前端（&lt;htmlcontent&gt;）生成几率</label>
+        <div class="beautify-html-chance-row">
+          <input
+            id="beautify-html-chance-range"
+            v-model.number="secondaryApi.maintextBeautifyHtmlcontentChance"
+            class="beautify-html-chance-range"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            @input="persistSecondaryApi"
+          />
+          <span class="beautify-html-chance-value">{{ clampedBeautifyChance }}%</span>
+        </div>
+        <p class="beautify-html-chance-hint">
+          每回合美化时单独随机：0% 永不出块，100% 每回必出；仅勾选「正文美化」时参与计算。
+        </p>
+      </div>
       <label class="field-row checkbox-row">
         <input v-model="secondaryApi.tasks.includeWorldTrend" type="checkbox" @change="persistSecondaryApi" />
         <span>世界大势相关说明</span>
@@ -540,6 +563,13 @@ const enableEditStagingCart = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
+/** 小前端生成几率 0–100（展示用，与 persist 时 clamp 一致） */
+const clampedBeautifyChance = computed(() => {
+  const v = Math.round(Number(secondaryApi.value.maintextBeautifyHtmlcontentChance));
+  if (Number.isNaN(v)) return DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance;
+  return Math.min(100, Math.max(0, v));
+});
+
 const fontSettings = ref<FontSettings>({ ...DEFAULT_FONT_SETTINGS });
 
 const showSaveSuccess = ref(false);
@@ -662,6 +692,11 @@ function loadSettings() {
 
 function persistSecondaryApi() {
   secondaryApi.value.maxRetries = clampSecondaryApiRetries(secondaryApi.value.maxRetries);
+  let c = Math.round(Number(secondaryApi.value.maintextBeautifyHtmlcontentChance));
+  if (Number.isNaN(c)) {
+    c = DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance;
+  }
+  secondaryApi.value.maintextBeautifyHtmlcontentChance = Math.min(100, Math.max(0, c));
   saveSecondaryApiConfig(secondaryApi.value);
 }
 
@@ -1605,6 +1640,52 @@ input:checked + .toggle-slider:before {
 .retry-note {
   font-size: 12px;
   opacity: 0.75;
+}
+
+.beautify-html-chance-block {
+  margin: 4px 0 14px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.beautify-html-chance-block.light {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.beautify-html-chance-block .field-label {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.beautify-html-chance-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.beautify-html-chance-range {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  accent-color: #3b82f6;
+}
+
+.beautify-html-chance-value {
+  min-width: 3.25rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.beautify-html-chance-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  opacity: 0.72;
 }
 
 .api-actions {

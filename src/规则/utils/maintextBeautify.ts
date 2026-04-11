@@ -9,17 +9,52 @@ import { normalizeOpenAiUrl } from './openAiUrl';
 export const SECONDARY_API_BEAUTIFY_START_EVENT = 'rule-modifier-secondary-api-start' as const;
 
 export const BEAUTIFY_SYSTEM_PROMPT =
-  '你是正文展示层编辑：**以原文为主**，对少量字词做局部 span 强调；**当前测试阶段**每轮须在正文后追加一块简短 <htmlcontent> 小前端；不得改写事实、对白原句与顺序；不得删除或改写 <!-- … --> 注释；除 <BeautifiedMaintext> 外不要输出任何文字。';
+  '你是正文展示层编辑：**以原文为主**，对少量字词做局部 span；是否插入 <htmlcontent> 以用户消息「## 本轮附属指令」为准，不得擅自增减；不得改写事实、对白原句与顺序；不得删除或改写 <!-- … --> 注释；除 <BeautifiedMaintext> 外不要输出任何文字。';
 
-export function buildBeautifyUserPrompt(rawMaintext: string): string {
+/** 是否要求本回合生成 htmlcontent（每次美化调用独立 roll） */
+export type BeautifyHtmlcontentDirective = 'include' | 'omit';
+
+function clampHtmlcontentChancePercent(n: unknown): number {
+  const x = Math.round(Number(n));
+  if (Number.isNaN(x)) return 50;
+  return Math.min(100, Math.max(0, x));
+}
+
+export function rollBeautifyHtmlcontentDirective(config: SecondaryApiConfig): BeautifyHtmlcontentDirective {
+  const pct = clampHtmlcontentChancePercent(config.maintextBeautifyHtmlcontentChance);
+  return Math.random() * 100 < pct ? 'include' : 'omit';
+}
+
+function buildSlotDirective(directive: BeautifyHtmlcontentDirective, chancePercent: number): string {
+  if (directive === 'include') {
+    return `## 本轮附属指令（设定几率 ${chancePercent}%：本轮抽中「生成小前端」，必须遵守）
+- 本回合须输出**恰好一块** <htmlcontent>…</htmlcontent>，并**紧跟** <span class="th-ui-meta">（一句话 UI 氛围）</span>（meta 在 htmlcontent 标签外）。
+- **插入位置**：夹在叙事**中间**某处（两段之间、关键句后、或前段与后段之间），由剧情节奏决定；**禁止**每回合机械地固定在全文最后一句之后。
+- 块须全宽、浅字、可读；与当前段落弱相关或贴合描写，勿编造与正文矛盾的事实。`;
+  }
+  return `## 本轮附属指令（设定几率 ${chancePercent}%：本轮抽中「不生成小前端」，必须遵守）
+- 本回合**禁止**输出任何 <htmlcontent> 或 </htmlcontent>；也**不要**单独输出仅用于 htmlcontent 配套的那类隐藏 meta span；仅允许叙事 <style> 与局部 span。`;
+}
+
+export function buildBeautifyUserPrompt(
+  rawMaintext: string,
+  htmlcontentDirective: BeautifyHtmlcontentDirective,
+  chancePercent: number,
+): string {
+  const tail =
+    htmlcontentDirective === 'include'
+      ? '与（按指令）恰好一块载体界面（位置在正文中间或后段，勿固定总末尾）'
+      : '（本轮无 htmlcontent 块）';
   return `${MAIN_TEXT_BEAUTIFY_RULES}
+
+${buildSlotDirective(htmlcontentDirective, chancePercent)}
 
 ## 待美化正文
 <OriginalMaintext>
 ${rawMaintext}
 </OriginalMaintext>
 
-只输出一对 <BeautifiedMaintext>...</BeautifiedMaintext>，不要其它说明。内层须以**未改写的原文纯文本为骨架**，HTML 仅占少数点缀位与（若有）一块载体界面。`;
+只输出一对 <BeautifiedMaintext>...</BeautifiedMaintext>，不要其它说明。内层以**未改写的原文纯文本为骨架**，HTML 仅占少数点缀位${tail}。`;
 }
 
 export function extractBeautifiedMaintext(response: string): string | null {
@@ -120,7 +155,10 @@ export async function processMaintextBeautification(
 
   const retryCount = clampRetries(config.maxRetries);
   const maxAttempts = 1 + retryCount;
-  const userPrompt = buildBeautifyUserPrompt(rawMaintext);
+  const chancePct = clampHtmlcontentChancePercent(config.maintextBeautifyHtmlcontentChance);
+  const htmlDirective = rollBeautifyHtmlcontentDirective(config);
+  console.info(`ℹ️ [maintextBeautify] 小前端几率 ${chancePct}% → 本轮: ${htmlDirective}`);
+  const userPrompt = buildBeautifyUserPrompt(rawMaintext, htmlDirective, chancePct);
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {

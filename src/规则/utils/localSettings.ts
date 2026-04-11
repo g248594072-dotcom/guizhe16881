@@ -13,6 +13,12 @@ function clampSecondaryRetriesLoaded(n: unknown): number {
   return Math.min(10, Math.max(0, x));
 }
 
+function clampHtmlcontentChanceLoaded(n: unknown): number {
+  const x = Math.round(Number(n));
+  if (Number.isNaN(x)) return DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance;
+  return Math.min(100, Math.max(0, x));
+}
+
 /** localStorage 键名 */
 const STORAGE_KEYS = {
   outputMode: 'rule_modifier_output_mode',
@@ -81,6 +87,9 @@ export function loadSecondaryApiConfig(): SecondaryApiConfig {
         model: parsed.model ?? DEFAULT_SECONDARY_API_CONFIG.model,
         maxRetries: clampSecondaryRetriesLoaded(parsed.maxRetries ?? DEFAULT_SECONDARY_API_CONFIG.maxRetries),
         useTavernMainConnection: parsed.useTavernMainConnection ?? DEFAULT_SECONDARY_API_CONFIG.useTavernMainConnection,
+        maintextBeautifyHtmlcontentChance: clampHtmlcontentChanceLoaded(
+          parsed.maintextBeautifyHtmlcontentChance ?? DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance,
+        ),
         tasks: {
           includeVariableUpdate: parsed.tasks?.includeVariableUpdate ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeVariableUpdate,
           includeMaintextBeautification:
