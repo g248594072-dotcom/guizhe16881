@@ -83,6 +83,8 @@ export function loadSecondaryApiConfig(): SecondaryApiConfig {
         useTavernMainConnection: parsed.useTavernMainConnection ?? DEFAULT_SECONDARY_API_CONFIG.useTavernMainConnection,
         tasks: {
           includeVariableUpdate: parsed.tasks?.includeVariableUpdate ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeVariableUpdate,
+          includeMaintextBeautification:
+            parsed.tasks?.includeMaintextBeautification ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeMaintextBeautification,
           includeWorldTrend: parsed.tasks?.includeWorldTrend ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeWorldTrend,
           includeResidentLife: parsed.tasks?.includeResidentLife ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeResidentLife,
         },

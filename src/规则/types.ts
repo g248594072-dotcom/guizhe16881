@@ -363,6 +363,8 @@ export interface SecondaryApiConfig {
   useTavernMainConnection?: boolean;
   tasks: {
     includeVariableUpdate: boolean;
+    /** 第二路 generateRaw：根据原始 maintext 生成 HTML 展示层，合并进 `<maintext>`；变量仍基于原始正文 */
+    includeMaintextBeautification: boolean;
     includeWorldTrend: boolean;
     includeResidentLife: boolean;
   };

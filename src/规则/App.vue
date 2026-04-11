@@ -377,7 +377,10 @@
           </div>
           <div class="turn-layout">
             <!-- 正文滚动区域（重ROLL 时虚化） -->
-            <div class="maintext-area" :class="{ 'is-blurred': isRegenerating }">
+            <div
+              class="maintext-area"
+              :class="{ 'is-blurred': isRegenerating, 'secondary-api-active': secondaryApiBannerVisible }"
+            >
               <!-- 生成中提示 -->
               <div v-if="isGenerating && !mainText" class="generating-indicator">
                 <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -3391,28 +3394,16 @@ async function sendMessage() {
     });
     console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
 
-    // 双API模式：调用第二API处理变量（正常游戏流程）
+    // 双API模式：第二 API 变量 + 可选正文美化（并行）
     if (isDualMode && result) {
       try {
-        const { processWithSecondaryApi } = await import('./utils/apiSettings');
+        const { mergeSecondaryPipelineIntoAssistantText, isSecondaryApiConfigured } = await import(
+          './utils/apiSettings',
+        );
         if (isSecondaryApiConfigured(secondaryApiConfig)) {
-          console.log('🔄 [App] 双API模式：调用第二API处理变量...');
-
-          // 提取 maintext（与 parseMaintext 一致：最后一对闭标签从后往前配对）
-          const maintext = parseMaintext(extractFilteredContent(result));
-
-          if (maintext) {
-            const variableUpdate = await processWithSecondaryApi(maintext, secondaryApiConfig);
-
-            // 将变量更新合并到结果中
-            if (variableUpdate) {
-              // 检查结果是否已有 UpdateVariable
-              if (!result.includes('<UpdateVariable>')) {
-                result = result.trim() + '\n\n<UpdateVariable>' + variableUpdate + '</UpdateVariable>';
-                console.log('✅ [App] 第二API变量更新已合并');
-              }
-            }
-          }
+          console.log('🔄 [App] 双API模式：第二 API（变量 / 正文美化）…');
+          result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
+          console.log('✅ [App] 第二 API 合并完成');
         }
       } catch (error) {
         console.error('❌ [App] 第二API处理失败:', error);
@@ -3720,18 +3711,11 @@ async function handleRegenerate() {
       should_stream: true,
     });
 
-    // 双API模式：调用第二API处理变量（重roll流程与正常游戏一致）
+    // 双API模式：第二 API 变量 + 可选正文美化
     if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
       try {
-        const { processWithSecondaryApi } = await import('./utils/apiSettings');
-        const maintext = parseMaintext(extractFilteredContent(result));
-
-        if (maintext) {
-          const variableUpdate = await processWithSecondaryApi(maintext, secondaryApiConfig);
-          if (variableUpdate && !result.includes('<UpdateVariable>')) {
-            result = result.trim() + '\n\n<UpdateVariable>' + variableUpdate + '</UpdateVariable>';
-          }
-        }
+        const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
+        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
       } catch (error) {
         console.error('❌ [App] 第二API处理失败:', error);
       }
@@ -5096,19 +5080,12 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
     });
     console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
 
-    // 双API模式：调用第二API处理变量
+    // 双API模式：第二 API 变量 + 可选正文美化
     if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
       try {
-        const { processWithSecondaryApi } = await import('./utils/apiSettings');
-        const maintext = parseMaintext(extractFilteredContent(result));
-
-        if (maintext) {
-          const variableUpdate = await processWithSecondaryApi(maintext, secondaryApiConfig);
-          if (variableUpdate && !result.includes('<UpdateVariable>')) {
-            result = result.trim() + '\n\n<UpdateVariable>' + variableUpdate + '</UpdateVariable>';
-            console.log('✅ [App] 开局流程：第二API变量更新已合并');
-          }
-        }
+        const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
+        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
+        console.log('✅ [App] 开局流程：第二 API 合并完成');
       } catch (error) {
         console.error('❌ [App] 开局流程：第二API处理失败:', error);
       }
@@ -6354,6 +6331,7 @@ onUnmounted(() => {
 .game-content {
   position: relative;
   flex: 1;
+  min-height: 0;
   padding: var(--space-xl) calc(32px * var(--ui-scale, 1));
   display: flex;
   flex-direction: column;
@@ -6570,8 +6548,88 @@ onUnmounted(() => {
   color: #e4e4e7;
 }
 
+/* 第二 API 合并的正文常带 .th-root 或 @media (prefers-color-scheme: light) 黑字，在深色壳里看不清 */
+.dark .maintext-content :deep(.th-root) {
+  color: #eceff4 !important;
+}
+
+.dark .maintext-content :deep(p),
+.dark .maintext-content :deep(li) {
+  color: #e8eaed;
+}
+
+/* 顶栏「第二 API 进行中」时进一步提高可读性 */
+.dark .maintext-area.secondary-api-active .maintext-content {
+  color: #f1f5f9 !important;
+}
+
+.dark .maintext-area.secondary-api-active .maintext-content :deep(.th-root) {
+  color: #f8fafc !important;
+}
+
+.dark .maintext-area.secondary-api-active .maintext-content :deep(p),
+.dark .maintext-area.secondary-api-active .maintext-content :deep(li) {
+  color: #f1f5f9 !important;
+}
+
 .light .maintext-content {
   color: #27272a;
+}
+
+/* 第二 API 注入的 <htmlcontent> 小前端：随正文区宽度、避免窄条漂在左侧；移动端可读 */
+.maintext-content :deep(htmlcontent) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0.85em 0;
+  white-space: normal;
+}
+
+.maintext-content :deep(htmlcontent > *) {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.maintext-content :deep(htmlcontent > div) {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.dark .maintext-content :deep(htmlcontent) {
+  color: #cbd5e1;
+}
+
+.dark .maintext-content :deep(htmlcontent small),
+.dark .maintext-content :deep(htmlcontent .muted),
+.dark .maintext-content :deep(htmlcontent [class*='muted']),
+.dark .maintext-content :deep(htmlcontent [class*='label']) {
+  color: #94a3b8 !important;
+}
+
+@media (max-width: 768px) {
+  .maintext-content :deep(htmlcontent) {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .maintext-content :deep(htmlcontent table) {
+    display: block;
+    width: 100% !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 480px) {
+  .maintext-content :deep(htmlcontent) {
+    font-size: calc(14px * var(--ui-scale, 1));
+  }
+
+  .maintext-content :deep(htmlcontent [style*='flex']) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
 }
 
 .maintext-placeholder {
@@ -7176,6 +7234,18 @@ onUnmounted(() => {
     padding-bottom: calc(24px + env(safe-area-inset-bottom));
   }
 
+  // 选项列表：为底栏 + 输入区预留空间，超出则在列表内纵向滑动（避免第 4 条被裁切）
+  .options-list {
+    max-height: min(56dvh, calc(100dvh - 300px));
+  }
+
+  // 正文 + 选项整体过高时，允许主内容区滚动兜底（避免选项区被父级 overflow 裁掉）
+  .game-content {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
   // 右下角浮动按钮：随多行底栏抬高，避免与底部导航重叠
   .variable-fab {
     bottom: calc(
@@ -7263,11 +7333,14 @@ body.has-dragging-fab {
   flex-shrink: 0;
 }
 
-// 选项区域
+// 选项区域（与正文共用 turn-layout 高度；列表过高时由 .options-list 内部滚动）
 .options-area {
   z-index: 12;
   margin-top: 0;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding-top: var(--space-md);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(calc(10px * var(--ui-scale, 1)));
@@ -7315,6 +7388,7 @@ body.has-dragging-fab {
   align-items: center;
   gap: var(--space-sm);
   width: 100%;
+  flex-shrink: 0;
   padding: calc(10px * var(--ui-scale, 1)) var(--space-md);
   border-radius: var(--radius-md);
   border: 1px solid rgba(6, 182, 212, 0.2);
@@ -7424,11 +7498,11 @@ body.has-dragging-fab {
   }
 }
 
-// 选项列表展开/折叠动画
+// 选项列表展开/折叠动画（max-height 须大于多行长选项总高，否则展开阶段会被裁切）
 .slide-enter-active,
 .slide-leave-active {
   transition: all 0.3s ease;
-  max-height: 500px;
+  max-height: min(3200px, 88dvh);
   overflow: hidden;
 }
 
@@ -7442,7 +7516,14 @@ body.has-dragging-fab {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  overflow: hidden;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: min(68dvh, calc(100svh - 260px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .option-btn {
@@ -7465,6 +7546,7 @@ body.has-dragging-fab {
   text-align: left;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 
   &::before {
     content: '';
@@ -7737,8 +7819,11 @@ body.has-dragging-fab {
 }
 
 .option-text {
+  flex: 1;
+  min-width: 0;
   font-size: calc(14px * var(--ui-scale, 1));
   line-height: 1.5;
+  word-break: break-word;
 }
 
 // 阅读模式和读档模式
@@ -7846,6 +7931,22 @@ body.has-dragging-fab {
     }
   }
   .history-content { color: #27272a; }
+}
+
+/* 阅读模式历史条内的 htmlcontent 与正文区一致：全宽、可滚动 */
+.history-item .history-content :deep(htmlcontent) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0.75em 0;
+  white-space: normal;
+}
+
+.history-item .history-content :deep(htmlcontent > div) {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
 }
 
 .save-item {

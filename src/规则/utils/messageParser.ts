@@ -462,47 +462,93 @@ export function extractLastSumContent(messageContent: string): string {
   return lastClosedInner;
 }
 
+/** 整段为 `${…}` 时去掉外壳（仅一层） */
+function stripOuterDollarBraces(s: string): string {
+  const t = s.trim();
+  if (t.startsWith('${') && t.endsWith('}')) {
+    return t.slice(2, -1).trim();
+  }
+  return t;
+}
+
 /**
- * 从 `<choice>` 单行「序号后正文」中提取玩家可选行动文案：
- * - `标题 - ${选项内容: …}` → 取 `${…}` 内说明（可含 `{{user}}` 等，闭合为行末 `}`）
- * - `标题 - 纯文本` → 取短横线后正文
- * - 无短横线 → 整段作为选项
+ * 选项在界面中展示的文案：去掉 `${…}` 外壳，保留「短标题 - 正文」结构。
+ * - `标题 - ${…}` → `标题 - …`（正文为 `${}` 内层）
+ * - `${…}` → 仅内层
+ * - `标题 - ${选项内容: …}` → 仍按旧规则取冒号后说明，并去掉可能残留的外层 `${}`
  */
-function normalizeChoiceLineBody(afterPrefix: string): string {
-  const s = afterPrefix.trim();
+export function formatOptionDisplayForUi(raw: string): string {
+  const s = raw.trim();
   if (!s) return '';
 
   const templateRe = /^(.+?)\s*-\s*\$\{\s*选项内容\s*:\s*(.*)\}\s*$/s;
   const tm = s.match(templateRe);
   if (tm) {
-    return tm[2].trim();
+    return stripOuterDollarBraces(tm[2].trim());
   }
 
   const plainDash = /^(.+?)\s*-\s*(.+)$/s;
   const pm = s.match(plainDash);
   if (pm) {
-    return pm[2].trim();
+    const left = pm[1].trim();
+    const right = stripOuterDollarBraces(pm[2].trim());
+    return `${left} - ${right}`.trim();
   }
 
-  return s;
+  return stripOuterDollarBraces(s);
+}
+
+/**
+ * 从 `<choice>` 单行「序号后正文」中提取玩家可选行动文案（与 {@link formatOptionDisplayForUi} 一致）。
+ */
+function normalizeChoiceLineBody(afterPrefix: string): string {
+  return formatOptionDisplayForUi(afterPrefix);
+}
+
+/** 全角数字 → ASCII，便于匹配「１．」等 */
+function choiceLineToAsciiNumberPrefix(line: string): string {
+  return line.replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xff10 + 0x30));
+}
+
+/** 是否为新选项行：`1. ` / `１．` / `A. ` 等 */
+function isChoiceOptionStartLine(line: string): boolean {
+  const s = choiceLineToAsciiNumberPrefix(line).replace(/^\uFEFF/, '');
+  return /^[0-9]+\s*[.．]\s+\S/.test(s) || /^[A-Za-z]\s*[.．]\s+\S/.test(s);
+}
+
+/**
+ * 合并因 `${…}` 换行而拆开的行，再按行解析序号选项。
+ */
+function mergeChoiceContinuationLines(lines: string[]): string[] {
+  const merged: string[] = [];
+  for (const raw of lines) {
+    const line = raw.replace(/^\uFEFF/, '').trim();
+    if (!line) continue;
+    if (isChoiceOptionStartLine(line)) {
+      merged.push(line);
+    } else if (merged.length > 0) {
+      merged[merged.length - 1] += `\n${line}`;
+    }
+  }
+  return merged;
 }
 
 function parseChoiceBlockInner(inner: string): Option[] {
-  const lines = inner.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const lines = mergeChoiceContinuationLines(inner.split('\n').map(l => l.trim()).filter(l => l.length > 0));
   const out: Option[] = [];
 
-  const numWithBody = /^(\d+)\.\s+(.+)$/;
-  const letterWithBody = /^([A-Z])\.\s+(.+)$/;
+  const letterWithBody = /^([A-Za-z])\s*[.．]\s+(.+)$/su;
 
   for (const line of lines) {
-    let m = line.match(numWithBody);
+    const asciiNumLine = choiceLineToAsciiNumberPrefix(line);
+    let m = asciiNumLine.match(/^([0-9]+)\s*[.．]\s+(.+)$/su);
     if (m) {
       out.push({ id: m[1], text: normalizeChoiceLineBody(m[2]) });
       continue;
     }
     m = line.match(letterWithBody);
     if (m) {
-      out.push({ id: m[1], text: normalizeChoiceLineBody(m[2]) });
+      out.push({ id: m[1].toUpperCase(), text: normalizeChoiceLineBody(m[2]) });
     }
   }
   return out;
@@ -512,7 +558,7 @@ function parseChoiceBlockInner(inner: string): Option[] {
  * 解析消息中的选项
  * 支持格式：
  * 1. 带 id: <option id="A">选项文本</option>
- * 2. <choice>…</choice>：多行 `1. …` / `A. …`，兼容 ` - ${选项内容:…}` 与 ` - 纯文本`
+ * 2. <choice>…</choice>：多行 `1. …` / `A. …`，兼容 ` - ${选项内容:…}`、`标题 - ${…}`；界面展示会去掉 `${}` 外壳
  * 3. 不带 id: <option>\nA. 选项1\nB. 选项2\n</option>
  */
 export interface Option {
@@ -543,34 +589,41 @@ export function parseOptions(messageContent: string): Option[] {
   while ((match = optionWithIdRegex.exec(cleaned)) !== null) {
     optionsWithId.push({
       id: match[1].trim().toUpperCase(),
-      text: match[2].trim(),
+      text: formatOptionDisplayForUi(match[2].trim()),
     });
-  }
-
-  // 如果找到带 id 的 option 标签，直接返回（通常是 A、B、C 三个选项）
-  if (optionsWithId.length > 0) {
-    return optionsWithId;
   }
 
   // <choice>…</choice>：取最后一组闭合块（与 option 多段示例场景一致）
   const choicePairRe = /<choice([^>]*)>([\s\S]*?)<\/choice>/gi;
   const choicePairs = [...cleaned.matchAll(choicePairRe)];
+  let fromChoice: Option[] = [];
   if (choicePairs.length > 0) {
     const lastInner = (choicePairs[choicePairs.length - 1]?.[2] ?? '').trim();
-    const fromChoice = parseChoiceBlockInner(lastInner);
-    if (fromChoice.length > 0) {
-      return fromChoice;
-    }
+    fromChoice = parseChoiceBlockInner(lastInner);
+  }
+
+  // 世界书里的 <option id> 示例常只有 A/B/C 三条；若本楼层 <choice> 解析出更多条，应以 choice 为准
+  const nId = optionsWithId.length;
+  const nCh = fromChoice.length;
+  if (nCh > nId) {
+    return fromChoice;
+  }
+  if (nId > 0) {
+    return optionsWithId;
+  }
+  if (nCh > 0) {
+    return fromChoice;
   }
 
   // 兼容旧格式：匹配所有不带 id 的 <option>...</option> 标签对
   const optionPairRe = /<option([^>]*)>([\s\S]*?)<\/option>/gi;
   const allPairs = [...cleaned.matchAll(optionPairRe)];
 
-  // 取最后三个闭合的 <option>…</option> 标签对（通常对应 A/B/C 三个选项）
-  const lastThreePairs = allPairs.slice(-3);
+  // 取最后若干组闭合标签，避免文首示例块干扰，同时支持 4+ 条独立 <option>
+  const LEGACY_OPTION_TAG_MAX = 16;
+  const legacyPairs = allPairs.slice(-LEGACY_OPTION_TAG_MAX);
   const allOptionTexts: string[] = [];
-  for (const pair of lastThreePairs) {
+  for (const pair of legacyPairs) {
     const text = (pair[2] ?? '').trim();
     if (text) allOptionTexts.push(text);
   }
@@ -597,7 +650,7 @@ export function parseOptions(messageContent: string): Option[] {
           const id = text.match(/^([A-Z])\./)?.[1] || String.fromCharCode(65 + options.length);
           options.push({
             id,
-            text: text.replace(/^[A-Z]\.\s*/, '').trim()
+            text: formatOptionDisplayForUi(text.replace(/^[A-Z]\.\s*/, '').trim()),
           });
           currentOption = [];
         }
@@ -614,7 +667,7 @@ export function parseOptions(messageContent: string): Option[] {
       const id = text.match(/^([A-Z])\./)?.[1] || String.fromCharCode(65 + options.length);
       options.push({
         id,
-        text: text.replace(/^[A-Z]\.\s*/, '').trim()
+        text: formatOptionDisplayForUi(text.replace(/^[A-Z]\.\s*/, '').trim()),
       });
     }
 
@@ -623,7 +676,7 @@ export function parseOptions(messageContent: string): Option[] {
     // 单个选项或简单的多行选项
     return lines.map((line, index) => ({
       id: String.fromCharCode(65 + index),
-      text: line
+      text: formatOptionDisplayForUi(line),
     }));
   }
 }

@@ -11,6 +11,7 @@ export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
   useTavernMainConnection: true,
   tasks: {
     includeVariableUpdate: true,
+    includeMaintextBeautification: false,
     includeWorldTrend: false,
     includeResidentLife: false,
   },

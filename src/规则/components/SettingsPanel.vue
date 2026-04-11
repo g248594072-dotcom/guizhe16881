@@ -256,6 +256,14 @@
         <span>变量更新（&lt;UpdateVariable&gt;）</span>
       </label>
       <label class="field-row checkbox-row">
+        <input
+          v-model="secondaryApi.tasks.includeMaintextBeautification"
+          type="checkbox"
+          @change="persistSecondaryApi"
+        />
+        <span>正文美化（第二 API，将 HTML 写回 &lt;maintext&gt;；变量仍按美化前正文计算）</span>
+      </label>
+      <label class="field-row checkbox-row">
         <input v-model="secondaryApi.tasks.includeWorldTrend" type="checkbox" @change="persistSecondaryApi" />
         <span>世界大势相关说明</span>
       </label>

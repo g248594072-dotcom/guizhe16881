@@ -14,6 +14,8 @@ import {
   formatPersonalRuleKeysSection,
   VARIABLE_JSON_PATCH_RUNTIME_RULES,
 } from './variableUpdatePromptExtras';
+import { processMaintextBeautification } from './maintextBeautify';
+import { extractFilteredContent, parseMaintext, replaceLastMaintextInnerContent } from './messageParser';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
 
@@ -354,6 +356,10 @@ export function notifySecondaryApiStart(detail?: { attempt?: number }): void {
  * @returns 生成的变量更新内容
  */
 export async function processWithSecondaryApi(maintext: string, config: SecondaryApiConfig): Promise<string> {
+  if (config.tasks && config.tasks.includeVariableUpdate === false) {
+    return '';
+  }
+
   const retryCount = clampSecondaryApiRetries(config.maxRetries);
   const maxAttempts = 1 + retryCount;
   let lastError: Error | null = null;
@@ -630,3 +636,44 @@ export function getCurrentCharWorldbookName(): string {
 
 // 导出常量供外部使用
 export { WORLDBOOK_ENTRIES };
+
+/**
+ * 对单条 assistant 全文：按需并行第二路「变量 + 正文美化」，写回 maintext 内层并追加 UpdateVariable。
+ * 变量与美化均基于**原始** parseMaintext 内层（美化前正文）。
+ */
+export async function mergeSecondaryPipelineIntoAssistantText(
+  assistantRaw: string,
+  config: SecondaryApiConfig,
+): Promise<string> {
+  if (!assistantRaw || !isSecondaryApiConfigured(config)) {
+    return assistantRaw;
+  }
+  const filtered = extractFilteredContent(assistantRaw);
+  const maintext = parseMaintext(filtered);
+  if (!maintext) {
+    return assistantRaw;
+  }
+
+  const wantVar = config.tasks?.includeVariableUpdate !== false;
+  const wantBeautify = config.tasks?.includeMaintextBeautification === true;
+  if (!wantVar && !wantBeautify) {
+    return assistantRaw;
+  }
+
+  const [variableUpdate, beautifiedInner] = await Promise.all([
+    wantVar ? processWithSecondaryApi(maintext, config) : Promise.resolve(''),
+    wantBeautify ? processMaintextBeautification(maintext, config) : Promise.resolve(null),
+  ]);
+
+  let out = assistantRaw;
+
+  if (beautifiedInner != null && String(beautifiedInner).trim().length > 0) {
+    out = replaceLastMaintextInnerContent(out, String(beautifiedInner).trim());
+  }
+
+  if (variableUpdate && !out.includes('<UpdateVariable>')) {
+    out = `${out.trim()}\n\n<UpdateVariable>${variableUpdate}</UpdateVariable>`;
+  }
+
+  return out;
+}

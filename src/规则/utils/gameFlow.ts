@@ -10,6 +10,7 @@ import {
   isSecondaryApiConfigured,
   processWithSecondaryApi,
 } from './apiSettings';
+import { processMaintextBeautification } from './maintextBeautify';
 
 // 生成状态
 let isGenerating = false;
@@ -315,7 +316,7 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
     throw new Error('主API响应中未找到 maintext 标签');
   }
 
-  console.log('📝 [gameFlow] 主API生成完成，准备调用第二API处理变量...');
+  console.log('📝 [gameFlow] 主API生成完成，准备调用第二API（变量 / 正文美化）...');
 
   // 3. 获取第二API配置
   const secondaryConfig = getSecondaryApiConfig();
@@ -324,14 +325,27 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
     return mainResult;
   }
 
-  // 4. 调用第二API处理变量
-  try {
-    const variableUpdate = await processWithSecondaryApi(maintext, secondaryConfig);
-    console.log('✅ [gameFlow] 第二API变量处理完成');
+  const wantVar = secondaryConfig.tasks?.includeVariableUpdate !== false;
+  const wantBeautify = secondaryConfig.tasks?.includeMaintextBeautification === true;
+  if (!wantVar && !wantBeautify) {
+    console.warn('⚠️ [gameFlow] 第二API已配置但未启用变量与正文美化，跳过第二路');
+    return mainResult;
+  }
 
-    // 5. 合并结果
-    const mergedResult = buildMergedResponse(maintext, options, sum, variableUpdate);
-    return mergedResult;
+  // 4. 并行：变量（原始 maintext）与正文美化（原始 maintext）
+  try {
+    const varPromise = wantVar ? processWithSecondaryApi(maintext, secondaryConfig) : Promise.resolve('');
+    const beautifyPromise = wantBeautify ? processMaintextBeautification(maintext, secondaryConfig) : Promise.resolve(null);
+    const [variableUpdate, beautifiedInner] = await Promise.all([varPromise, beautifyPromise]);
+
+    console.log('✅ [gameFlow] 第二API 分支完成（变量 / 美化）');
+
+    const mergedMaintext =
+      beautifiedInner != null && String(beautifiedInner).trim().length > 0
+        ? String(beautifiedInner).trim()
+        : maintext;
+
+    return buildMergedResponse(mergedMaintext, options, sum, variableUpdate || '');
   } catch (error) {
     console.error('❌ [gameFlow] 第二API处理失败，使用主API结果:', error);
     // 第二API失败时，返回主API结果（可能不包含变量更新）
