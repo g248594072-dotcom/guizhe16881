@@ -779,11 +779,11 @@ export async function submitAddWorldRule(name: string, detail: string): Promise<
 
   // 异步触发世界大势生成（不阻塞主流程）
   setTimeout(() => {
-    generateWorldTrend(n, 'world', detail.trim()).then((success) => {
+    void generateWorldTrend(n, 'world', detail.trim()).then((success) => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
-    }).catch(console.error);
+    });
   }, 100);
 
   return message;
@@ -801,7 +801,7 @@ export async function submitEditWorldRule(idOrTitle: string, name: string, detai
 
   // 异步触发世界大势生成（不阻塞主流程）
   setTimeout(() => {
-    generateWorldTrend(n, 'world', detail.trim()).catch(console.error);
+    void generateWorldTrend(n, 'world', detail.trim());
   }, 100);
 
   return message;
@@ -1183,11 +1183,11 @@ export async function submitAddRegion(name: string, detail: string, firstRuleNam
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    generateWorldTrend(n, 'regional', detail.trim(), [n]).then((success) => {
+    void generateWorldTrend(n, 'regional', detail.trim(), [n]).then((success) => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
-    }).catch(console.error);
+    });
   }, 100);
 
   return message;
@@ -1206,11 +1206,11 @@ export async function submitAddRegionalRule(regionIdOrName: string, regionName: 
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    generateWorldTrend(n, 'regional', detail, [regionName]).then((success) => {
+    void generateWorldTrend(n, 'regional', detail, [regionName]).then((success) => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
-    }).catch(console.error);
+    });
   }, 100);
 
   return message;
@@ -1235,7 +1235,7 @@ export async function submitEditRegionalRule(
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    generateWorldTrend(n, 'regional', detail, [regionName]).catch(console.error);
+    void generateWorldTrend(n, 'regional', detail, [regionName]);
   }, 100);
 
   return message;
@@ -1253,7 +1253,7 @@ export async function submitEditRegion(idOrName: string, name: string, detail: s
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    generateWorldTrend(n, 'regional', detail.trim(), [n]).catch(console.error);
+    void generateWorldTrend(n, 'regional', detail.trim(), [n]);
   }, 100);
 
   return message;
@@ -1314,12 +1314,14 @@ export function formatPersonalRuleMessage(
   type: 'add' | 'edit' | 'archive' | 'restore' | 'delete',
   characterName: string,
   detail?: string,
+  ruleName?: string,
 ): string {
   if (type === 'archive') return `[归档个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
   if (type === 'restore') return `[复原个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
   if (type === 'delete') return `[删除个人规则]\n对象：${characterName}${detail ? `\n规则：${detail}` : ''}`;
   const prefix = type === 'add' ? '[新增个人规则]' : '[编辑个人规则]';
-  return `${prefix}\n对象：${characterName}\n规则细节：${detail ?? ''}`;
+  const nameLine = ruleName != null && String(ruleName).trim() !== '' ? `\n规则名字：${String(ruleName).trim()}` : '';
+  return `${prefix}\n对象：${characterName}${nameLine}\n规则细节：${detail ?? ''}`;
 }
 
 /** 与 usePersonalRulesByCharacter 分组键一致 */
@@ -1342,13 +1344,14 @@ export function listPersonalRuleStoreKeysForGroup(groupName: string): string[] {
   return keys;
 }
 
-export function addPersonalRuleToVariables(characterName: string, detail: string): void {
+export function addPersonalRuleToVariables(characterName: string, ruleName: string, detail: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const key = `PR-${Date.now()}`;
   const c = characterName.trim();
+  const rn = ruleName.trim();
   store.data.个人规则[key] = {
-    名称: c,
+    名称: rn,
     适用对象: c,
     效果描述: detail.trim(),
     状态: '生效中',
@@ -1358,7 +1361,10 @@ export function addPersonalRuleToVariables(characterName: string, detail: string
   bumpUpdateTime();
 }
 
-export function updatePersonalRuleInVariables(idOrTitle: string, updates: Partial<RuleData>): void {
+export function updatePersonalRuleInVariables(
+  idOrTitle: string,
+  updates: Partial<RuleData> & { applicableTarget?: string; ruleDisplayName?: string },
+): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
@@ -1373,11 +1379,13 @@ export function updatePersonalRuleInVariables(idOrTitle: string, updates: Partia
 
   const cur = rules[key];
   
-  if (updates.title) {
-    cur.名称 = updates.title;
-    cur.适用对象 = updates.title;
+  if (updates.applicableTarget !== undefined) {
+    cur.适用对象 = String(updates.applicableTarget).trim();
   }
-  if (updates.desc) cur.效果描述 = updates.desc;
+  if (updates.ruleDisplayName !== undefined) {
+    cur.名称 = String(updates.ruleDisplayName).trim();
+  }
+  if (updates.desc !== undefined) cur.效果描述 = updates.desc;
   cur.状态 = enRuleStatusToZh(updates.status, cur.状态);
 
   bumpUpdateTime();
@@ -1434,29 +1442,52 @@ export function deletePersonalRuleInVariables(idOrTitle: string): void {
   }
 }
 
-export async function submitAddPersonalRule(characterName: string, detail: string): Promise<string> {
-  const c = characterName.trim();
+export async function submitAddPersonalRule(
+  characterName: string,
+  ruleName: string,
+  detail: string,
+): Promise<string> {
+  const c = String(characterName ?? '').trim();
+  const rn = String(ruleName ?? '').trim();
   if (!c) {
     toastr.warning('请输入角色/对象名称');
     return '';
   }
+  if (!rn) {
+    toastr.warning('请输入规则名字');
+    return '';
+  }
   if (!tryRulesMvuWritable()) return '';
-  const message = formatPersonalRuleMessage('add', c, detail.trim());
-  addPersonalRuleToVariables(c, detail.trim());
+  const message = formatPersonalRuleMessage('add', c, detail.trim(), rn);
+  addPersonalRuleToVariables(c, rn, detail.trim());
   markResidentLifePendingPersonalRule();
 
   return message;
 }
 
-export async function submitEditPersonalRule(idOrTitle: string, characterName: string, detail: string): Promise<string> {
-  const c = characterName.trim();
+export async function submitEditPersonalRule(
+  idOrTitle: string,
+  characterName: string,
+  ruleName: string,
+  detail: string,
+): Promise<string> {
+  const c = String(characterName ?? '').trim();
+  const rn = String(ruleName ?? '').trim();
   if (!c) {
     toastr.warning('请输入角色/对象名称');
     return '';
   }
+  if (!rn) {
+    toastr.warning('请输入规则名字');
+    return '';
+  }
   if (!tryRulesMvuWritable()) return '';
-  const message = formatPersonalRuleMessage('edit', c, detail.trim());
-  updatePersonalRuleInVariables(idOrTitle, { title: c, desc: detail.trim() });
+  const message = formatPersonalRuleMessage('edit', c, detail.trim(), rn);
+  updatePersonalRuleInVariables(idOrTitle, {
+    applicableTarget: c,
+    ruleDisplayName: rn,
+    desc: detail.trim(),
+  });
   markResidentLifePendingPersonalRule();
 
   return message;

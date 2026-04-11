@@ -186,10 +186,13 @@ function ruleSummary(rule: RuleData): string {
 }
 
 function rulePayload(rule: RuleData, character: string): Record<string, any> {
+  const target = String(rule.target ?? '').trim() || character;
   return {
     id: rule.id,
     title: rule.title,
     character,
+    target,
+    ruleName: rule.ruleName ?? '',
     desc: rule.desc,
   };
 }
@@ -414,6 +417,7 @@ async function onRestore(rule: RuleData, groupName: string) {
   font-size: 13px;
   color: #71717a;
   flex: 1;
+  min-width: 0;
   margin-right: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -589,15 +593,18 @@ async function onRestore(rule: RuleData, groupName: string) {
   font-size: 13px;
   color: #a1a1aa;
   flex: 1;
+  min-width: 0;
   margin-right: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
 .rule-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 
   .action {
     display: flex;
@@ -638,6 +645,48 @@ async function onRestore(rule: RuleData, groupName: string) {
         background: rgba(239, 68, 68, 0.2);
       }
     }
+  }
+}
+
+@media (max-width: 768px) {
+  .archive-rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .archive-rule-desc {
+    margin-right: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .archive-rule-row .restore-btn {
+    align-self: flex-end;
+  }
+
+  .rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .rule-desc {
+    margin-right: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .rule-actions {
+    justify-content: flex-end;
   }
 }
 </style>

@@ -243,6 +243,7 @@ async function onRestore(rule: RuleData) {
   font-size: 13px;
   color: #71717a;
   flex: 1;
+  min-width: 0;
   margin-right: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -272,5 +273,27 @@ async function onRestore(rule: RuleData) {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .archive-rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .archive-rule-desc {
+    margin-right: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .restore-btn {
+    align-self: flex-end;
+  }
 }
 </style>

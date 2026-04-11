@@ -131,6 +131,8 @@
             <template v-else-if="draft.action.kind === 'random_add_personal'">
               <label class="eci-label">适用角色</label>
               <input v-model="draft.action.target" type="text" class="eci-input" />
+              <label class="eci-label">规则名字</label>
+              <input v-model="draft.action.ruleName" type="text" class="eci-input" />
               <label class="eci-label">规则内容</label>
               <textarea v-model="draft.action.detail" class="eci-textarea" rows="5" />
             </template>
@@ -190,6 +192,23 @@ watch(
         f.appearanceClothing = clothingStateFromMvuRaw(f.appearanceClothing ?? {});
         f.appearanceJewelryRows = (f.appearanceJewelryRows ?? []).map(r => normalizeJewelryEditRow(r));
         if (!f.appearanceBodyPartRows) f.appearanceBodyPartRows = [];
+      }
+      if (copy.action.kind === 'modal_commit') {
+        const f = copy.action.form as EditCartModalForm;
+        if (f.personalRuleName === undefined || f.personalRuleName === null) f.personalRuleName = '';
+      }
+      if (copy.action.kind === 'random_add_personal') {
+        const a = copy.action;
+        if (a.ruleName === undefined || a.ruleName === null) {
+          const d = String(a.detail ?? '');
+          const i = d.indexOf(':');
+          if (i > 0) {
+            a.ruleName = d.slice(0, i).trim();
+            a.detail = d.slice(i + 1).trim();
+          } else {
+            a.ruleName = '';
+          }
+        }
       }
       draft.value = copy;
     }

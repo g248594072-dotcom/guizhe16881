@@ -656,6 +656,13 @@
             <div v-else-if="modalType === 'add_personal_rule'" class="rule-form">
               <label class="form-label">对象（角色名）</label>
               <PersonalRuleCharacterPicker v-model="modalForm.personalRuleCharacter" />
+              <label class="form-label">规则名字</label>
+              <input
+                v-model="modalForm.personalRuleName"
+                type="text"
+                class="form-input"
+                placeholder="输入本条个人规则的名称"
+              />
               <label class="form-label">规则细节</label>
               <textarea
                 v-model="modalForm.personalRuleDetail"
@@ -668,6 +675,13 @@
             <div v-else-if="modalType === 'edit_personal_rule'" class="rule-form">
               <label class="form-label">对象（角色名）</label>
               <PersonalRuleCharacterPicker v-model="modalForm.personalRuleCharacter" />
+              <label class="form-label">规则名字</label>
+              <input
+                v-model="modalForm.personalRuleName"
+                type="text"
+                class="form-input"
+                placeholder="输入本条个人规则的名称"
+              />
               <label class="form-label">规则细节</label>
               <textarea
                 v-model="modalForm.personalRuleDetail"
@@ -1735,6 +1749,7 @@ const modalForm = ref({
   regionRuleName: '',
   regionRuleDetail: '',
   personalRuleCharacter: '',
+  personalRuleName: '',
   personalRuleDetail: '',
   characterPsychThought: '',
   characterPsychTraits: '',
@@ -2458,7 +2473,8 @@ async function openModal(type: string, payload?: Record<string, any>) {
     regionFirstRuleName: '',
     regionRuleName: payload?.rule?.title ?? '',
     regionRuleDetail: payload?.rule?.desc ?? '',
-    personalRuleCharacter: payload?.title ?? payload?.character ?? '',
+    personalRuleCharacter: String(payload?.target ?? payload?.character ?? '').trim(),
+    personalRuleName: String(payload?.ruleName ?? '').trim(),
     personalRuleDetail: payload?.desc ?? '',
     characterPsychThought: '',
     characterPsychTraits: '',
@@ -2751,10 +2767,19 @@ async function onModalComplete() {
       );
     } else if (type === 'add_personal_rule') {
       const { submitAddPersonalRule } = await import('./utils/dialogAndVariable');
-      messageText = await submitAddPersonalRule(form.personalRuleCharacter, form.personalRuleDetail);
+      messageText = await submitAddPersonalRule(
+        form.personalRuleCharacter,
+        form.personalRuleName,
+        form.personalRuleDetail,
+      );
     } else if (type === 'edit_personal_rule' && (payload?.id ?? payload?.title ?? payload?.character)) {
       const { submitEditPersonalRule } = await import('./utils/dialogAndVariable');
-      messageText = await submitEditPersonalRule(payload.id ?? payload.title ?? payload.character, form.personalRuleCharacter, form.personalRuleDetail);
+      messageText = await submitEditPersonalRule(
+        payload.id ?? payload.title ?? payload.character,
+        form.personalRuleCharacter,
+        form.personalRuleName,
+        form.personalRuleDetail,
+      );
     } else if (type === 'edit_character_mind' && payload?.characterId) {
       const { submitEditCharacterPsych } = await import('./utils/dialogAndVariable');
       messageText = await submitEditCharacterPsych(payload.characterId, {

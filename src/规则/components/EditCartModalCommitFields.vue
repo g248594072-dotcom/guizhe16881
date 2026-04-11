@@ -48,6 +48,8 @@
         select-class="eci-input"
         input-class="eci-input"
       />
+      <label class="eci-label">规则名字</label>
+      <input v-model="form.personalRuleName" type="text" class="eci-input" placeholder="输入本条个人规则的名称" />
       <label class="eci-label">规则细节</label>
       <textarea v-model="form.personalRuleDetail" class="eci-textarea" rows="4" />
     </template>

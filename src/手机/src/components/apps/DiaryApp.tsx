@@ -7,19 +7,14 @@ import {
   markDiaryAsRead,
   deleteDiary,
   getUnreadDiaryCount,
-  toggleAutoGenerate,
-  getDiaryMeta,
   getDiaryGlobalSettings,
   saveDiaryGlobalSettings,
 } from '../../diaryIndexedDb';
 import {
-  manualGenerateDiary,
   backgroundBatchGenerateDiaries,
-  setCurrentGameDate,
   onNewDiariesGenerated,
 } from '../../diaryScheduler';
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
-import { getTaskManager } from '../BackgroundTaskManager';
 
 interface DiaryAppProps {
   onClose: () => void;
@@ -242,7 +237,7 @@ function GenerateOptionsModal({
           <button
             onClick={onGenerateAll}
             disabled={activeChars.length === 0}
-            className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center gap-3 p-4 bg-linear-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={24} />
             <div className="text-left">
@@ -329,8 +324,11 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
   useEffect(() => {
     let filtered = entries;
 
-    // 角色筛选
-    if (filterCharacter !== 'all') {
+    // 仅未读
+    if (filterCharacter === 'unread') {
+      filtered = filtered.filter(e => !e.isRead);
+    } else if (filterCharacter !== 'all') {
+      // 角色筛选
       filtered = filtered.filter(e => e.characterId === filterCharacter);
     }
 
@@ -403,13 +401,6 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
         }
       },
     );
-  };
-
-  /** 切换角色自动生成设置 */
-  const toggleCharacterAutoGenerate = async (charId: string) => {
-    const meta = await getDiaryMeta(charId);
-    const newValue = !(meta?.autoGenerateEnabled ?? true);
-    await toggleAutoGenerate(charId, newValue);
   };
 
   /** 按角色分组统计 */
@@ -553,7 +544,7 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredEntries.map((entry, index) => (
+            {filteredEntries.map(entry => (
               <button
                 key={entry.id}
                 onClick={() => handleOpenDetail(entry)}

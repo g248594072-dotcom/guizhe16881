@@ -28,27 +28,26 @@ export default function CharacterProfileModal({
   onSendMessage,
 }: CharacterProfileModalProps) {
   const [character, setCharacter] = useState<PhoneCharacterArchive | null>(null);
-  const [allCharacters, setAllCharacters] = useState<PhoneCharacterArchive[]>([]);
   const [loading, setLoading] = useState(false);
   const [relationship, setRelationship] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || !characterId) {
       setCharacter(null);
+      setRelationship(null);
       return;
     }
 
     setLoading(true);
+    setRelationship(null);
     loadCharacterArchive().then(characters => {
-      setAllCharacters(characters);
       const found = characters.find(c => c.id === characterId);
       setCharacter(found || null);
 
       if (found && currentViewerId) {
         const viewer = characters.find(c => c.id === currentViewerId);
         if (viewer) {
-          const rel = getRelationshipBetween(viewer, found);
-          setRelationship(rel);
+          setRelationship(getRelationshipBetween(viewer, found));
         }
       }
 
@@ -104,7 +103,7 @@ export default function CharacterProfileModal({
           ) : (
             <div className="pb-6">
               {/* 角色基本信息 */}
-              <div className="bg-gradient-to-br from-blue-400 to-purple-500 h-32" />
+              <div className="bg-linear-to-br from-blue-400 to-purple-500 h-32" />
 
               <div className="px-5 -mt-12 mb-4">
                 <div className="relative">
@@ -252,7 +251,7 @@ export default function CharacterProfileModal({
                   {/* 朋友圈入口 */}
                   <button
                     onClick={() => characterId && onViewMoments(characterId)}
-                    className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all"
+                    className="flex items-center gap-3 p-4 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all"
                   >
                     <Camera size={24} />
                     <div className="text-left">
@@ -264,7 +263,7 @@ export default function CharacterProfileModal({
                   {/* 发消息入口 */}
                   <button
                     onClick={() => characterId && onSendMessage(characterId)}
-                    className="flex items-center gap-3 p-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all"
+                    className="flex items-center gap-3 p-4 bg-linear-to-r from-green-500 to-green-600 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all"
                   >
                     <MessageCircle size={24} />
                     <div className="text-left">

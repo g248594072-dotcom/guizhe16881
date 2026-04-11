@@ -732,7 +732,7 @@ async function confirmApplyFromDialog() {
           break;
         case 'personal':
           if (ctx.target) {
-            stageItem(buildRandomPersonalItem(ctx.target, `${title}: ${desc}`));
+            stageItem(buildRandomPersonalItem(ctx.target, title, desc));
           } else {
             toastr.error('缺少适用角色');
             return;
@@ -774,7 +774,7 @@ async function confirmApplyFromDialog() {
 
       case 'personal':
         if (ctx.target) {
-          messageText = await submitAddPersonalRule(ctx.target, `${title}: ${desc}`);
+          messageText = await submitAddPersonalRule(ctx.target, title, desc);
         } else {
           toastr.error('缺少适用角色');
           return;
@@ -932,6 +932,10 @@ async function confirmApplyFromDialog() {
   padding: 16px;
   margin-bottom: 12px;
   transition: all 0.2s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
 
   .rule-header {
     display: flex;
@@ -976,6 +980,10 @@ async function confirmApplyFromDialog() {
     font-size: 1.1em;
     font-weight: 600;
     margin-bottom: 8px;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
   }
 
   .rule-desc {
@@ -983,6 +991,9 @@ async function confirmApplyFromDialog() {
     line-height: 1.5;
     opacity: 0.85;
     margin-bottom: 12px;
+    max-width: 100%;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .rule-actions {

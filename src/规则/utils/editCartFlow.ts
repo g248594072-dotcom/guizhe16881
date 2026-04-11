@@ -241,13 +241,13 @@ export function buildRandomRegionalItem(
   };
 }
 
-export function buildRandomPersonalItem(target: string, detail: string): EditCartItem {
+export function buildRandomPersonalItem(target: string, ruleName: string, detail: string): EditCartItem {
   return {
     id: newId(),
-    dedupeKey: `random_personal:${target}:${detail.slice(0, 40)}`,
-    label: `随机规则 → 个人：${target}`,
+    dedupeKey: `random_personal:${target}:${ruleName}:${detail.slice(0, 40)}`,
+    label: `随机规则 → 个人：${target}（${ruleName}）`,
     category: 'personal',
-    action: { kind: 'random_add_personal', target, detail },
+    action: { kind: 'random_add_personal', target, ruleName, detail },
   };
 }
 
@@ -384,8 +384,8 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
     case 'random_add_personal':
       return {
         ...item,
-        dedupeKey: `random_personal:${a.target}:${a.detail.slice(0, 40)}`,
-        label: `随机规则 → 个人：${a.target}`,
+        dedupeKey: `random_personal:${a.target}:${a.ruleName}:${a.detail.slice(0, 40)}`,
+        label: `随机规则 → 个人：${a.target}（${a.ruleName}）`,
         category: 'personal',
         action: { ...a },
       };
@@ -490,8 +490,8 @@ export function buildCartItemFromModal(
       modalType,
       form,
       p,
-      `新增个人规则：${form.personalRuleCharacter || '（角色）'}`,
-      `add_personal:${form.personalRuleCharacter}`,
+      `新增个人规则：${form.personalRuleName || '（未命名）'} → ${form.personalRuleCharacter || '（角色）'}`,
+      `add_personal:${form.personalRuleCharacter}:${form.personalRuleName}`,
     );
   }
   if (modalType === 'edit_personal_rule' && (p?.id ?? p?.title ?? p?.character)) {
@@ -500,7 +500,7 @@ export function buildCartItemFromModal(
       modalType,
       form,
       p,
-      `编辑个人规则：${form.personalRuleCharacter || id}`,
+      `编辑个人规则：${form.personalRuleName || '（未命名）'} → ${form.personalRuleCharacter || id}`,
       `edit_personal:${id}`,
     );
   }

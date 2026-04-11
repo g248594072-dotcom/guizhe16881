@@ -109,7 +109,31 @@
                 class="rule-row"
                 :class="{ 'cyber-flowing-border': isDarkMode }"
               >
-                <div class="rule-desc">{{ rule.desc || rule.title }}</div>
+                <div class="rule-row-body">
+                  <button
+                    v-if="canExpandRuleDetail(rule)"
+                    type="button"
+                    class="rule-expand-toggle"
+                    :aria-expanded="expandedRuleIds.has(rule.id)"
+                    aria-label="展开或收起规则细节"
+                    @click.stop="toggleRuleExpand(rule.id)"
+                  >
+                    <i
+                      class="fa-solid fa-chevron-down rule-expand-icon"
+                      :class="{ open: expandedRuleIds.has(rule.id) }"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <div class="rule-text-stack" :class="{ 'rule-text-stack--no-toggle': !canExpandRuleDetail(rule) }">
+                    <div class="rule-name">{{ rulePrimaryLine(rule) }}</div>
+                    <div
+                      v-show="canExpandRuleDetail(rule) && expandedRuleIds.has(rule.id)"
+                      class="rule-detail-full"
+                    >
+                      {{ rule.desc }}
+                    </div>
+                  </div>
+                </div>
                 <div class="rule-actions">
                   <button
                     class="action edit"
@@ -166,6 +190,8 @@ const emit = defineEmits<{
 const isLoading = ref(true);
 const archiveSectionOpen = ref(false);
 const expandedRegions = ref<Set<string>>(new Set());
+/** 区域卡片内：已展开「规则细节」的细分规则 id */
+const expandedRuleIds = ref<Set<string>>(new Set());
 
 // ⭐ 使用新的响应式 store
 const regions = useRegionalRules();
@@ -185,6 +211,35 @@ watch(regions, (val) => {
 
 function activeRulesList(region: RegionData): RuleData[] {
   return (region.rules || []).filter((r) => r.status === 'active');
+}
+
+/** 主行：细分规则键名（名称）；无键名时旧档可能仅有描述，用短预览作主行 */
+function rulePrimaryLine(rule: RuleData): string {
+  const t = String(rule.title ?? '').trim();
+  if (t) return t;
+  const d = String(rule.desc ?? '').trim();
+  if (d) return d.length > 40 ? `${d.slice(0, 40)}…` : d;
+  return '（未命名规则）';
+}
+
+function ruleDetailBody(rule: RuleData): string {
+  return String(rule.desc ?? '').trim();
+}
+
+/** 是否显示展开：有正文且（有独立标题，或无标题但描述过长已在主行截断） */
+function canExpandRuleDetail(rule: RuleData): boolean {
+  const d = ruleDetailBody(rule);
+  if (!d) return false;
+  const t = String(rule.title ?? '').trim();
+  if (t) return true;
+  return d.length > 40;
+}
+
+function toggleRuleExpand(ruleId: string): void {
+  const next = new Set(expandedRuleIds.value);
+  if (next.has(ruleId)) next.delete(ruleId);
+  else next.add(ruleId);
+  expandedRuleIds.value = next;
 }
 
 function ruleSummary(rule: RuleData): string {
@@ -392,6 +447,7 @@ async function onRestore(regionName: string, rule: RuleData) {
   font-size: 13px;
   color: #71717a;
   flex: 1;
+  min-width: 0;
   margin-right: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -548,7 +604,8 @@ async function onRestore(regionName: string, rule: RuleData) {
 .rule-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 
@@ -561,19 +618,95 @@ async function onRestore(regionName: string, rule: RuleData) {
   border-color: rgba(0, 0, 0, 0.05);
 }
 
-.rule-desc {
-  font-size: 13px;
-  color: #a1a1aa;
+.rule-row-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   flex: 1;
-  margin-right: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+}
+
+.rule-expand-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e4e4e7;
+  }
+}
+
+:global(.light) .rule-expand-toggle {
+  background: rgba(0, 0, 0, 0.05);
+  color: #52525b;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: #18181b;
+  }
+}
+
+.rule-expand-icon {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+
+  &.open {
+    transform: rotate(180deg);
+  }
+}
+
+.rule-text-stack {
+  flex: 1;
+  min-width: 0;
+
+  &--no-toggle {
+    padding-left: 2px;
+  }
+}
+
+.rule-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e4e4e7;
+  line-height: 1.45;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+:global(.light) .rule-name {
+  color: #18181b;
+}
+
+.rule-detail-full {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #a1a1aa;
+  line-height: 1.55;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+:global(.light) .rule-detail-full {
+  color: #52525b;
 }
 
 .rule-actions {
   display: flex;
   gap: 4px;
+  flex-shrink: 0;
 
   .action {
     display: flex;
@@ -648,6 +781,43 @@ async function onRestore(regionName: string, rule: RuleData) {
     color: #27272a;
     background: rgba(0, 0, 0, 0.05);
     border-color: rgba(0, 0, 0, 0.2);
+  }
+}
+
+@media (max-width: 768px) {
+  .archive-rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .archive-rule-desc {
+    margin-right: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .archive-rule-row .restore-btn {
+    align-self: flex-end;
+  }
+
+  .rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .rule-row-body {
+    width: 100%;
+  }
+
+  .rule-actions {
+    justify-content: flex-end;
   }
 }
 </style>

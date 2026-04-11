@@ -10,28 +10,20 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ChevronLeft, Heart, MessageCircle, Send, MoreHorizontal, User, Lock, Sparkles, X, RefreshCw, Globe, Users, Camera, Settings } from 'lucide-react';
+import { ChevronLeft, Heart, MessageCircle, Send, MoreHorizontal, User, Sparkles, X, RefreshCw, Camera, Settings } from 'lucide-react';
 import type { Moment, MomentComment, MomentContentType, MomentVisibility } from '../../types/moments';
 import {
   getAllMoments,
-  getMomentsByCharacter,
   toggleLike,
   addComment,
-  saveMoment,
   getMomentsGlobalSettings,
   saveMomentsGlobalSettings,
 } from '../../momentsIndexedDb';
-import {
-  canViewMoment,
-  getVisibilityLabel,
-  getContentTypeLabel,
-} from '../../relationshipValidator';
+import { canViewMoment } from '../../relationshipValidator';
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
 import {
-  manualGenerateMoment,
   backgroundBatchGenerateMoments,
   onNewMomentsGenerated,
-  setCurrentGameDate,
 } from '../../momentsScheduler';
 
 interface MomentsAppProps {
@@ -82,7 +74,7 @@ function CharacterSelectorModal({
                 : 'bg-gray-50 border-2 border-transparent hover:bg-gray-100'
             }`}
           >
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-full bg-linear-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
               主
             </div>
             <div className="flex-1 text-left">
@@ -165,7 +157,7 @@ function GenerateOptionsModal({
           <button
             onClick={onGenerateAll}
             disabled={activeChars.length === 0}
-            className="w-full flex items-center gap-3 p-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center gap-3 p-4 bg-linear-to-r from-blue-500 to-purple-500 text-white rounded-xl hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles size={24} />
             <div className="text-left">
@@ -466,16 +458,13 @@ function MomentCard({
   onToggleExpand: () => void;
 }) {
   const [showActions, setShowActions] = useState(false);
-  const [animatingLike, setAnimatingLike] = useState(false);
 
   const isLiked = moment.likes?.some(l => l.characterId === (currentViewerId || 'main_character'));
   const likeCount = moment.likes?.length || 0;
   const commentCount = moment.comments?.length || 0;
 
   const handleLike = () => {
-    setAnimatingLike(true);
     onLike(moment.id);
-    setTimeout(() => setAnimatingLike(false), 300);
     setShowActions(false);
   };
 
@@ -491,7 +480,7 @@ function MomentCard({
         {/* 左侧头像 */}
         <button
           onClick={() => onViewProfile(moment.characterId)}
-          className="w-10 h-10 rounded bg-gray-200 flex-shrink-0 overflow-hidden"
+          className="w-10 h-10 rounded bg-gray-200 shrink-0 overflow-hidden"
         >
           {authorChar?.avatarUrl ? (
             <img src={authorChar.avatarUrl} alt={moment.characterName} className="w-full h-full object-cover" />
@@ -591,7 +580,7 @@ function MomentCard({
               {/* 点赞 */}
               {likeCount > 0 && (
                 <div className="flex items-start gap-1 text-[#576b95]">
-                  <Heart size={14} className="mt-0.5 flex-shrink-0" />
+                  <Heart size={14} className="mt-0.5 shrink-0" />
                   <span>
                     {moment.likes?.map(l => l.characterName).join('，')}
                   </span>
@@ -899,7 +888,7 @@ export default function MomentsApp({
   const renderCover = () => {
     if (viewMode === 'character_profile' && selectedCharacter) {
       return (
-        <div className="relative h-72 bg-gradient-to-br from-[#576b95] to-[#2c3e5c]">
+        <div className="relative h-72 bg-linear-to-br from-[#576b95] to-[#2c3e5c]">
           {/* 个人主页封面 */}
           <div className="absolute bottom-4 right-4 flex items-end gap-3">
             <div className="text-right text-white mb-2">
@@ -922,7 +911,7 @@ export default function MomentsApp({
 
     // 全局动态流封面
     return (
-      <div className="relative h-72 bg-gradient-to-br from-[#576b95] to-[#2c3e5c]">
+      <div className="relative h-72 bg-linear-to-br from-[#576b95] to-[#2c3e5c]">
         {/* 默认封面图 */}
         <div className="absolute inset-0 opacity-30 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMiIgZmlsbD0id2hpdGUiLz48L3N2Zz4=')]" />
 

@@ -159,6 +159,30 @@ async function tryLoadStatDataForResidentArchive(): Promise<Record<string, unkno
 
 // ==================== World Trend Generation ====================
 
+function isWorldTrendServiceUnavailableMessage(message: string): boolean {
+  return /\b503\b/i.test(message) || /service unavailable/i.test(message);
+}
+
+function formatWorldTrendFailureToast(error: unknown): string {
+  const msg = (error instanceof Error ? error.message : String(error)).trim() || '未知错误';
+  if (isWorldTrendServiceUnavailableMessage(msg)) {
+    return '世界演化错误 503（服务不可用）';
+  }
+  const max = 120;
+  const short = msg.length > max ? `${msg.slice(0, max)}…` : msg;
+  return `世界演化失败：${short}`;
+}
+
+/** 仅在此处提示，避免与调用方重复弹窗 */
+async function notifyWorldTrendFailure(error: unknown): Promise<void> {
+  try {
+    const { default: toastr } = await import('toastr');
+    toastr.error(formatWorldTrendFailureToast(error));
+  } catch {
+    // toastr 加载失败时仅依赖 console
+  }
+}
+
 /**
  * 生成世界大势说明
  * @param ruleName 规则名称
@@ -179,14 +203,14 @@ export async function generateWorldTrend(
     return false;
   }
 
-  const { charSection, chatSection } = await buildDualWorldbookExcerptsForPrompt();
-  const mvuSnapshot = await tryGetLatestMvuRoleSnapshot(900);
-  const prompt = buildWorldTrendPrompt(ruleName, ruleLevel, ruleDescription, affectedRegions, {
-    worldbookMarkdown: formatWorldbookSectionsMarkdown(charSection, chatSection),
-    mvuRoleSnapshot: mvuSnapshot,
-  });
-
   try {
+    const { charSection, chatSection } = await buildDualWorldbookExcerptsForPrompt();
+    const mvuSnapshot = await tryGetLatestMvuRoleSnapshot(900);
+    const prompt = buildWorldTrendPrompt(ruleName, ruleLevel, ruleDescription, affectedRegions, {
+      worldbookMarkdown: formatWorldbookSectionsMarkdown(charSection, chatSection),
+      mvuRoleSnapshot: mvuSnapshot,
+    });
+
     console.log(`[WorldTrend] 开始生成规则「${ruleName}」的世界大势说明… promptLen=${prompt.length}`);
     const result = await callSecondaryApiForWorldLife(prompt, config);
     const parsed = parseWorldTrendResult(result);
@@ -210,6 +234,7 @@ export async function generateWorldTrend(
     }
   } catch (error) {
     console.error('[WorldTrend] 生成失败:', error);
+    await notifyWorldTrendFailure(error);
   }
   return false;
 }

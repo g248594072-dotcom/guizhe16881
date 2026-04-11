@@ -51,9 +51,10 @@ defineEmits<{
 
 <style lang="scss" scoped>
 .rule-item {
+  position: relative;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   transition: all 0.2s;
 }
 
@@ -84,20 +85,32 @@ defineEmits<{
 
 .item-content {
   flex: 1;
+  min-width: 0;
+  /* 桌面端操作钮绝对定位，避免占位把正文挤成窄条 */
+  padding-right: 8px;
 
   .title-row {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px 12px;
     margin-bottom: 4px;
 
     h4 {
+      flex: 1 1 auto;
+      min-width: 0;
       font-size: 16px;
       font-weight: 500;
       color: #f4f4f5;
+      line-height: 1.35;
+      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .status-badge {
+      flex-shrink: 0;
+      white-space: nowrap;
+      align-self: center;
       padding: 2px 8px;
       border-radius: 4px;
       font-size: 10px;
@@ -122,6 +135,9 @@ defineEmits<{
   .desc {
     font-size: 14px;
     color: #a1a1aa;
+    line-height: 1.55;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -138,12 +154,28 @@ defineEmits<{
 .item-actions {
   display: flex;
   gap: 8px;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.2s;
+  pointer-events: none;
+  /* 不占横向 flex 宽度，避免手机/窄屏右侧大块空白 */
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(15, 15, 18, 0.88);
+  backdrop-filter: blur(6px);
 
   .rule-item:hover & {
     opacity: 1;
+    pointer-events: auto;
   }
+}
+
+:global(.light) .item-actions {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .action-btn {
@@ -177,6 +209,38 @@ defineEmits<{
   &:hover {
     background: rgba(0, 0, 0, 0.05);
     color: #18181b;
+  }
+}
+
+/* 窄屏与无精确 hover 的设备：操作栏回到文档流，避免「点了也没按钮」 */
+@media (max-width: 768px), (max-width: 1024px) and (hover: none) {
+  .rule-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .item-content {
+    flex: none;
+    width: 100%;
+    padding-right: 0;
+    order: 1;
+  }
+
+  .item-actions {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    align-self: flex-end;
+    order: 2;
+    background: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  :global(.light) .item-actions {
+    box-shadow: none;
   }
 }
 </style>

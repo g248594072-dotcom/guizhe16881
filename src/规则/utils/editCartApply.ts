@@ -4,6 +4,23 @@
 import { tryRulesMvuWritable, useDataStore } from '../store';
 import type { EditCartAction, EditCartModalForm } from '../types/editCart';
 
+/** 兼容旧版 random_add_personal：detail 曾为「标题: 描述」单串 */
+function normalizeRandomPersonalCartDetail(action: {
+  target: string;
+  ruleName?: string;
+  detail: string;
+}): { target: string; ruleName: string; detail: string } {
+  let ruleName = String(action.ruleName ?? '').trim();
+  let detail = String(action.detail ?? '');
+  if (!ruleName && detail.includes(':')) {
+    const i = detail.indexOf(':');
+    ruleName = detail.slice(0, i).trim();
+    detail = detail.slice(i + 1).trim();
+  }
+  if (!ruleName) ruleName = '随机规则';
+  return { target: action.target, ruleName, detail };
+}
+
 export async function runModalCommit(
   type: string,
   form: EditCartModalForm,
@@ -56,12 +73,17 @@ export async function runModalCommit(
     );
   } else if (type === 'add_personal_rule') {
     const { submitAddPersonalRule } = await import('./dialogAndVariable');
-    messageText = await submitAddPersonalRule(form.personalRuleCharacter, form.personalRuleDetail);
+    messageText = await submitAddPersonalRule(
+      form.personalRuleCharacter,
+      form.personalRuleName ?? '',
+      form.personalRuleDetail,
+    );
   } else if (type === 'edit_personal_rule' && (p?.id ?? p?.title ?? p?.character)) {
     const { submitEditPersonalRule } = await import('./dialogAndVariable');
     messageText = await submitEditPersonalRule(
       String(p.id ?? p.title ?? p.character),
       form.personalRuleCharacter,
+      form.personalRuleName ?? '',
       form.personalRuleDetail,
     );
   } else if (type === 'edit_character_mind' && p?.characterId) {
@@ -212,8 +234,10 @@ export async function applyEditCartAction(action: EditCartAction): Promise<strin
         action.title,
         action.desc,
       );
-    case 'random_add_personal':
-      return await m.submitAddPersonalRule(action.target, action.detail);
+    case 'random_add_personal': {
+      const norm = normalizeRandomPersonalCartDetail(action);
+      return await m.submitAddPersonalRule(norm.target, norm.ruleName, norm.detail);
+    }
     case 'modal_commit':
       return await runModalCommit(action.modalType, action.form, action.payload);
     default: {

@@ -49,6 +49,10 @@ export interface RuleData {
   category: 'world' | 'regional' | 'personal';
   createdAt?: string;
   updatedAt?: string;
+  /** 个人规则：MVU「适用对象」 */
+  target?: string;
+  /** 个人规则：MVU「名称」（规则名字） */
+  ruleName?: string;
   [key: string]: any;
 }
 

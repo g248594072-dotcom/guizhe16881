@@ -308,9 +308,9 @@ function mapPersonalRulesFromChinese(stat: Record<string, any>): RuleData[] {
     const 适用对象 = value?.['适用对象'];
     const status: 'active' | 'inactive' | 'pending' = ruleStatusToUi(状态);
 
+    const 名称字段 = typeof value?.['名称'] === 'string' ? value['名称'].trim() : '';
     const displayTitle = (() => {
-      const n = value?.['名称'];
-      if (typeof n === 'string' && n.trim() !== '') return n;
+      if (名称字段 !== '') return 名称字段;
       const t = value?.['适用对象'];
       if (typeof t === 'string' && t.trim() !== '') return t;
       return title;
@@ -323,6 +323,7 @@ function mapPersonalRulesFromChinese(stat: Record<string, any>): RuleData[] {
       status,
       category: 'personal',
       target: 适用对象,
+      ruleName: 名称字段,
       tag: 标记,
     } as RuleData;
   });

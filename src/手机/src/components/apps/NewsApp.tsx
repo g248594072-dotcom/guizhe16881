@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ChevronLeft,
   Search,
@@ -30,7 +30,6 @@ import {
 } from '../../types/news';
 import {
   getAllNewsArticles,
-  getLatestHeadline,
   markNewsAsRead,
   deleteNewsArticle,
   clearAllNews,
@@ -41,7 +40,6 @@ import {
 } from '../../newsIndexedDb';
 import {
   manualGenerateNews,
-  manualBatchGenerateNews,
   backgroundBatchGenerateNews,
   onNewsGenerated,
   getCurrentGameDate,
@@ -127,11 +125,13 @@ export default function NewsApp({ onClose }: NewsAppProps) {
     return articles.find(a => a.category === 'headline') || articles[0] || null;
   };
 
-  // 获取分类新闻
+  // 获取分类新闻（「全部」下排除当前用作头条展示的那一条，避免重复）
   const getFilteredArticles = (): NewsArticle[] => {
     if (activeCategory === 'all') {
-      // 排除头条（已单独显示）
-      return articles.filter((_, i) => i !== 0);
+      const hl =
+        articles.find(a => a.category === 'headline') ?? (articles.length > 0 ? articles[0] : null);
+      if (!hl) return articles;
+      return articles.filter(a => a.id !== hl.id);
     }
     return articles.filter(a => a.category === activeCategory);
   };
@@ -187,11 +187,11 @@ export default function NewsApp({ onClose }: NewsAppProps) {
         await updateMeta();
         taskManager.updateTask(taskId, { status: 'completed', progress: 100 });
       } else {
-        taskManager.updateTask(taskId, { status: 'error', error: '生成失败' });
+        taskManager.updateTask(taskId, { status: 'error', errorMessage: '生成失败' });
       }
     } catch (e) {
       console.error('[NewsApp] 生成新闻失败:', e);
-      taskManager.updateTask(taskId, { status: 'error', error: String(e) });
+      taskManager.updateTask(taskId, { status: 'error', errorMessage: String(e) });
     }
   };
 
@@ -377,7 +377,7 @@ export default function NewsApp({ onClose }: NewsAppProps) {
                   onClick={() => handleRead(headline)}
                   className="w-full text-left"
                 >
-                  <div className="w-full h-40 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl mb-4 flex items-center justify-center">
+                  <div className="w-full h-40 bg-linear-to-br from-gray-100 to-gray-200 rounded-xl mb-4 flex items-center justify-center">
                     <Newspaper size={48} className="text-gray-400" />
                   </div>
                   <h2 className="text-[20px] font-bold leading-tight mb-2 text-black">

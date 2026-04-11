@@ -149,8 +149,10 @@
     color: var(--color-neon-cyan);
   }
 
-  .character-detail .edit-mini-btn:hover {
-    color: var(--color-neon-cyan);
+  .character-detail .detail-card .card-title .edit-mini-btn:hover,
+  .character-detail .rules-card .rules-header .manage-btn:hover {
+    color: #86efac;
+    text-shadow: 0 0 10px rgba(74, 222, 128, 0.35);
   }
 
   .character-detail .delete-btn {
@@ -227,7 +229,7 @@
 
   .rule-row.cyber-flowing-border {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
     padding: 12px;
@@ -239,15 +241,32 @@
       border-bottom: none;
     }
 
-    .rule-desc,
+    .rule-row-body,
     .rule-actions {
       position: relative;
       z-index: 2;
     }
 
-    .rule-desc {
-      color: #d4d4d8;
+    .rule-name {
+      color: #fff;
       font-size: 14px;
+      font-weight: 700;
+    }
+
+    .rule-detail-full {
+      color: #a3a3a3;
+      font-size: 13px;
+    }
+
+    .rule-expand-toggle {
+      color: #a1a1aa;
+      background: rgba(0, 243, 255, 0.06);
+      border: 1px solid rgba(0, 243, 255, 0.12);
+
+      &:hover {
+        color: var(--color-neon-cyan);
+        background: rgba(0, 243, 255, 0.1);
+      }
     }
 
     .action {

@@ -15,6 +15,8 @@ export interface EditCartModalForm {
   regionRuleName: string;
   regionRuleDetail: string;
   personalRuleCharacter: string;
+  /** MVU「名称」，与世界/区域弹窗「规则名称」对应 */
+  personalRuleName: string;
   personalRuleDetail: string;
   characterPsychThought: string;
   characterPsychTraits: string;
@@ -76,7 +78,7 @@ export type EditCartAction =
   | { kind: 'delete_character'; characterId: string; characterName: string }
   | { kind: 'random_add_world'; title: string; desc: string }
   | { kind: 'random_add_regional'; regionId: string; regionName: string; title: string; desc: string }
-  | { kind: 'random_add_personal'; target: string; detail: string };
+  | { kind: 'random_add_personal'; target: string; ruleName: string; detail: string };
 
 export interface EditCartItem {
   id: string;

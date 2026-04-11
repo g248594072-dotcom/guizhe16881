@@ -759,10 +759,13 @@ function manageRulesPayload(): Record<string, any> {
 /** 与个人规则管理面板 PersonalRulesPanel.rulePayload 一致，供编辑/删除弹窗使用 */
 function personalRulePayload(rule: RuleData): Record<string, any> {
   const groupName = rule.target || name.value || props.characterId;
+  const target = String(rule.target ?? '').trim() || groupName;
   return {
     id: rule.id,
     title: rule.title,
     character: groupName,
+    target,
+    ruleName: rule.ruleName ?? '',
     desc: rule.desc,
   };
 }
@@ -1159,6 +1162,52 @@ const emit = defineEmits<{
   }
 }
 
+// 与是否挂上 .cyber-card 无关：保证深色/赛博下标题行与「编辑」同一套 flex 排版
+.detail-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+  > i {
+    flex-shrink: 0;
+    font-size: 20px;
+    color: #d4d4d8;
+  }
+
+  > h3 {
+    flex: 1;
+    min-width: 0;
+    font-size: 18px;
+    font-weight: 500;
+    color: #f4f4f5;
+  }
+
+  .edit-mini-btn {
+    flex-shrink: 0;
+    align-self: center;
+    padding: 6px 4px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #4ade80;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s, filter 0.2s;
+    white-space: nowrap;
+
+    &:hover {
+      color: #86efac;
+    }
+
+    &:active {
+      filter: brightness(1.08);
+    }
+  }
+}
+
 .detail-card:not(.cyber-card) {
   padding: 24px;
   border-radius: 16px;
@@ -1167,39 +1216,6 @@ const emit = defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 24px;
-
-  .card-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-
-    i {
-      font-size: 20px;
-      color: #d4d4d8;
-    }
-
-    h3 {
-      font-size: 18px;
-      font-weight: 500;
-      color: #f4f4f5;
-      flex: 1;
-    }
-
-    .edit-mini-btn {
-      font-size: 12px;
-      color: #a1a1aa;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      transition: color 0.2s;
-
-      &:hover {
-        color: #fff;
-      }
-    }
-  }
 }
 
 .detail-card.cyber-card {
@@ -1213,12 +1229,25 @@ const emit = defineEmits<{
 :global(.light) .detail-card:not(.cyber-card) {
   border-color: rgba(0, 0, 0, 0.1);
   background: #fff;
+}
 
-  .card-title {
-    border-color: rgba(0, 0, 0, 0.1);
+:global(.light) .detail-card .card-title {
+  border-bottom-color: rgba(0, 0, 0, 0.1);
 
-    i { color: #52525b; }
-    h3 { color: #18181b; }
+  > i {
+    color: #52525b;
+  }
+
+  > h3 {
+    color: #18181b;
+  }
+
+  .edit-mini-btn {
+    color: #16a34a;
+
+    &:hover {
+      color: #15803d;
+    }
   }
 }
 
@@ -1396,50 +1425,78 @@ const emit = defineEmits<{
   color: #3f3f46;
 }
 
+// 与 .cyber-card 无关：与上方 .detail-card .card-title 同一套顶栏逻辑（含窄屏防「一字一行」）
+.rules-card .rules-header {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 24px;
+
+  .title-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    flex: 1 1 0%;
+
+    > i {
+      flex-shrink: 0;
+      font-size: 20px;
+      color: #d4d4d8;
+    }
+
+    > h3 {
+      flex: 1 1 0%;
+      min-width: 0;
+      font-size: 18px;
+      font-weight: 500;
+      color: #f4f4f5;
+      line-height: 1.35;
+      writing-mode: horizontal-tb;
+      word-break: keep-all;
+      overflow-wrap: break-word;
+    }
+  }
+
+  .manage-btn {
+    flex-shrink: 0;
+    align-self: center;
+    padding: 6px 4px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #4ade80;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s, filter 0.2s;
+    white-space: nowrap;
+    text-align: right;
+
+    &:hover {
+      color: #86efac;
+    }
+
+    &:active {
+      filter: brightness(1.08);
+    }
+  }
+}
+
 .rules-card:not(.cyber-card) {
   padding: 24px;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.02);
-
-  .rules-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    margin-bottom: 24px;
-
-    .title-group {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-
-      i {
-        font-size: 20px;
-        color: #d4d4d8;
-      }
-
-      h3 {
-        font-size: 18px;
-        font-weight: 500;
-        color: #f4f4f5;
-      }
-    }
-
-    .manage-btn {
-      font-size: 12px;
-      color: #a1a1aa;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      transition: color 0.2s;
-
-      &:hover {
-        color: #fff;
-      }
-    }
-  }
 }
 
 .rules-card.cyber-card {
@@ -1447,24 +1504,54 @@ const emit = defineEmits<{
   border-radius: 14px;
 }
 
-:global(.light) .rules-card:not(.cyber-card) {
-  border-color: rgba(0, 0, 0, 0.1);
-  background: #fff;
+/* 与 .detail-card 一致：占满网格列宽，避免父级 flex/grid 下被压成 min-content 导致标题竖排 */
+.rules-card {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
 
-  .rules-header {
-    border-color: rgba(0, 0, 0, 0.1);
+@media (max-width: 768px) {
+  .rules-card .rules-header {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
 
     .title-group {
-      i { color: #52525b; }
-      h3 { color: #18181b; }
+      flex: none;
+      width: 100%;
     }
 
     .manage-btn {
-      color: #71717a;
+      align-self: flex-end;
+    }
+  }
+}
 
-      &:hover {
-        color: #18181b;
-      }
+:global(.light) .rules-card:not(.cyber-card) {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #fff;
+}
+
+:global(.light) .rules-card .rules-header {
+  border-bottom-color: rgba(0, 0, 0, 0.1);
+
+  .title-group {
+    > i {
+      color: #52525b;
+    }
+
+    > h3 {
+      color: #18181b;
+    }
+  }
+
+  .manage-btn {
+    color: #16a34a;
+
+    &:hover {
+      color: #15803d;
     }
   }
 }
@@ -1490,10 +1577,12 @@ const emit = defineEmits<{
     font-size: 13px;
     color: #a1a1aa;
     flex: 1;
+    min-width: 0;
     margin-right: 12px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.5;
   }
 
   .rule-actions {
@@ -1549,6 +1638,28 @@ const emit = defineEmits<{
 
   .rule-desc {
     color: #71717a;
+  }
+}
+
+@media (max-width: 768px) {
+  .personal-rule-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .personal-rule-row .rule-desc {
+    margin-right: 0;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .personal-rule-row .rule-actions {
+    justify-content: flex-end;
   }
 }
 

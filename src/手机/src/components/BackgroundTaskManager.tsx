@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Minimize2, Maximize2, X, Loader2, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen, Newspaper } from 'lucide-react';
+import { Minimize2, Maximize2, ChevronDown, ChevronUp, X, Loader2, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen, Newspaper } from 'lucide-react';
 
 /** 任务类型 */
 export type TaskType = 'character_analysis' | 'diary_generation' | 'forum_generation' | 'chat_generation' | 'moment_generation' | 'news_generation';
@@ -170,7 +170,7 @@ export function getTaskManager(): TaskManager {
 export default function BackgroundTaskManager() {
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [isMinimized, setIsMinimized] = useState(true);
-  const [showPanel, setShowPanel] = useState(false);
+  const [showPanel, setShowPanel] = useState(true);
 
   // 订阅任务变化
   useEffect(() => {
@@ -262,14 +262,16 @@ export default function BackgroundTaskManager() {
               <button
                 onClick={() => setShowPanel(!showPanel)}
                 className="p-1.5 text-gray-500 hover:bg-gray-200 rounded-lg transition-colors"
-                title={showPanel ? '收起' : '展开'}
+                type="button"
+                title={showPanel ? '收起任务列表' : '展开任务列表'}
               >
-                {showPanel ? <Maximize2 size={16} /> : <Maximize2 size={16} className="rotate-180" />}
+                {showPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
             </div>
           </div>
 
           {/* 任务列表 */}
+          {showPanel && (
           <div className="flex-1 overflow-y-auto p-2 space-y-1 max-h-64">
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">暂无任务</div>
@@ -288,7 +290,7 @@ export default function BackgroundTaskManager() {
                   }`}
                 >
                   {/* 图标 */}
-                  <div className={`flex-shrink-0 ${TASK_TYPE_CONFIG[task.type].color}`}>
+                  <div className={`shrink-0 ${TASK_TYPE_CONFIG[task.type].color}`}>
                     {task.status === 'running' ? (
                       <Loader2 size={16} className="animate-spin" />
                     ) : task.status === 'completed' ? (
@@ -347,7 +349,7 @@ export default function BackgroundTaskManager() {
                   {(task.status === 'completed' || task.status === 'error') && (
                     <button
                       onClick={() => handleRemoveTask(task.id)}
-                      className="flex-shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      className="shrink-0 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       title="移除"
                     >
                       <X size={14} />
@@ -357,9 +359,10 @@ export default function BackgroundTaskManager() {
               ))
             )}
           </div>
+          )}
 
           {/* 底部操作 */}
-          {tasks.some(t => t.status === 'completed' || t.status === 'error') && (
+          {showPanel && tasks.some(t => t.status === 'completed' || t.status === 'error') && (
             <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
               <button
                 onClick={handleClearCompleted}
