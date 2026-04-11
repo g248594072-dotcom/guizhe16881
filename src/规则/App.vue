@@ -451,7 +451,7 @@
                   <span class="turn-badge" v-if="item.turnNumber !== undefined">回合 {{ item.turnNumber }}</span>
                   <span>楼层 #{{ item.messageId }} · {{ item.timestamp }}</span>
                 </div>
-                <div class="history-content" v-html="formatMaintextForHtmlView(item.maintext)"></div>
+                <div class="history-content" v-html="maintextForHtmlDisplay(item.maintext)"></div>
               </div>
               <div v-if="maintextHistory.length === 0" class="empty-state">
                 暂无历史正文记录<br>
@@ -1550,6 +1550,7 @@ import {
   type Option,
   type TagCheckResult
 } from './utils/messageParser';
+import { applyMaintextInlineBeautify } from './utils/maintextInlineBeautify';
 import { GamePhase, type JewelryEditRow, type OpeningFormData, type OutputMode } from './types';
 import type { EditCartItem, EditCartModalForm } from './types/editCart';
 import { klona } from 'klona';
@@ -1791,8 +1792,11 @@ const streamTextBuffer = ref('');
 
 // 游戏消息相关状态
 const mainText = ref('');
-/** 正文只读展示用（去 HTML 注释与多余空行）；编辑与存楼仍用 mainText 原文 */
-const mainTextForView = computed(() => formatMaintextForHtmlView(mainText.value));
+/** 正文只读展示：去注释/空行 + **心理**、「」/“”对白 本地 class 替换（不写回楼层） */
+function maintextForHtmlDisplay(raw: string): string {
+  return applyMaintextInlineBeautify(formatMaintextForHtmlView(raw));
+}
+const mainTextForView = computed(() => maintextForHtmlDisplay(mainText.value));
 const options = ref<Option[]>([]);
 const currentMessageId = ref<number | undefined>(undefined);
 const isOptionsExpanded = ref(false); // 选项列表是否展开
@@ -6574,6 +6578,186 @@ onUnmounted(() => {
 
 .light .maintext-content {
   color: #27272a;
+}
+
+/* 对白：蓝色系流光渐变（<span class="th-dialog-shimmer">），勿与 p 字色冲突 */
+@keyframes th-dialog-shimmer-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.dark .maintext-content :deep(.th-dialog-shimmer),
+.dark .maintext-area.secondary-api-active .maintext-content :deep(.th-dialog-shimmer) {
+  display: inline;
+  font-weight: 600;
+  font-size: 1.06em;
+  letter-spacing: 0.03em;
+  line-height: inherit;
+  background: linear-gradient(
+    100deg,
+    #38bdf8 0%,
+    #7dd3fc 18%,
+    #bae6fd 38%,
+    #e0f2fe 50%,
+    #7dd3fc 62%,
+    #60a5fa 82%,
+    #3b82f6 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: th-dialog-shimmer-flow 3.2s linear infinite;
+}
+
+.light .maintext-content :deep(.th-dialog-shimmer) {
+  display: inline;
+  font-weight: 600;
+  font-size: 1.06em;
+  letter-spacing: 0.02em;
+  line-height: inherit;
+  background: linear-gradient(
+    100deg,
+    #1d4ed8 0%,
+    #2563eb 22%,
+    #3b82f6 45%,
+    #1e40af 55%,
+    #2563eb 78%,
+    #172554 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: th-dialog-shimmer-flow 3.2s linear infinite;
+}
+
+.dark .history-item .history-content :deep(.th-dialog-shimmer) {
+  display: inline;
+  font-weight: 600;
+  font-size: 1.05em;
+  letter-spacing: 0.03em;
+  background: linear-gradient(
+    100deg,
+    #38bdf8 0%,
+    #7dd3fc 18%,
+    #bae6fd 38%,
+    #e0f2fe 50%,
+    #7dd3fc 62%,
+    #60a5fa 82%,
+    #3b82f6 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: th-dialog-shimmer-flow 3.2s linear infinite;
+}
+
+.light .history-item .history-content :deep(.th-dialog-shimmer) {
+  display: inline;
+  font-weight: 600;
+  font-size: 1.05em;
+  letter-spacing: 0.02em;
+  background: linear-gradient(
+    100deg,
+    #1d4ed8 0%,
+    #2563eb 22%,
+    #3b82f6 45%,
+    #1e40af 55%,
+    #2563eb 78%,
+    #172554 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: th-dialog-shimmer-flow 3.2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dark .maintext-content :deep(.th-dialog-shimmer),
+  .dark .maintext-area.secondary-api-active .maintext-content :deep(.th-dialog-shimmer),
+  .dark .history-item .history-content :deep(.th-dialog-shimmer) {
+    animation: none;
+    -webkit-text-fill-color: #93c5fd;
+    color: #93c5fd;
+    background: none;
+  }
+
+  .light .maintext-content :deep(.th-dialog-shimmer),
+  .light .history-item .history-content :deep(.th-dialog-shimmer) {
+    animation: none;
+    -webkit-text-fill-color: #2563eb;
+    color: #2563eb;
+    background: none;
+  }
+
+  .dark .maintext-content :deep(.th-thought-inline),
+  .dark .maintext-area.secondary-api-active .maintext-content :deep(.th-thought-inline),
+  .dark .history-item .history-content :deep(.th-thought-inline) {
+    color: #ddd6fe;
+  }
+
+  .light .maintext-content :deep(.th-thought-inline),
+  .light .history-item .history-content :deep(.th-thought-inline) {
+    color: #4c1d95;
+  }
+}
+
+/* **心理活动**：与对白流光区分，静态偏色、斜体、细左边线 */
+.dark .maintext-content :deep(.th-thought-inline),
+.dark .maintext-area.secondary-api-active .maintext-content :deep(.th-thought-inline) {
+  display: inline;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #c4b5fd;
+  border-left: 2px solid rgba(167, 139, 250, 0.55);
+  padding-left: 0.4em;
+  margin-left: 0.05em;
+  line-height: inherit;
+}
+
+.light .maintext-content :deep(.th-thought-inline) {
+  display: inline;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  color: #5b21b6;
+  border-left: 2px solid rgba(91, 33, 182, 0.35);
+  padding-left: 0.4em;
+  margin-left: 0.05em;
+  line-height: inherit;
+}
+
+.dark .history-item .history-content :deep(.th-thought-inline) {
+  display: inline;
+  font-style: italic;
+  font-weight: 500;
+  color: #c4b5fd;
+  border-left: 2px solid rgba(167, 139, 250, 0.55);
+  padding-left: 0.4em;
+  margin-left: 0.05em;
+}
+
+.light .history-item .history-content :deep(.th-thought-inline) {
+  display: inline;
+  font-style: italic;
+  font-weight: 500;
+  color: #5b21b6;
+  border-left: 2px solid rgba(91, 33, 182, 0.35);
+  padding-left: 0.4em;
+  margin-left: 0.05em;
 }
 
 /* 第二 API 注入的 <htmlcontent> 小前端：随正文区宽度、避免窄条漂在左侧；移动端可读 */
