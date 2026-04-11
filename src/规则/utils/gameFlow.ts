@@ -54,6 +54,12 @@ function buildPrompt(playerInput: string, isDualMode = false): string {
 （在此写入游戏的正文描述，包括场景、对话、动作等）
 </maintext>
 
+（选项二选一，整段须闭合）
+<choice>
+1. 选项类型标题 - 本回合具体行动描写
+2. …
+</choice>
+或：
 <option id="A">选项A描述</option>
 <option id="B">选项B描述</option>
 <option id="C">选项C描述</option>
@@ -98,7 +104,8 @@ function validateMessage(text: string, isDualMode = false): { valid: boolean; er
 
   // 与 parseMaintext 一致：存在可解析的最后一对 maintext 即视为有正文
   const hasMaintext = parseMaintext(cleaned).length > 0;
-  const hasOption = /<option[\s\S]*?<\/option>/i.test(cleaned);
+  const hasOption =
+    /<option[\s\S]*?<\/option>/i.test(cleaned) || /<choice[\s\S]*?<\/choice>/i.test(cleaned);
   const hasSum = /<sum>[\s\S]*?<\/sum>/i.test(cleaned);
 
   // 单API模式下需要检查 UpdateVariable（可选但推荐）
@@ -108,7 +115,7 @@ function validateMessage(text: string, isDualMode = false): { valid: boolean; er
     return { valid: false, error: '缺少 <maintext> 标签' };
   }
   if (!hasOption) {
-    return { valid: false, error: '缺少 <option> 标签' };
+    return { valid: false, error: '缺少 <option> 或 <choice> 标签' };
   }
   if (!hasSum) {
     return { valid: false, error: '缺少 <sum> 标签' };
@@ -156,7 +163,13 @@ function validateResponse(text: string, isDualMode = false): ValidationResult {
     return { valid: false, maintext: '', options: [], sum: '', error: '<maintext> 标签内容为空' };
   }
   if (options.length === 0) {
-    return { valid: false, maintext: '', options: [], sum: '', error: '<option> 标签内容为空或格式错误' };
+    return {
+      valid: false,
+      maintext: '',
+      options: [],
+      sum: '',
+      error: '<option> / <choice> 区块内容为空或无法解析为选项',
+    };
   }
   if (!sum) {
     return { valid: false, maintext: '', options: [], sum: '', error: '<sum> 标签内容为空' };
@@ -337,8 +350,10 @@ function extractMaintext(text: string): string {
  * 提取所有 option 标签内容
  */
 function extractOptions(text: string): string {
-  const matches = text.match(/<option[^>]*>[\s\S]*?<\/option>/gi);
-  return matches ? matches.join('\n') : '';
+  const opt = text.match(/<option[^>]*>[\s\S]*?<\/option>/gi) ?? [];
+  const ch = text.match(/<choice[^>]*>[\s\S]*?<\/choice>/gi) ?? [];
+  const merged = [...opt, ...ch];
+  return merged.length ? merged.join('\n') : '';
 }
 
 /**

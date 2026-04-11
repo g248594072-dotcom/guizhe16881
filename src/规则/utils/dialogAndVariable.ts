@@ -30,6 +30,7 @@ import {
 } from './tagMap';
 import { generateWorldTrend } from './worldLifeGenerator';
 import { markResidentLifePendingPersonalRule } from './residentLifePending';
+import { allocateNextChrId } from './chrId';
 
 /**
  * 将文本写入前端对话框输入区（不创建新楼层）
@@ -80,7 +81,11 @@ export function formatAddCharacterMessage(name: string, description: string): st
 export function addCharacterToVariables(name: string, description: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
-  const id = `CHR-${Date.now()}`;
+  const id = allocateNextChrId(store.data.角色档案 as Record<string, unknown>);
+  if (!id) {
+    toastr.error('角色档案已达 CHR-999 上限，无法新增');
+    return;
+  }
   const n = name.trim() || '未命名';
   const desc = description.trim();
 

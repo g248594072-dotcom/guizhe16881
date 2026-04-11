@@ -13,8 +13,52 @@ export enum GamePhase {
 
 // ==================== 开局表单数据 ====================
 
-// 场景时代类型
+/** 预设场景卡片内部标签（旧预设兼容），与 MVU `元信息.世界类型` 不同 */
 export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
+
+/** 开局 UI 常用世界类型卡片；MVU `元信息.世界类型` 本身可为任意字符串 */
+export const PRESET_WORLD_TAGS = ['现代', '西幻', '玄幻', '未来', '西方中世纪', '东方中世纪', '自定义'] as const;
+export type PresetWorldTag = (typeof PRESET_WORLD_TAGS)[number];
+/** 与 MVU `元信息.世界类型` 一致：任意非空字符串（预设见 PRESET_WORLD_TAGS） */
+export type WorldType = string;
+
+export function isPresetWorldTag(v: unknown): v is PresetWorldTag {
+  return typeof v === 'string' && (PRESET_WORLD_TAGS as readonly string[]).includes(v);
+}
+
+export function sceneEraToWorldType(era?: SceneEra): string {
+  switch (era) {
+    case 'modern':
+      return '现代';
+    case 'medieval':
+      return '西方中世纪';
+    case 'fantasy':
+      return '西幻';
+    case 'future':
+      return '未来';
+    case 'ancient':
+      return '东方中世纪';
+    default:
+      return '现代';
+  }
+}
+
+/** 旧存档/旧预设中的「未定」迁移为「自定义」；其余非空字符串原样保留 */
+export function migrateLegacyWorldType(v: unknown): string | undefined {
+  if (v === '未定') return '自定义';
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s) return s;
+  }
+  return undefined;
+}
+
+/** 优先 `worldType`，否则由旧 `sceneEra` 推导 */
+export function resolveWorldType(form: { worldType?: unknown; sceneEra?: SceneEra }): string {
+  const fromForm = migrateLegacyWorldType(form.worldType);
+  if (fromForm) return fromForm;
+  return sceneEraToWorldType(form.sceneEra);
+}
 
 export interface OpeningFormData {
   playerName: string;           // 玩家名称
@@ -28,7 +72,16 @@ export interface OpeningFormData {
   openingSceneDetail?: string; // 开场白场景详细描述（追加到首次生成提示词）
   selectedRules?: Array<{ name: string; desc: string }>;  // 选中的规则列表
   characters?: Array<{ name: string; gender: string; desc: string }>;  // 角色列表
-  sceneEra?: SceneEra;          // 场景时代/世界观类型（影响初始时间设定）
+  /** 与 MVU `元信息.世界类型` 一致；开局界面先选 */
+  worldType?: WorldType;
+  /** 与 MVU `元信息.世界简介` 一致；选「自定义」卡片并在弹窗填写 */
+  worldIntro?: string;
+  /** 为 true 表示选了「自定义」卡片且 `worldType` 为玩家填写的世界名称（用于开局提示与纪历说明） */
+  customWorldFromOpening?: boolean;
+  /** 开局 UI 所选世界类型卡片（现代 / 西幻 / … / 自定义）；用于预设读写，避免与 MVU 世界类型字面冲突 */
+  worldTypeCard?: PresetWorldTag;
+  /** @deprecated 旧开场预设兼容 */
+  sceneEra?: SceneEra;
   [key: string]: any;
 }
 

@@ -66,7 +66,7 @@ const 服装状态结构 = z
         z.string(),
         z
           .object({
-            部位: z.string().prefault(''),
+            部位: z.string().min(1),
             描述: z.string().prefault(''),
             状态: z.string().optional(),
           })
@@ -106,7 +106,7 @@ const 规则条目基础 = z.object({
 // MVU registerMvuSchema 无法合并 intersection + record 下同名字段；用 passthrough 保留英文等扩展键
 const 规则条目 = 规则条目基础.passthrough().prefault({});
 
-// 核心数据结构
+// 核心数据结构（键顺序与 测试文件/变量细节/结构.txt 一致）
 const 核心结构 = z.object({
   世界规则: z.record(z.string(), 规则条目).prefault({}),
 
@@ -114,12 +114,84 @@ const 核心结构 = z.object({
 
   个人规则: z.record(z.string(), 规则条目).prefault({}),
 
+  // 游戏内时间系统：完全独立的年/月/日/时/分，与现实时间无关
+  // 存储于 MVU 变量中，随剧情推进而更新，不会自动流逝
+  // 每月固定31天，主角可通过"世界规则"定义月份天数来覆盖
+  游戏时间: z.object({
+    /** 公历 | 年号历 | 西幻纪 | 修真历 */
+    纪历体系: z.string().prefault('公历'),
+    /** 公历下由 transform 固定为「公元」；其它纪历为年号或幻想纪元名 */
+    纪年名称: z.string().prefault('公元'),
+    /** 公历下与「年」一致（transform）；其它纪历为该纪元序数 */
+    纪年年数: z.coerce.number().prefault(2026),
+    /** 实际采用的计时基底（「自定义」界面时为随机六种之一） */
+    时间演算基底: z.string().prefault('现代'),
+    年: z.coerce.number().prefault(2026),
+    月: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 12)).prefault(4),
+    日: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 31)).prefault(4),
+    时: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 23)).prefault(12),
+    分: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 59)).prefault(0),
+  }).transform(data => {
+    // 处理日期溢出的简单逻辑（每月按31天计算，简化处理）
+    // 若需要更精确的日历，可由主角通过"世界规则"来定义月份天数
+    let { 年, 月, 日, 时, 分, 纪历体系, 纪年名称, 纪年年数, 时间演算基底 } = data;
+    const 每月天数 = 31;
+
+    // 分钟溢出
+    if (分 >= 60) {
+      时 += Math.floor(分 / 60);
+      分 = 分 % 60;
+    }
+
+    // 小时溢出
+    if (时 >= 24) {
+      日 += Math.floor(时 / 24);
+      时 = 时 % 24;
+    }
+
+    // 日期溢出（简化：每月31天）
+    if (日 > 每月天数) {
+      月 += Math.floor((日 - 1) / 每月天数);
+      日 = ((日 - 1) % 每月天数) + 1;
+    }
+
+    // 月份溢出
+    if (月 > 12) {
+      年 += Math.floor((月 - 1) / 12);
+      月 = ((月 - 1) % 12) + 1;
+    }
+
+    纪历体系 = 纪历体系 ?? '公历';
+    时间演算基底 = 时间演算基底 ?? '现代';
+    if (纪历体系 === '公历') {
+      纪年名称 = '公元';
+      纪年年数 = 年;
+    } else {
+      纪年名称 = typeof 纪年名称 === 'string' ? 纪年名称 : '';
+      纪年年数 = typeof 纪年年数 === 'number' && !Number.isNaN(纪年年数) ? 纪年年数 : 0;
+    }
+
+    // 重新钳制，确保数值在有效范围内
+    return {
+      ...data,
+      年,
+      月: _.clamp(Math.round(月), 1, 12),
+      日: _.clamp(Math.round(日), 1, 31),
+      时: _.clamp(Math.round(时), 0, 23),
+      分: _.clamp(Math.round(分), 0, 59),
+      纪历体系,
+      纪年名称,
+      纪年年数,
+      时间演算基底,
+    };
+  }).prefault({}),
+
   角色档案: z.record(
     z.string(),
     z
       .object({
         姓名: z.string().prefault('未知'),
-        状态: z.enum(['出场中', '暂时退场']).or(z.string()).prefault('出场中'),
+        状态: z.enum(['出场中', '暂时退场']).prefault('出场中'),
         描写: z.string().prefault(''),
 
         当前内心想法: z.string().prefault(''),
@@ -156,58 +228,18 @@ const 核心结构 = z.object({
     玩家名称: z.string().prefault('玩家'),
     玩家设置: z.record(z.string(), z.unknown()).prefault({}),
     当前阶段: z.string().prefault('开局'),
+    世界类型: z.preprocess((raw: unknown) => {
+      if (raw === '未定') return '自定义';
+      if (raw == null || raw === '') return '现代';
+      if (typeof raw === 'string') {
+        const t = raw.trim() || '现代';
+        return t.length > 64 ? t.slice(0, 64) : t;
+      }
+      return '现代';
+    }, z.string().max(64)).prefault('现代'),
+    世界简介: z.string().max(2000).prefault(''),
     进度: z.coerce.number().prefault(1),
     最近更新时间: z.coerce.number().prefault(() => Date.now()),
-  }).prefault({}),
-
-  // 游戏内时间系统：完全独立的年/月/日/时/分，与现实时间无关
-  // 存储于 MVU 变量中，随剧情推进而更新，不会自动流逝
-  // 每月固定31天，主角可通过"世界规则"定义月份天数来覆盖
-  游戏时间: z.object({
-    年: z.coerce.number().prefault(2026),
-    月: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 12)).prefault(4),
-    日: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 31)).prefault(4),
-    时: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 23)).prefault(12),
-    分: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 59)).prefault(0),
-  }).transform(data => {
-    // 处理日期溢出的简单逻辑（每月按31天计算，简化处理）
-    // 若需要更精确的日历，可由主角通过"世界规则"来定义月份天数
-    let { 年, 月, 日, 时, 分 } = data;
-    const 每月天数 = 31;
-
-    // 分钟溢出
-    if (分 >= 60) {
-      时 += Math.floor(分 / 60);
-      分 = 分 % 60;
-    }
-
-    // 小时溢出
-    if (时 >= 24) {
-      日 += Math.floor(时 / 24);
-      时 = 时 % 24;
-    }
-
-    // 日期溢出（简化：每月31天）
-    if (日 > 每月天数) {
-      月 += Math.floor((日 - 1) / 每月天数);
-      日 = ((日 - 1) % 每月天数) + 1;
-    }
-
-    // 月份溢出
-    if (月 > 12) {
-      年 += Math.floor((月 - 1) / 12);
-      月 = ((月 - 1) % 12) + 1;
-    }
-
-    // 重新钳制，确保数值在有效范围内
-    return {
-      ...data,
-      年,
-      月: _.clamp(Math.round(月), 1, 12),
-      日: _.clamp(Math.round(日), 1, 31),
-      时: _.clamp(Math.round(时), 0, 23),
-      分: _.clamp(Math.round(分), 0, 59),
-    };
   }).prefault({}),
 
   游戏状态: z.record(z.string(), z.unknown()).prefault({}),

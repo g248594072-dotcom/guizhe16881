@@ -397,7 +397,7 @@
                 @touchcancel="onMaintextLongPressEnd"
                 @contextmenu.prevent
               >
-                <div class="maintext-content" v-html="mainText"></div>
+                <div class="maintext-content" v-html="mainTextForView"></div>
               </div>
               <!-- 空状态 -->
               <div v-else class="maintext-placeholder">
@@ -448,7 +448,7 @@
                   <span class="turn-badge" v-if="item.turnNumber !== undefined">回合 {{ item.turnNumber }}</span>
                   <span>楼层 #{{ item.messageId }} · {{ item.timestamp }}</span>
                 </div>
-                <div class="history-content" v-html="item.maintext"></div>
+                <div class="history-content" v-html="formatMaintextForHtmlView(item.maintext)"></div>
               </div>
               <div v-if="maintextHistory.length === 0" class="empty-state">
                 暂无历史正文记录<br>
@@ -1543,6 +1543,7 @@ import {
   extractFilteredContent,
   extractLastSumContent,
   replaceLastMaintextInnerContent,
+  formatMaintextForHtmlView,
   type Option,
   type TagCheckResult
 } from './utils/messageParser';
@@ -1784,6 +1785,8 @@ const streamTextBuffer = ref('');
 
 // 游戏消息相关状态
 const mainText = ref('');
+/** 正文只读展示用（去 HTML 注释与多余空行）；编辑与存楼仍用 mainText 原文 */
+const mainTextForView = computed(() => formatMaintextForHtmlView(mainText.value));
 const options = ref<Option[]>([]);
 const currentMessageId = ref<number | undefined>(undefined);
 const isOptionsExpanded = ref(false); // 选项列表是否展开
@@ -2023,6 +2026,7 @@ function tagCheckLabel(tag: string): string {
 /** 标签检验卡片上的标签名展示（正文含 <content> 别名） */
 function tagCheckTagCodeDisplay(tag: string): string {
   if (tag === 'maintext') return '<maintext> / <content>';
+  if (tag === 'option') return '<option> / <choice>';
   if (tag === 'UpdateVariable') return '<UpdateVariable>';
   return `<${tag}>`;
 }

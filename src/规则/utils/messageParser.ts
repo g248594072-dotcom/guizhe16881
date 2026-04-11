@@ -65,7 +65,12 @@ function classifyTagBalance(
       severity: 'error',
       isOpen: false,
       isClosed: false,
-      message: tag === 'maintext' ? `缺少 ${angle} 开标签` : '缺少 <option> 标签',
+      message:
+        tag === 'maintext'
+          ? `缺少 ${angle} 开标签`
+          : tag === 'choice'
+            ? '缺少 <choice> 标签'
+            : '缺少 <option> 标签',
     };
   }
 
@@ -92,8 +97,8 @@ function classifyTagBalance(
   }
 
   if (open === close) {
-    // option 标签：只要有一个闭合就算绿
-    if (tag === 'option' && close >= 1) {
+    // option / choice：只要有一个闭合就算绿
+    if ((tag === 'option' || tag === 'choice') && close >= 1) {
       return {
         tag,
         isValid: true,
@@ -146,6 +151,82 @@ function classifyTagBalance(
 }
 
 /**
+ * 选项区：`<option>…</option>` 与 `<choice>…</choice>` 二选一或并存；检核结果统一挂在 tag `option`（界面仍显示「选项」）。
+ */
+export function validateOptionOrChoiceTags(messageContent: string): TagCheckResult {
+  if (!messageContent) {
+    return {
+      tag: 'option',
+      isValid: false,
+      severity: 'error',
+      isOpen: false,
+      isClosed: false,
+      message: '缺少 <option> 或 <choice> 标签',
+    };
+  }
+
+  const optO = (messageContent.match(/<option/gi) || []).length;
+  const optC = (messageContent.match(/<\/option>/gi) || []).length;
+  const chO = (messageContent.match(/<choice(\s[^>]*)?>/gi) || []).length;
+  const chC = (messageContent.match(/<\/choice>/gi) || []).length;
+
+  const anyOpt = optO > 0 || optC > 0;
+  const anyCh = chO > 0 || chC > 0;
+
+  if (!anyOpt && !anyCh) {
+    return {
+      tag: 'option',
+      isValid: false,
+      severity: 'error',
+      isOpen: false,
+      isClosed: false,
+      message: '缺少 <option> 或 <choice> 标签',
+    };
+  }
+
+  if (anyOpt && !anyCh) {
+    return classifyTagBalance('option', optO, optC, 'required', '<option>');
+  }
+
+  if (!anyOpt && anyCh) {
+    const r = classifyTagBalance('choice', chO, chC, 'required', '<choice>');
+    return { ...r, tag: 'option' };
+  }
+
+  const optR = classifyTagBalance('option', optO, optC, 'required', '<option>');
+  const chR = classifyTagBalance('choice', chO, chC, 'required', '<choice>');
+  if (optR.isValid || chR.isValid) {
+    const bothOk = optR.isValid && chR.isValid;
+    const sevOk = optR.severity === 'ok' && chR.severity === 'ok';
+    const severity: TagCheckSeverity =
+      bothOk && sevOk ? 'ok' : optR.severity === 'error' && chR.severity === 'error' ? 'error' : 'warning';
+    return {
+      tag: 'option',
+      isValid: true,
+      severity,
+      isOpen: true,
+      isClosed: true,
+      message: bothOk
+        ? sevOk
+          ? '同时存在 <option> 与 <choice> 且均可解析（优先 <option id> → <choice> → 无 id 的 <option>）'
+          : '同时存在 <option> 与 <choice>，其中一侧为黄（仍可解析）'
+        : optR.isValid
+          ? `${optR.message}（另有未正确闭合的 <choice>）`
+          : `${chR.message}（另有未正确闭合的 <option>）`,
+    };
+  }
+
+  return {
+    tag: 'option',
+    isValid: false,
+    severity: 'error',
+    isOpen: true,
+    isClosed: false,
+    message: `<option> 与 <choice> 均未正确闭合（${optR.message}；${chR.message}）`,
+  };
+}
+
+/**
  * 验证消息中的标签闭合情况
  * 顺序：thinking → maintext → option → sum → UpdateVariable
  */
@@ -154,7 +235,7 @@ export function validateTags(messageContent: string): TagCheckResult[] {
     return [
       classifyTagBalance('thinking', 0, 0, 'optionalAbsent'),
       classifyTagBalance('maintext', 0, 0, 'required', '<maintext> / <content>'),
-      classifyTagBalance('option', 0, 0, 'required'),
+      validateOptionOrChoiceTags(''),
       classifyTagBalance('sum', 0, 0, 'optionalAbsent'),
       classifyTagBalance('UpdateVariable', 0, 0, 'optionalAbsent'),
     ];
@@ -179,9 +260,7 @@ export function validateTags(messageContent: string): TagCheckResult[] {
     '<maintext> / <content>',
   );
 
-  const optionOpen = (messageContent.match(/<option/gi) || []).length;
-  const optionClose = (messageContent.match(/<\/option>/gi) || []).length;
-  const option = classifyTagBalance('option', optionOpen, optionClose, 'required');
+  const option = validateOptionOrChoiceTags(messageContent);
 
   const sumOpen = (messageContent.match(/<sum>/gi) || []).length;
   const sumClose = (messageContent.match(/<\/sum>/gi) || []).length;
@@ -341,6 +420,19 @@ export function parseMaintext(messageContent: string): string {
   return extractMaintextByLastClosePair(cleaned);
 }
 
+/**
+ * 仅用于界面 `v-html` 展示：移除 HTML 注释并压缩因注释行产生的多余换行。
+ * 不用于写回楼层、编辑框或二次 API——那些路径应保留原文（含 `<!-- … -->`）。
+ */
+export function formatMaintextForHtmlView(html: string): string {
+  if (!html) return '';
+  let t = html.replace(/<!--[\s\S]*?-->/g, '');
+  t = t.replace(/^[ \t\u00a0]*\n+/, '');
+  t = t.replace(/\n+[ \t\u00a0]*$/, '');
+  t = t.replace(/\n{3,}/g, '\n\n');
+  return t;
+}
+
 /** 匹配 `<sum>` / `<sum …>` 或 `</sum>`，用于栈配对（只认完整闭合对） */
 const SUM_PAIR_TOKEN_RE = /<sum(\s[^>]*)?>|<\/sum>/gi;
 
@@ -371,10 +463,57 @@ export function extractLastSumContent(messageContent: string): string {
 }
 
 /**
+ * 从 `<choice>` 单行「序号后正文」中提取玩家可选行动文案：
+ * - `标题 - ${选项内容: …}` → 取 `${…}` 内说明（可含 `{{user}}` 等，闭合为行末 `}`）
+ * - `标题 - 纯文本` → 取短横线后正文
+ * - 无短横线 → 整段作为选项
+ */
+function normalizeChoiceLineBody(afterPrefix: string): string {
+  const s = afterPrefix.trim();
+  if (!s) return '';
+
+  const templateRe = /^(.+?)\s*-\s*\$\{\s*选项内容\s*:\s*(.*)\}\s*$/s;
+  const tm = s.match(templateRe);
+  if (tm) {
+    return tm[2].trim();
+  }
+
+  const plainDash = /^(.+?)\s*-\s*(.+)$/s;
+  const pm = s.match(plainDash);
+  if (pm) {
+    return pm[2].trim();
+  }
+
+  return s;
+}
+
+function parseChoiceBlockInner(inner: string): Option[] {
+  const lines = inner.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const out: Option[] = [];
+
+  const numWithBody = /^(\d+)\.\s+(.+)$/;
+  const letterWithBody = /^([A-Z])\.\s+(.+)$/;
+
+  for (const line of lines) {
+    let m = line.match(numWithBody);
+    if (m) {
+      out.push({ id: m[1], text: normalizeChoiceLineBody(m[2]) });
+      continue;
+    }
+    m = line.match(letterWithBody);
+    if (m) {
+      out.push({ id: m[1], text: normalizeChoiceLineBody(m[2]) });
+    }
+  }
+  return out;
+}
+
+/**
  * 解析消息中的选项
- * 支持两种格式：
+ * 支持格式：
  * 1. 带 id: <option id="A">选项文本</option>
- * 2. 不带 id: <option>\nA. 选项1\nB. 选项2\n</option>
+ * 2. <choice>…</choice>：多行 `1. …` / `A. …`，兼容 ` - ${选项内容:…}` 与 ` - 纯文本`
+ * 3. 不带 id: <option>\nA. 选项1\nB. 选项2\n</option>
  */
 export interface Option {
   id: string;
@@ -411,6 +550,17 @@ export function parseOptions(messageContent: string): Option[] {
   // 如果找到带 id 的 option 标签，直接返回（通常是 A、B、C 三个选项）
   if (optionsWithId.length > 0) {
     return optionsWithId;
+  }
+
+  // <choice>…</choice>：取最后一组闭合块（与 option 多段示例场景一致）
+  const choicePairRe = /<choice([^>]*)>([\s\S]*?)<\/choice>/gi;
+  const choicePairs = [...cleaned.matchAll(choicePairRe)];
+  if (choicePairs.length > 0) {
+    const lastInner = (choicePairs[choicePairs.length - 1]?.[2] ?? '').trim();
+    const fromChoice = parseChoiceBlockInner(lastInner);
+    if (fromChoice.length > 0) {
+      return fromChoice;
+    }
   }
 
   // 兼容旧格式：匹配所有不带 id 的 <option>...</option> 标签对

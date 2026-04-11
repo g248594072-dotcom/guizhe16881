@@ -1,0 +1,184 @@
+import { registerMvuSchema } from 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js';
+
+// 根 Schema 使用「核心结构 + .passthrough()」，与酒馆助手 MVU 合并行为一致；避免 z.intersection(核心, record) 与顶层扩展键冲突。
+
+const 规则条目 = z.object({
+  名称: z.string().prefault(''),
+  效果描述: z.string().prefault(''),
+  状态: z.enum(['生效中', '已归档']).prefault('生效中'),
+  细分规则: z.record(
+    z.string().describe('细分规则名'),
+    z.object({
+      描述: z.string().prefault(''),
+      状态: z.enum(['生效中', '已归档']).prefault('生效中'),
+    }).prefault({})
+  ).prefault({}),
+  适用对象: z.string().prefault(''),
+  标记: z.string().prefault(''),
+}).prefault({});
+
+const 核心结构 = z.object({
+  世界规则: z.record(z.string().describe('世界规则名'), 规则条目).prefault({}),
+  区域规则: z.record(z.string().describe('区域规则名'), 规则条目).prefault({}),
+  个人规则: z.record(z.string().describe('个人规则名'), 规则条目).prefault({}),
+
+  游戏时间: z.object({
+    纪历体系: z.string().describe('公历 | 年号历 | 西幻纪 | 修真历 或任意自定义体系').prefault('公历'),
+    纪年名称: z.string().prefault('公元'),
+    纪年年数: z.coerce.number().prefault(2026),
+    时间演算基底: z.string().describe('现代、未来、西方中世纪等，或自定义基底逻辑').prefault('现代'),
+    年: z.coerce.number().prefault(2026),
+    月: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 12)).prefault(4),
+    日: z.coerce.number().transform(v => _.clamp(Math.round(v), 1, 31)).prefault(4),
+    时: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 23)).prefault(12),
+    分: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 59)).prefault(0),
+  }).transform(data => {
+    let { 纪历体系, 纪年名称, 纪年年数, 时间演算基底, 年, 月, 日, 时, 分 } = data;
+
+    if (分 >= 60) {
+      时 += Math.floor(分 / 60);
+      分 = 分 % 60;
+    }
+    if (时 >= 24) {
+      日 += Math.floor(时 / 24);
+      时 = 时 % 24;
+    }
+    const 每月天数 = 31;
+    if (日 > 每月天数) {
+      月 += Math.floor((日 - 1) / 每月天数);
+      日 = ((日 - 1) % 每月天数) + 1;
+    }
+    if (月 > 12) {
+      年 += Math.floor((月 - 1) / 12);
+      月 = ((月 - 1) % 12) + 1;
+    }
+
+    纪历体系 = 纪历体系 ?? '公历';
+    时间演算基底 = 时间演算基底 ?? '现代';
+    if (纪历体系 === '公历') {
+      纪年名称 = '公元';
+      纪年年数 = 年;
+    } else {
+      纪年名称 = typeof 纪年名称 === 'string' ? 纪年名称 : '';
+      纪年年数 = typeof 纪年年数 === 'number' && !Number.isNaN(纪年年数) ? 纪年年数 : 0;
+    }
+
+    return {
+      纪历体系,
+      纪年名称,
+      纪年年数,
+      时间演算基底,
+      年,
+      月: _.clamp(Math.round(月), 1, 12),
+      日: _.clamp(Math.round(日), 1, 31),
+      时: _.clamp(Math.round(时), 0, 23),
+      分: _.clamp(Math.round(分), 0, 59),
+    };
+  }).prefault({}),
+
+  角色档案: z.record(
+    z.string().describe('角色档案键名：必须为 CHR- + 三位十进制序号，如 CHR-001、CHR-002'),
+    z.object({
+      姓名: z.string().prefault('未知'),
+      状态: z.enum(['出场中', '暂时退场']).prefault('出场中'),
+      描写: z.string().prefault(''),
+      当前内心想法: z.string().prefault(''),
+
+      性格: z.record(
+        z.string().describe('性格标签名'),
+        z.string().describe('该性格的具体表现或程度')
+      ).prefault({}),
+
+      性癖: z.record(
+        z.string().describe('性癖标签名'),
+        z.object({
+          等级: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 10)).prefault(1),
+          细节描述: z.string().prefault(''),
+          自我合理化: z.string().describe('符合轻小说语境的傲娇掩饰或借口，展现理智与本能的冲突').prefault(''),
+        }).prefault({})
+      ).prefault({}),
+
+      隐藏性癖: z.string().prefault(''),
+
+      身体信息: z.object({
+        年龄: z.coerce.number().transform(v => Math.max(v, 0)).prefault(17),
+        身高: z.coerce.number().transform(v => Math.max(v, 0)).prefault(160),
+        体重: z.coerce.number().transform(v => Math.max(v, 0)).prefault(48),
+        三围: z.string().prefault('未知'),
+        体质特征: z.string().prefault('普通'),
+      }).prefault({}),
+
+      服装状态: z.object({
+        上装: z.object({ 名称: z.string().prefault(''), 状态: z.string().prefault('正常'), 描述: z.string().prefault('') }).prefault({}),
+        下装: z.object({ 名称: z.string().prefault(''), 状态: z.string().prefault('正常'), 描述: z.string().prefault('') }).prefault({}),
+        内衣: z.object({ 名称: z.string().prefault(''), 状态: z.string().prefault('正常'), 描述: z.string().prefault('') }).prefault({}),
+        足部: z.object({ 名称: z.string().prefault(''), 状态: z.string().prefault('正常'), 描述: z.string().prefault('') }).prefault({}),
+        饰品: z.record(
+          z.string().describe('饰品或道具名'),
+          z
+            .object({
+              部位: z.string().min(1).describe('佩戴或关联的身体部位，必填'),
+              状态: z.string().prefault('正常'),
+              描述: z.string().prefault(''),
+            })
+            .prefault({})
+        ).prefault({}),
+      }).prefault({}),
+
+      身体部位物理状态: z.record(
+        z.string().describe('部位名称，完全支持写入任意词汇'),
+        z.object({
+          外观描述: z.string().describe('客观物理描述').prefault('未详细观察'),
+          当前状态: z.string().describe('即时物理/体液状态').prefault('正常'),
+        }).prefault({})
+      ).prefault({}),
+
+      敏感点开发: z.record(
+        z.string().describe('敏感部位名称'),
+        z.object({
+          敏感等级: z.coerce.number().transform(v => Math.max(v, 0)).prefault(1),
+          生理反应: z.string().describe('神经感官表现').prefault(''),
+          开发细节: z.string().prefault(''),
+        }).prefault({})
+      ).prefault({}),
+
+      数值: z.object({
+        好感度: z.coerce.number().transform(v => _.clamp(v, -100, 100)).prefault(0),
+        性癖开发值: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),
+        发情值: z.coerce.number().transform(v => _.clamp(v, 0, 100)).prefault(0),
+      }).prefault({}),
+
+      身份标签: z.record(
+        z.string().describe('标签分类或名称'),
+        z.string().describe('短文本形式的标签内容')
+      ).prefault({}),
+
+      当前综合生理描述: z.string().prefault(''),
+    }).prefault({})
+  ).prefault({}),
+
+  元信息: z.object({
+    玩家名称: z.string().prefault('玩家'),
+    玩家设置: z.record(z.string(), z.unknown()).prefault({}),
+    当前阶段: z.string().prefault('开局'),
+    世界类型: z.string().max(64).describe('可填入现代、西幻等预设，或玩家自定义世界名称，最长 64 字').prefault('现代'),
+    世界简介: z.string().max(2000).describe('自定义或补充的世界观简介，建议开局由玩家填写').prefault(''),
+    进度: z.coerce.number().transform(v => Math.max(v, 1)).prefault(1),
+    最近更新时间: z.coerce.number().prefault(() => Date.now()),
+  }).prefault({}),
+
+  游戏状态: z.record(
+    z.string().describe('状态名'),
+    z.unknown()
+  ).prefault({}),
+})
+  .passthrough()
+  .prefault({});
+
+export const Schema = 核心结构;
+
+export const schema = Schema;
+
+$(() => {
+  registerMvuSchema(Schema);
+});

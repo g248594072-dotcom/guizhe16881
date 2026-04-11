@@ -163,7 +163,7 @@
             <div class="btn-pulse-ring"></div>
             <MagneticButton
               custom-class="start-btn glass-panel chromatic-border chromatic-text"
-              @click="goToPage('scene')"
+              @click="goToPage('world_type')"
             >
               <ScrambleText text="开始阅读" />
               <i class="fa-solid fa-arrow-right"></i>
@@ -229,10 +229,45 @@
 
       </div>
 
+      <!-- 世界类型（与 MVU 元信息.世界类型 一致） -->
+      <div v-else-if="currentPage === 'world_type'" class="book-page content-page">
+        <div class="page-header">
+          <button class="nav-btn back-btn" @click="goToPage('cover')">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <span class="page-number">世界类型</span>
+          <button class="nav-btn next-btn" @click="goToPage('scene')">
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+        <div class="page-content">
+          <h2 class="chapter-title">世界类型</h2>
+          <p class="chapter-desc">
+            先选择世界观；下一步仅显示与该类型匹配的预设场景（选「自定义」时显示全部预设）。选「自定义」时须在点击「开始游戏」后填写世界名称与世界简介。
+          </p>
+
+          <div class="scene-grid world-type-grid">
+            <div
+              v-for="wt in worldTypeCards"
+              :key="wt.value"
+              class="scene-card world-type-card"
+              :class="{ active: selectedWorldType === wt.value }"
+              @click="selectedWorldType = wt.value"
+            >
+              <div class="scene-icon">
+                <i :class="wt.icon"></i>
+              </div>
+              <h3 class="scene-name">{{ wt.value }}</h3>
+              <p class="scene-desc">{{ wt.hint }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 场景选择页 -->
       <div v-else-if="currentPage === 'scene'" class="book-page content-page">
         <div class="page-header">
-          <button class="nav-btn back-btn" @click="goToPage('cover')">
+          <button class="nav-btn back-btn" @click="goToPage('world_type')">
             <i class="fa-solid fa-arrow-left"></i>
           </button>
           <span class="page-number">场景</span>
@@ -242,11 +277,13 @@
         </div>
         <div class="page-content">
           <h2 class="chapter-title">场景</h2>
-          <p class="chapter-desc">选择故事发生的地点与氛围...</p>
+          <p class="chapter-desc">
+            当前世界类型：<strong>{{ displayWorldTypeLabel }}</strong>；下列为匹配预设（仍可使用底部自定义描述）。
+          </p>
 
           <div class="scene-grid">
             <div
-              v-for="scene in sceneOptions"
+              v-for="scene in filteredSceneOptions"
               :key="scene.id"
               class="scene-card"
               :class="{ active: selectedScene?.id === scene.id }"
@@ -533,6 +570,10 @@
 
           <div class="summary-section">
             <div class="summary-item">
+              <span class="summary-label">世界类型</span>
+              <span class="summary-value">{{ displayWorldTypeLabel }}</span>
+            </div>
+            <div class="summary-item">
               <span class="summary-label">场景</span>
               <span class="summary-value">{{ selectedScene?.name || '自定义场景' }}</span>
             </div>
@@ -584,6 +625,40 @@
               <p v-if="!canSubmit" class="hint-text">请选择一个场景或填写自定义场景描述</p>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 自定义世界：开始游戏前填写（写入 MVU 元信息.世界类型 / 世界简介） -->
+    <div
+      v-if="customWorldModalOpen"
+      class="chronicle-dialog-backdrop"
+      role="dialog"
+      aria-modal="true"
+      @click.self="customWorldModalOpen = false"
+    >
+      <div class="chronicle-dialog-panel opening-dialog-panel opening-dialog-panel--wide" @click.stop>
+        <h3 class="chronicle-dialog-title">填写自定义世界</h3>
+        <p class="chronicle-dialog-desc">世界名称将写入「元信息.世界类型」（最长 64 字）；世界简介将写入「元信息.世界简介」（最长 2000 字）。</p>
+        <label class="custom-label">世界名称（必填）</label>
+        <input
+          v-model="customWorldNameDraft"
+          type="text"
+          maxlength="64"
+          class="custom-textarea custom-world-type-input"
+          placeholder="例如：蒸汽朋克上海、末日拾荒者联盟…"
+        />
+        <label class="custom-label">世界简介（必填）</label>
+        <textarea
+          v-model="customWorldIntroDraft"
+          class="custom-textarea"
+          maxlength="2000"
+          rows="6"
+          placeholder="用几句话概括世界观、基调与禁忌，便于开局叙事锚定…"
+        ></textarea>
+        <div class="chronicle-dialog-actions" style="margin-top: 12px">
+          <button type="button" class="chronicle-dialog-btn cancel" @click="customWorldModalOpen = false">取消</button>
+          <button type="button" class="chronicle-dialog-btn" @click="confirmCustomWorldModal">确定并开始</button>
         </div>
       </div>
     </div>
@@ -908,7 +983,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import type { OpeningFormData } from '../types';
+import type { OpeningFormData, SceneEra, WorldType, PresetWorldTag } from '../types';
+import { sceneEraToWorldType, migrateLegacyWorldType, isPresetWorldTag } from '../types';
 
 // 赛博朋克特效组件
 import ParallaxBackground from './ParallaxBackground.vue';
@@ -963,23 +1039,361 @@ const bottomTools = [
 const getRandomHeight = () => Math.floor(Math.random() * 30) + 10;
 
 // 页面状态
-const currentPage = ref<'cover' | 'scene' | 'rules' | 'characters' | 'opening_detail' | 'confirm'>('cover');
+const currentPage = ref<
+  'cover' | 'world_type' | 'scene' | 'rules' | 'characters' | 'opening_detail' | 'confirm'
+>('cover');
 const isFlipping = ref(false);
 
-// 场景时代类型
-export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
+type OpeningSceneCard = {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  era: SceneEra;
+  worldType: PresetWorldTag;
+};
 
-// 场景选项
-const sceneOptions = [
-  { id: 'school', name: '圣华女子学院', desc: '一所 prestigious 的贵族女子学校，学生们都在这里接受精英教育', icon: 'fa-solid fa-school', era: 'modern' as SceneEra },
-  { id: 'office', name: '未来科技公司', desc: '一家高科技公司，员工们在这里开发着改变世界的技术', icon: 'fa-solid fa-building', era: 'modern' as SceneEra },
-  { id: 'hospital', name: '圣玛利亚医院', desc: '一家大型综合医院，各种离奇的故事在这里发生', icon: 'fa-solid fa-hospital', era: 'modern' as SceneEra },
-  { id: 'apartment', name: '樱庄公寓', desc: '一栋普通的公寓楼，住着形形色色的租客', icon: 'fa-solid fa-house-chimney', era: 'modern' as SceneEra },
-  { id: 'castle', name: '夜之城堡', desc: '一座神秘的古老城堡，传说中住着吸血鬼', icon: 'fa-solid fa-chess-rook', era: 'medieval' as SceneEra },
-  { id: 'fantasy_tavern', name: '异世界冒险者酒馆', desc: '位于异世界的冒险者聚集地，各种族在此交汇', icon: 'fa-solid fa-wine-glass', era: 'fantasy' as SceneEra },
-  { id: 'cyberpunk_city', name: '霓虹城', desc: '2077年的赛博朋克都市，高科技与低生活的交汇点', icon: 'fa-solid fa-city', era: 'future' as SceneEra },
-  { id: 'ancient_palace', name: '大唐宫廷', desc: '盛唐时期的皇家宫殿，繁华与权谋交织', icon: 'fa-solid fa-landmark', era: 'ancient' as SceneEra },
+/** 预设场景：六种世界类型各 6 个；「自定义」时展示全部 */
+const sceneOptions: OpeningSceneCard[] = [
+  // —— 现代 ——
+  {
+    id: 'mod_apartment',
+    name: '樱庄公寓',
+    desc: '都市租住日常，邻里动静与走廊灯光构成第一幕',
+    icon: 'fa-solid fa-house-chimney',
+    era: 'modern',
+    worldType: '现代',
+  },
+  {
+    id: 'mod_school',
+    name: '圣华女子学院',
+    desc: '贵族女校课堂与社团楼，礼仪与青春期张力并存',
+    icon: 'fa-solid fa-school',
+    era: 'modern',
+    worldType: '现代',
+  },
+  {
+    id: 'mod_office',
+    name: 'CBD 写字楼',
+    desc: '玻璃幕墙与电梯厅，加班夜与茶水间八卦的当代职场',
+    icon: 'fa-solid fa-building',
+    era: 'modern',
+    worldType: '现代',
+  },
+  {
+    id: 'mod_hospital',
+    name: '市立综合医院',
+    desc: '急诊灯、消毒水味与走廊推车，生死与隐私一线之隔',
+    icon: 'fa-solid fa-hospital',
+    era: 'modern',
+    worldType: '现代',
+  },
+  {
+    id: 'mod_convenience',
+    name: '雨夜便利店',
+    desc: '自动门、关东煮与夜班店员，城市孤独者的临时避难所',
+    icon: 'fa-solid fa-store',
+    era: 'modern',
+    worldType: '现代',
+  },
+  {
+    id: 'mod_subway',
+    name: '末班地铁',
+    desc: '隧道风声、空车厢与陌生乘客，都市悬疑的天然舞台',
+    icon: 'fa-solid fa-train-subway',
+    era: 'modern',
+    worldType: '现代',
+  },
+  // —— 西幻 ——
+  {
+    id: 'wf_tavern',
+    name: '边境冒险者酒馆',
+    desc: '木梁、麦酒与任务告示，佣兵与旅人交换情报的据点',
+    icon: 'fa-solid fa-mug-hot',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  {
+    id: 'wf_guild_square',
+    name: '公会前广场',
+    desc: '石砖喷泉与招募板，新人冒险者第一次组队的地方',
+    icon: 'fa-solid fa-scroll',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  {
+    id: 'wf_city_gate',
+    name: '王都城门卫兵室',
+    desc: '吊桥、盾徽与盘查口令，权力与流言在此交汇',
+    icon: 'fa-solid fa-dungeon',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  {
+    id: 'wf_elven_outpost',
+    name: '精灵边境驿站',
+    desc: '林缘木屋与符文路标，异族礼仪与潜藏敌意',
+    icon: 'fa-solid fa-tree',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  {
+    id: 'wf_crypt_entrance',
+    name: '地下城入口营地',
+    desc: '火把、补给堆与受伤归来者，危险与贪婪的气味',
+    icon: 'fa-solid fa-fire-flame-curved',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  {
+    id: 'wf_church_cloister',
+    name: '教会石廊',
+    desc: '彩绘玻璃投下的光斑，告解室旁压抑的神圣与秘密',
+    icon: 'fa-solid fa-place-of-worship',
+    era: 'fantasy',
+    worldType: '西幻',
+  },
+  // —— 玄幻 ——
+  {
+    id: 'xh_market',
+    name: '青石坊市',
+    desc: '灵石与丹药流转，修士与凡人混处的一线机缘之地',
+    icon: 'fa-solid fa-mountain-sun',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  {
+    id: 'xh_outer_peak',
+    name: '外门弟子居所',
+    desc: '沿山而建的木屋与石阶，晨练钟声与杂役弟子往来',
+    icon: 'fa-solid fa-house-chimney',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  {
+    id: 'xh_sutra_side',
+    name: '藏经阁侧殿',
+    desc: '檀香、竹简与禁制微光，功法与心魔只隔一扇门',
+    icon: 'fa-solid fa-book',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  {
+    id: 'xh_medicine_field',
+    name: '灵药圃黄昏',
+    desc: '阵纹护田，采药弟子与灵虫，天地灵气肉眼可见',
+    icon: 'fa-solid fa-seedling',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  {
+    id: 'xh_sword_platform',
+    name: '拜仙剑台',
+    desc: '云海之上的白玉台，剑意残留与雷劫余威',
+    icon: 'fa-solid fa-cloud',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  {
+    id: 'xh_black_alley',
+    name: '散修黑市暗巷',
+    desc: '禁制遮掩的摊位，来路不明的法器与杀人夺宝的传闻',
+    icon: 'fa-solid fa-mask',
+    era: 'fantasy',
+    worldType: '玄幻',
+  },
+  // —— 未来 ——
+  {
+    id: 'fu_neon_sprawl',
+    name: '霓虹城下城',
+    desc: '全息广告与酸雨巷，义体诊所与帮派地盘犬牙交错',
+    icon: 'fa-solid fa-city',
+    era: 'future',
+    worldType: '未来',
+  },
+  {
+    id: 'fu_orbital_dock',
+    name: '轨道站转运港',
+    desc: '失重通道、集装箱舱与海关扫描，星际走私的高发区',
+    icon: 'fa-solid fa-satellite',
+    era: 'future',
+    worldType: '未来',
+  },
+  {
+    id: 'fu_eva_bay',
+    name: '舱外维修平台',
+    desc: '宇航服缆绳与行星弧光，一声警报即可致命',
+    icon: 'fa-solid fa-user-astronaut',
+    era: 'future',
+    worldType: '未来',
+  },
+  {
+    id: 'fu_synth_alley',
+    name: '仿生人检修巷',
+    desc: '冷却液气味与裸露线路，人格备份与废件堆叠的伦理边界',
+    icon: 'fa-solid fa-microchip',
+    era: 'future',
+    worldType: '未来',
+  },
+  {
+    id: 'fu_agro_dome',
+    name: '轨道农业穹顶',
+    desc: '人造日照与滴灌管，食物配给与公司监控并存',
+    icon: 'fa-solid fa-leaf',
+    era: 'future',
+    worldType: '未来',
+  },
+  {
+    id: 'fu_data_bar',
+    name: '数据墓园酒吧',
+    desc: '服务器余热当暖气，黑客与中间人用加密暗语点单',
+    icon: 'fa-solid fa-database',
+    era: 'future',
+    worldType: '未来',
+  },
+  // —— 西方中世纪 ——
+  {
+    id: 'wm_castle_night',
+    name: '夜之城堡',
+    desc: '石墙冷潮与火把摇曳，领主晚宴与地下室秘闻',
+    icon: 'fa-solid fa-chess-rook',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  {
+    id: 'wm_village_market',
+    name: '村庄市集日',
+    desc: '麦草、牲畜与布摊，神父与税吏同日出现',
+    icon: 'fa-solid fa-wheat-awn',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  {
+    id: 'wm_scriptorium',
+    name: '修道院抄写室',
+    desc: '羊皮纸与墨水池，异端抄本与守夜人脚步声',
+    icon: 'fa-solid fa-book-bible',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  {
+    id: 'wm_smith_stable',
+    name: '铁匠铺与马厩',
+    desc: '火星、马蹄铁与汗味，旅人换马与打听消息的据点',
+    icon: 'fa-solid fa-hammer',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  {
+    id: 'wm_manor_gallery',
+    name: '领主庄园外廊',
+    desc: '宴会余音与盔甲陈列，贵族礼仪下的刀光剑影',
+    icon: 'fa-solid fa-crown',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  {
+    id: 'wm_river_toll',
+    name: '木桥税卡',
+    desc: '河雾与绞盘吊桥，商队与强盗都爱选这里下手',
+    icon: 'fa-solid fa-bridge',
+    era: 'medieval',
+    worldType: '西方中世纪',
+  },
+  // —— 东方中世纪 ——
+  {
+    id: 'em_palace',
+    name: '大唐宫廷',
+    desc: '朱墙琉璃瓦与仪仗，权谋与情爱在礼制夹缝中',
+    icon: 'fa-solid fa-landmark',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
+  {
+    id: 'em_yamen',
+    name: '县衙照壁前',
+    desc: '惊堂木与告状百姓，吏治与人情的第一道门槛',
+    icon: 'fa-solid fa-gavel',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
+  {
+    id: 'em_teahouse',
+    name: '午后茶楼',
+    desc: '说书声与茶烟，三教九流交换消息的去处',
+    icon: 'fa-solid fa-mug-hot',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
+  {
+    id: 'em_stone_bridge',
+    name: '石桥柳岸',
+    desc: '渡船系缆、贩夫走卒，离别与重逢的古典舞台',
+    icon: 'fa-solid fa-water',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
+  {
+    id: 'em_study_courtyard',
+    name: '书斋夜雨院',
+    desc: '窗纸雨痕与残灯，士子功名与私情的静室',
+    icon: 'fa-solid fa-book-open',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
+  {
+    id: 'em_river_quarter',
+    name: '河畔灯影巷',
+    desc: '画舫丝竹与酒旗，礼法边缘的浮世与欲望',
+    icon: 'fa-solid fa-moon',
+    era: 'ancient',
+    worldType: '东方中世纪',
+  },
 ];
+
+const worldTypeCards: { value: PresetWorldTag; hint: string; icon: string }[] = [
+  { value: '现代', hint: '都市、日常科技、当代社会', icon: 'fa-solid fa-building-user' },
+  { value: '西幻', hint: '剑与魔法、王国与公会', icon: 'fa-solid fa-dragon' },
+  { value: '玄幻', hint: '修真、灵气、境界体系', icon: 'fa-solid fa-mountain-sun' },
+  { value: '未来', hint: '赛博、星际、高科社会', icon: 'fa-solid fa-robot' },
+  { value: '西方中世纪', hint: '封建欧洲、骑士与城堡', icon: 'fa-solid fa-chess-rook' },
+  { value: '东方中世纪', hint: '古代东亚城镇与礼制', icon: 'fa-solid fa-torii-gate' },
+  { value: '自定义', hint: '不锁定世界观；下页显示全部预设场景', icon: 'fa-solid fa-circle-question' },
+];
+
+const selectedWorldType = ref<WorldType>('现代');
+/** 选「自定义」卡片并经弹窗确认后写入 MVU 的世界名称 */
+const worldCustomName = ref('');
+const worldCustomIntro = ref('');
+const customWorldModalOpen = ref(false);
+const customWorldNameDraft = ref('');
+const customWorldIntroDraft = ref('');
+
+const displayWorldTypeLabel = computed(() => {
+  if (selectedWorldType.value === '自定义' && worldCustomName.value.trim()) {
+    return `${worldCustomName.value.trim()}（自定义）`;
+  }
+  if (selectedWorldType.value === '自定义') return '自定义（开始游戏时填写世界名称与简介）';
+  return selectedWorldType.value;
+});
+
+const filteredSceneOptions = computed(() => {
+  if (selectedWorldType.value === '自定义') return sceneOptions;
+  return sceneOptions.filter(s => s.worldType === selectedWorldType.value);
+});
+
+watch(selectedWorldType, wt => {
+  if (wt !== '自定义') {
+    worldCustomName.value = '';
+    worldCustomIntro.value = '';
+  }
+  const cur = selectedScene.value;
+  if (!cur) return;
+  if (wt === '自定义') return;
+  if (cur.worldType !== wt) {
+    selectedScene.value = null;
+  }
+});
 
 // 预设规则
 const presetRules = [
@@ -992,7 +1406,7 @@ const presetRules = [
 ];
 
 // 数据
-const selectedScene = ref<typeof sceneOptions[0] | null>(null);
+const selectedScene = ref<OpeningSceneCard | null>(null);
 const customSceneDesc = ref('');
 const openingSceneDetail = ref('');
 const selectedRules = ref<string[]>(['rule_001', 'rule_002']); // 默认选中前两条
@@ -1058,6 +1472,9 @@ watch(
 );
 
 function capturePresetPayload(): OpeningPresetPayload {
+  const card = selectedWorldType.value;
+  const mvuWt =
+    card === '自定义' ? worldCustomName.value.trim() || '自定义' : selectedWorldType.value;
   return {
     sceneMode: selectedScene.value ? 'preset' : 'custom',
     sceneId: selectedScene.value?.id ?? null,
@@ -1066,7 +1483,11 @@ function capturePresetPayload(): OpeningPresetPayload {
     customRules: customRules.value.map(r => ({ name: r.name, desc: r.desc })),
     characters: characters.value.map(c => ({ name: c.name, gender: c.gender, desc: c.desc })),
     openingSceneDetail: openingSceneDetail.value,
-    sceneEra: selectedScene.value?.era, // 保存场景时代信息
+    worldType: mvuWt,
+    worldIntro: card === '自定义' ? worldCustomIntro.value.trim() : '',
+    customWorldFromOpening: card === '自定义',
+    worldTypeCard: (isPresetWorldTag(card) ? card : '现代') as PresetWorldTag,
+    sceneEra: selectedScene.value?.era,
   };
 }
 
@@ -1079,6 +1500,26 @@ function applyPresetPayload(p: OpeningPresetPayload) {
     gender: c.gender,
     desc: c.desc,
   }));
+
+  let card: PresetWorldTag | undefined =
+    typeof p.worldTypeCard === 'string' && isPresetWorldTag(p.worldTypeCard) ? p.worldTypeCard : undefined;
+  const wMv = migrateLegacyWorldType(p.worldType) ?? (p.sceneEra ? sceneEraToWorldType(p.sceneEra) : undefined);
+  if (!card && wMv && isPresetWorldTag(wMv)) card = wMv;
+  if (!card && wMv) card = '自定义';
+
+  if (card === '自定义') {
+    selectedWorldType.value = '自定义';
+    worldCustomName.value = wMv && !isPresetWorldTag(wMv) ? wMv : '';
+    worldCustomIntro.value = typeof p.worldIntro === 'string' ? p.worldIntro : '';
+  } else if (card && isPresetWorldTag(card)) {
+    selectedWorldType.value = card;
+    worldCustomName.value = '';
+    worldCustomIntro.value = '';
+  } else {
+    selectedWorldType.value = '现代';
+    worldCustomName.value = '';
+    worldCustomIntro.value = '';
+  }
 
   if (p.sceneMode === 'preset' && p.sceneId) {
     const sc = sceneOptions.find(s => s.id === p.sceneId);
@@ -1534,7 +1975,7 @@ function goToPage(page: typeof currentPage.value) {
 }
 
 // 选择场景
-function selectScene(scene: typeof sceneOptions[0]) {
+function selectScene(scene: OpeningSceneCard) {
   selectedScene.value = scene;
   customSceneDesc.value = ''; // 清空自定义场景
 }
@@ -1580,22 +2021,59 @@ function removeCharacter(index: number) {
   characters.value.splice(index, 1);
 }
 
-// 提交
-async function handleSubmit() {
+function openCustomWorldModal() {
+  customWorldNameDraft.value = worldCustomName.value;
+  customWorldIntroDraft.value = worldCustomIntro.value;
+  customWorldModalOpen.value = true;
+}
+
+async function confirmCustomWorldModal() {
+  const n = customWorldNameDraft.value.trim();
+  const intro = customWorldIntroDraft.value.trim();
+  if (!n) {
+    toastr.warning('请填写世界名称');
+    return;
+  }
+  if (n.length > 64) {
+    toastr.warning('世界名称最长 64 字');
+    return;
+  }
+  if (!intro) {
+    toastr.warning('请填写世界简介');
+    return;
+  }
+  if (intro.length > 2000) {
+    toastr.warning('世界简介最长 2000 字');
+    return;
+  }
+  worldCustomName.value = n;
+  worldCustomIntro.value = intro;
+  customWorldModalOpen.value = false;
+  await runOpeningSubmit();
+}
+
+/** 非「自定义」卡片或弹窗已确认后执行 */
+async function runOpeningSubmit() {
   if (isSubmitting.value || !canSubmit.value) return;
+  if (selectedWorldType.value === '自定义') {
+    const wn = worldCustomName.value.trim();
+    const wi = worldCustomIntro.value.trim();
+    if (!wn || !wi) {
+      toastr.warning('请先通过弹窗填写世界名称与世界简介');
+      return;
+    }
+  }
 
   isSubmitting.value = true;
 
-  // 第一次开始时尝试进入全屏（如果浏览器允许）
   try {
     if (!document.fullscreenElement && typeof document.documentElement?.requestFullscreen === 'function') {
       await document.documentElement.requestFullscreen();
     }
   } catch (e) {
-    // 忽略失败（可能被浏览器策略/权限阻止）
+    /* 忽略 */
   }
 
-  // 构建场景描述
   let sceneDescription = '';
   if (selectedScene.value) {
     sceneDescription = `${selectedScene.value.name}：${selectedScene.value.desc}`;
@@ -1603,7 +2081,6 @@ async function handleSubmit() {
     sceneDescription = customSceneDesc.value.trim();
   }
 
-  // 构建规则列表
   const rules = [
     ...selectedRules.value.map(id => {
       const rule = presetRules.find(r => r.id === id);
@@ -1611,6 +2088,9 @@ async function handleSubmit() {
     }).filter(Boolean),
     ...customRules.value,
   ];
+
+  const card = selectedWorldType.value;
+  const mvuWorldType = card === '自定义' ? worldCustomName.value.trim() : card;
 
   const formData: OpeningFormData = {
     playerName: '玩家',
@@ -1622,11 +2102,25 @@ async function handleSubmit() {
     openingSceneDetail: openingSceneDetail.value.trim(),
     selectedRules: rules,
     characters: characters.value,
-    sceneEra: selectedScene.value?.era, // 传递场景时代信息
+    worldType: mvuWorldType,
+    worldIntro: card === '自定义' ? worldCustomIntro.value.trim() : '',
+    customWorldFromOpening: card === '自定义',
+    worldTypeCard: (isPresetWorldTag(card) ? card : '现代') as PresetWorldTag,
+    sceneEra: selectedScene.value?.era,
   };
 
   console.log('🎮 [OpeningForm] 提交:', formData);
   emit('submit', formData);
+}
+
+// 提交
+async function handleSubmit() {
+  if (isSubmitting.value || !canSubmit.value) return;
+  if (selectedWorldType.value === '自定义') {
+    openCustomWorldModal();
+    return;
+  }
+  await runOpeningSubmit();
 }
 
 // 暴露重置方法供父组件调用
@@ -3148,6 +3642,11 @@ defineExpose({
 .char-desc-input {
   resize: vertical;
   min-height: 86px;
+}
+
+input.custom-textarea.custom-world-type-input {
+  min-height: 0;
+  resize: none;
 }
 
 .rules-section {

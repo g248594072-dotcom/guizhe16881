@@ -3,145 +3,116 @@
  * 负责初始化游戏变量、创建开局楼层、管理世界书条目
  */
 
-import type { OpeningFormData, SceneEra } from '../types';
+import type { OpeningFormData, WorldType } from '../types';
+import { resolveWorldType } from '../types';
+import {
+  buildInitialGameTimeRecord,
+  formatNarrativeGameDate,
+  isCalendarWorldType,
+  resolveCalendarWorldType,
+  type GameTimeInitRecord,
+} from './gameTimeCalendar';
 
-/**
- * 根据场景时代获取默认区域名称
- */
-function getDefaultRegionNameByEra(era?: SceneEra): string {
-  switch (era) {
-    case 'modern':
+/** 若 0 层已写入（initialize 先于本函数），提示词与变量共用同一时间 */
+function tryReadZeroLayerGameTimeFull(): GameTimeInitRecord | null {
+  try {
+    const v = getVariables({ type: 'message', message_id: 0 });
+    const t = v?.stat_data?.['游戏时间'] as Record<string, unknown> | undefined;
+    if (
+      t &&
+      typeof t === 'object' &&
+      typeof t.年 === 'number' &&
+      typeof t.月 === 'number' &&
+      typeof t.日 === 'number' &&
+      typeof t.时 === 'number' &&
+      typeof t.分 === 'number'
+    ) {
+      const 纪历体系 = typeof t.纪历体系 === 'string' ? t.纪历体系 : '公历';
+      let 纪年名称 = typeof t.纪年名称 === 'string' ? t.纪年名称 : '';
+      let 纪年年数 = typeof t.纪年年数 === 'number' ? t.纪年年数 : 0;
+      if (纪历体系 === '公历') {
+        if (!纪年名称.trim()) 纪年名称 = '公元';
+        if (纪年年数 <= 0 && typeof t.年 === 'number') 纪年年数 = t.年;
+      }
+      const 基底Str = typeof t.时间演算基底 === 'string' ? t.时间演算基底 : '';
+      const calendarBase = isCalendarWorldType(基底Str) ? 基底Str : '现代';
+      return {
+        年: t.年,
+        月: t.月,
+        日: t.日,
+        时: t.时,
+        分: t.分,
+        纪历体系,
+        纪年名称,
+        纪年年数,
+        时间演算基底: calendarBase,
+      };
+    }
+  } catch {
+    /* 0 层不存在或未初始化 */
+  }
+  return null;
+}
+
+function getDefaultRegionNameByWorldType(wt: WorldType): string {
+  switch (wt) {
+    case '现代':
+    case '自定义':
       return '现代都市街区';
-    case 'medieval':
+    case '西方中世纪':
       return '中世纪城堡';
-    case 'fantasy':
+    case '西幻':
       return '幻想世界初始地';
-    case 'future':
+    case '玄幻':
+      return '修真山门坊市';
+    case '未来':
       return '未来空间站';
-    case 'ancient':
+    case '东方中世纪':
       return '古代城镇';
     default:
       return '初始场景';
   }
 }
 
-/**
- * 根据场景时代获取默认区域描述
- */
-function getDefaultRegionDescByEra(era?: SceneEra): string {
-  switch (era) {
-    case 'modern':
+function getDefaultRegionDescByWorldType(wt: WorldType): string {
+  switch (wt) {
+    case '现代':
+    case '自定义':
       return '繁华的都市街道，高楼林立，人来人往。这里是一切故事的开始。';
-    case 'medieval':
+    case '西方中世纪':
       return '古老的石制城堡，厚重的城墙见证了无数历史。旗帜在风中飘扬。';
-    case 'fantasy':
-      return '神秘的异世界初始之地，魔法气息弥漫，未知的冒险等待着。';
-    case 'future':
+    case '西幻':
+      return '剑与魔法的异世界一隅，魔法气息弥漫，未知的冒险等待着。';
+    case '玄幻':
+      return '灵气缭绕的山门与坊市，修士往来，机缘与劫数并存。';
+    case '未来':
       return '高科技的未来空间站，金属走廊延伸至远方，全息屏幕闪烁。';
-    case 'ancient':
-      return '古朴的古代城镇，青石板路，传统建筑，时光仿佛在这里静止。';
+    case '东方中世纪':
+      return '古朴的东方城镇，青石板路，传统建筑，时光仿佛在这里静止。';
     default:
       return '故事开始的场所，一切冒险的起点。';
   }
 }
 
-/**
- * 根据场景时代计算初始游戏时间
- * - modern: 现代，使用当前年份（2026年左右）
- * - medieval: 中世纪，约1000-1400年
- * - fantasy: 异世界，使用奇幻风格的日期（如幻想历、精灵历等）
- * - future: 未来，约2077年及以后
- * - ancient: 古代，约公元前或公元初期
- */
-function getInitialGameTimeByEra(era?: SceneEra) {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
-  const currentDay = new Date().getDate();
-  const currentHour = new Date().getHours();
-  const currentMinute = new Date().getMinutes();
-
-  switch (era) {
-    case 'modern':
-      // 现代：使用当前年份，月份日期可以随机一些变化
-      return {
-        年: currentYear,
-        月: currentMonth,
-        日: currentDay,
-        时: 12,
-        分: 0,
-      };
-
-    case 'medieval':
-      // 中世纪：约1000-1400年，随机选择
-      return {
-        年: 1000 + Math.floor(Math.random() * 400),
-        月: Math.floor(Math.random() * 12) + 1,
-        日: Math.floor(Math.random() * 28) + 1,
-        时: 12,
-        分: 0,
-      };
-
-    case 'fantasy':
-      // 异世界：使用奇幻历法，如"幻想历"或自定义年份
-      // 可以是类似"星历"、"魔法历"的年份格式
-      return {
-        年: 784 + Math.floor(Math.random() * 200), // 幻想历784年，一个典型的奇幻年份
-        月: Math.floor(Math.random() * 12) + 1,
-        日: Math.floor(Math.random() * 28) + 1,
-        时: 12,
-        分: 0,
-      };
-
-    case 'future':
-      // 未来：2077年及以后
-      return {
-        年: 2077 + Math.floor(Math.random() * 50),
-        月: Math.floor(Math.random() * 12) + 1,
-        日: Math.floor(Math.random() * 28) + 1,
-        时: 12,
-        分: 0,
-      };
-
-    case 'ancient':
-      // 古代：约公元前或公元初期（使用负数或较小数字表示）
-      // 如大唐时期约为公元600-900年
-      return {
-        年: 600 + Math.floor(Math.random() * 300),
-        月: Math.floor(Math.random() * 12) + 1,
-        日: Math.floor(Math.random() * 28) + 1,
-        时: 12,
-        分: 0,
-      };
-
+/** 提示词用：世界类型 + 时间背景的简短说明 */
+function getWorldTypePromptBackdrop(wt: WorldType): string {
+  switch (wt) {
+    case '现代':
+      return '现代（公元21世纪前后，都市与日常科技）';
+    case '西幻':
+      return '西幻（剑与魔法、王国/公会等西式奇幻）';
+    case '玄幻':
+      return '玄幻（修真/东方玄幻世界观，灵气与境界体系）';
+    case '未来':
+      return '未来（近未来至高科社会，约2077年后）';
+    case '西方中世纪':
+      return '西方中世纪（约公元10–14世纪，欧洲封建与骑士文化）';
+    case '东方中世纪':
+      return '东方中世纪（约公元6–10世纪，东亚古代城镇与礼制社会）';
+    case '自定义':
+      return '自定义（世界观未锁定：正文可自由发挥，但仍须与场景设定相容）';
     default:
-      // 默认使用现代时间
-      return {
-        年: currentYear,
-        月: currentMonth,
-        日: currentDay,
-        时: 12,
-        分: 0,
-      };
-  }
-}
-
-/**
- * 获取时代的中文描述，用于在提示词中说明时间背景
- */
-function getEraDescription(era?: SceneEra): string {
-  switch (era) {
-    case 'modern':
-      return '现代（公元21世纪）';
-    case 'medieval':
-      return '中世纪（约公元10-14世纪）';
-    case 'fantasy':
-      return '异世界（幻想历）';
-    case 'future':
-      return '未来（2077年后）';
-    case 'ancient':
-      return '古代（约公元6-9世纪）';
-    default:
-      return '现代';
+      return String(wt);
   }
 }
 
@@ -234,13 +205,29 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
           version: '1.0.0',
         };
 
+        const wt = resolveWorldType(formData);
+        const calWt = resolveCalendarWorldType(wt);
+
+        // MVU 中文元信息（与 schema 一致）
+        vars.stat_data.元信息 = {
+          玩家名称: formData.playerName || '玩家',
+          玩家设置: {},
+          当前阶段: '开局',
+          世界类型: wt,
+          世界简介: String(formData.worldIntro ?? '').slice(0, 2000),
+          进度: 1,
+          最近更新时间: Date.now(),
+        };
+
         // 保存开局配置
         vars.stat_data.openingConfig = formData;
 
-        // 根据场景时代初始化游戏时间
-        const initialGameTime = getInitialGameTimeByEra(formData.sceneEra);
+        // 按纪历基底初始化游戏时间（「自定义」时 calWt 为随机六种之一）
+        const initialGameTime = buildInitialGameTimeRecord(calWt, wt);
         vars.stat_data.游戏时间 = initialGameTime;
-        console.log(`✅ [gameInitializer] 游戏时间已初始化为 ${initialGameTime.年}年${initialGameTime.月}月${initialGameTime.日}日（时代：${formData.sceneEra || '默认'})`);
+        console.log(
+          `✅ [gameInitializer] 游戏时间: ${formatNarrativeGameDate(initialGameTime)}（界面世界类型：${wt}，计时基底：${calWt}）`,
+        );
 
         // 初始化默认区域（使用开局选择的场景）
         // formData.sceneDescription 格式: "场景名称：场景描述"
@@ -260,9 +247,8 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
             defaultRegionDesc = '故事开始的场所';
           }
         } else {
-          // 回退：根据时代生成默认区域
-          defaultRegionName = getDefaultRegionNameByEra(formData.sceneEra);
-          defaultRegionDesc = getDefaultRegionDescByEra(formData.sceneEra);
+          defaultRegionName = getDefaultRegionNameByWorldType(calWt);
+          defaultRegionDesc = getDefaultRegionDescByWorldType(calWt);
         }
 
         vars.stat_data.区域规则 = {
@@ -296,10 +282,15 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   const sceneDesc = formData.sceneDescription || '神秘的未知场所';
   const openingDetail = String(formData.openingSceneDetail ?? '').trim();
 
-  // 获取场景时代的时间背景描述
-  const eraDesc = getEraDescription(formData.sceneEra);
-  const initialGameTime = getInitialGameTimeByEra(formData.sceneEra);
-  const timeDescription = `${initialGameTime.年}年${initialGameTime.月}月${initialGameTime.日}日`;
+  const wt = resolveWorldType(formData);
+  const useCustomOpeningFlow = formData.customWorldFromOpening === true || wt === '自定义';
+  const backdrop = getWorldTypePromptBackdrop(wt);
+  const worldIntroBlock = String(formData.worldIntro ?? '').trim();
+  const fromZero = tryReadZeroLayerGameTimeFull();
+  const calForFallback = resolveCalendarWorldType(wt);
+  const timeRecord = fromZero ?? buildInitialGameTimeRecord(calForFallback, wt);
+  const timeDescription = formatNarrativeGameDate(timeRecord);
+  const randomBase = fromZero?.时间演算基底 ?? timeRecord.时间演算基底;
 
   const rules = (formData.selectedRules ?? []) as Array<{ name: string; desc: string; isCustom?: boolean }>;
   const presetRules = rules.filter(r => !r.isCustom);
@@ -329,9 +320,16 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   checklist.push(`${n}. 开局地点与整体氛围必须与下列场景设定一致：${sceneDesc}`);
   n += 1;
 
-  // 添加时代/时间背景要求
-  if (formData.sceneEra) {
-    checklist.push(`${n}. 故事必须发生在${eraDesc}，时间设定为${timeDescription}，场景中的元素、人物着装、技术/魔法水平、语言风格必须与该时代背景一致`);
+  // 世界类型与时间背景（始终一条，与 MVU 元信息.世界类型 / 游戏时间 对齐）
+  if (useCustomOpeningFlow) {
+    checklist.push(
+      `${n}. 世界类型为玩家自定义「${wt}」：变量内时间已随机套用「${randomBase}」式纪年（见【故事时间】与【纪历说明】），正文须与该计时方式及场景设定相容；元素、着装、语言风格须自洽`,
+    );
+    n += 1;
+  } else {
+    checklist.push(
+      `${n}. 故事必须发生在「${wt}」世界观（${backdrop}），游戏内时间锚定为${timeDescription}；场景中的元素、人物着装、技术或超凡体系、语言风格必须与该世界类型一致`,
+    );
     n += 1;
   }
 
@@ -359,10 +357,20 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   if (formData.enablePersonalRules) enableBits.push('个人规则已启用');
   const enableLine = enableBits.length > 0 ? enableBits.join('；') : '规则开关按表单默认';
 
-  // 构建包含时代信息的时间描述
-  const timeInfoLines = formData.sceneEra
-    ? [`【时代背景】${eraDesc}`, `【故事时间】${timeDescription}`]
-    : [];
+  const timeInfoLines = useCustomOpeningFlow
+    ? [
+        `【世界类型】${wt}`,
+        ...(worldIntroBlock ? [`【世界简介】${worldIntroBlock}`] : []),
+        `【叙事背景】${backdrop}`,
+        `【纪历说明】计时随机套用「${randomBase}」；纪历体系=${timeRecord.纪历体系}；纪年=${timeRecord.纪年名称 || '—'}${(timeRecord.纪年年数 ?? 0) > 0 ? `（序数 ${timeRecord.纪年年数}）` : ''}`,
+        `【故事时间】${timeDescription}`,
+      ]
+    : [
+        `【世界类型】${wt}`,
+        ...(worldIntroBlock ? [`【世界简介】${worldIntroBlock}`] : []),
+        `【叙事背景】${backdrop}`,
+        `【故事时间】${timeDescription}`,
+      ];
 
   const narrativeBlock = [
     `【规则开关】${enableLine}`,
@@ -412,7 +420,7 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
         下装: { 名称: '', 状态: '正常', 描述: '' },
         内衣: { 名称: '', 状态: '正常', 描述: '' },
         足部: { 名称: '', 状态: '正常', 描述: '' },
-        饰品: {} as Record<string, { 部位: string; 描述: string }>,
+        饰品: {} as Record<string, { 部位: string; 描述: string; 状态?: string }>,
       },
       身体部位物理状态: {} as Record<string, { 外观描述: string; 当前状态: string }>,
       数值: { 好感度: 30, 发情值: 20, 性癖开发值: 10 },
@@ -438,11 +446,12 @@ ${OPENING_MAINTEXT_REQUEST}
 
 ## 三、输出格式（顺序固定；所有标签必须成对闭合，禁止只写开标签）
 1. 先输出 <maintext>…</maintext>：写成完整叙事段落，**同时**满足上文「二」的清单与「二（续）」；以便后续变量更新能对应正文。
-2. 再输出 <option>…</option>：内含多行，以「A.」「B.」「C.」开头；**必须**以 </option> 闭合。
+2. 再输出 <choice>…</choice>：内含多行，以「1.」「2.」… 或「A.」「B.」开头；每项推荐「选项类型标题 - 本回合具体行动」，格式说明里可出现「标题 - \${选项内容: …}」，正式输出时须写成「标题 - 具体行动」；**必须**以 </choice> 闭合。（仍兼容整段 <option>…</option> + A./B./C. 或 <option id>。）
 3. 再输出 <sum>…</sum>：一句话概括开局；**必须**以 </sum> 闭合。
 4. 最后输出 <UpdateVariable>…</UpdateVariable>：须符合下方「## 四、变量补丁约束」。**本局开局提示里已给出示例 Patch，若 user 楼层已写入同名路径，你方必须用 replace 覆盖，勿用 insert 顶同名路径。** 按实际剧情微调数值与描写。
 
 ## 四、变量补丁（须与 MVU 解析一致）
+- **游戏时间**：本界面已在开局将 \`游戏时间\` 写入变量；**后续回合的时间推进、进位与跨日相关变量**须由你在正文中落实后通过 Patch 更新，**界面不会代算**。
 - **总原则**：\`<JSONPatch>\` 内为合法 JSON 数组。**本界面合并器仅支持 RFC 6902 子集：replace / add / remove / move**；**不支持 delta、copy、merge**。数值变化必须用 **replace** 写**绝对值**。对「世界规则 / 角色档案」的整条更新以 **replace** 为主；**禁止**自创 **身体部位物理状态JSON**、**服装槽位JSON**、**细分规则JSON** 等 schema 外键名（须用 **身体部位物理状态**、**服装状态**、**细分规则**）。
 - **路径（中文根，均相对 stat_data）**：世界规则 **/世界规则/<规则名>**；区域子规则 **/区域规则/<区域名>/细分规则/<子规则名>**（**禁止** **/区域规则/<子规则名>** 把规则名误当区域名）；个人规则 **/个人规则/<键名>**；角色 **/角色档案/CHR-xxx**（顺序与开局一致）。**禁止**用 **/characters**、**world_rules** 等英文平行根。角色数值仅 **/角色档案/<id>/数值/发情值** 等，**禁止** **/角色档案/<id>/发情值**。
 - **开局特判（重要）**：同一聊天里 **user 消息可能已含同名路径的初始化**。对 **/世界规则/…**、**/角色档案/CHR-001** 等 **已存在** 的路径：**一律使用 \`"op": "replace"\` 写入完整 value**，**禁止**对已有对象路径使用 **insert**（易导致 Patch 失败且不更新角色）。
@@ -453,7 +462,7 @@ ${OPENING_MAINTEXT_REQUEST}
   - **敏感点开发**：\`{ "名称": { "敏感等级": 数字, "生理反应": "…", "开发细节": "…" } }\`；**兼容**旧版键名 **敏感部位** 与同形嵌套；**兼容**旧版 \`{ "名称": "描述字符串" }\`。
   - **隐藏性癖**：**必须是字符串**（无则写 \`""\`）。**禁止**写成 \`{}\` 或对象。
   - **身体信息**：年龄/身高/体重为数字；**三围**为**字符串**（如 \`"B86 W58 H88"\`）或对象 \`{"B":86,"W":58,"H":88}\`；**体质特征**为字符串。
-  - **服装状态**：含 **上装、下装、内衣、足部**（各 **名称、状态、描述**）与 **饰品**（\`{ "饰品名": { "部位", "描述" } }\`；兼容旧键 **状态** 视作部位），可为空字符串/空对象。
+  - **服装状态**：含 **上装、下装、内衣、足部**（各 **名称、状态、描述**）与 **饰品**（\`{ "饰品名": { "部位": "必填非空", "描述": "…", "状态"?: "…" } }\`；**部位** 为必填；兼容旧键 **状态** 视作部位），可为空字符串/空对象。
   - **身体部位物理状态**：\`{ "部位名": { "外观描述": "…", "当前状态": "…" } }\`，可为 \`{}\`。
   - **身份标签**：\`{ "分类": "短文本" }\`，可为 \`{}\`。
   - **数值**：**好感度、发情值、性癖开发值** 为数字；**禁止**用「性癖开发度」键名。
@@ -487,11 +496,12 @@ ${OPENING_MAINTEXT_REQUEST}
 [正在发生的现场剧情，须覆盖清单全部条目；写法遵守「二（续）」]
 </maintext>
 
-<option>
-A. [选项A]
-B. [选项B]
-C. [选项C]
-</option>
+<choice>
+1. [类型A] - [本回合具体行动描写]
+2. [类型B] - [本回合具体行动描写]
+3. [类型C] - [本回合具体行动描写]
+4. [类型D] - [本回合具体行动描写]
+</choice>
 
 <sum>[一句话总结]</sum>
 

@@ -278,6 +278,9 @@ async function onRestore(regionName: string, rule: RuleData) {
   overflow-y: auto;
   overflow-x: hidden;
   flex: 1 1 auto;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .section-header {
@@ -477,6 +480,15 @@ async function onRestore(regionName: string, rule: RuleData) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.region-card-wrap {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .region-card:not(.cyber-card) {
@@ -484,11 +496,17 @@ async function onRestore(regionName: string, rule: RuleData) {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .region-card.cyber-card {
   border-radius: 12px;
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 :global(.light) .region-card:not(.cyber-card) {
@@ -785,6 +803,19 @@ async function onRestore(regionName: string, rule: RuleData) {
 }
 
 @media (max-width: 768px) {
+  /* 窄屏单列 + 内边距：避免 minmax(280px) 撑出横向滚动，并为赛博卡外发光留出裁切余量 */
+  .regions-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    padding-inline: clamp(8px, 3vw, 14px);
+  }
+
+  .archive-section {
+    max-width: 100%;
+    margin-inline: clamp(4px, 1.5vw, 8px);
+    box-sizing: border-box;
+  }
+
   .archive-rule-row {
     flex-direction: column;
     align-items: stretch;

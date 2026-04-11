@@ -6,6 +6,7 @@
  */
 
 import { tryRulesMvuWritable, useDataStore } from '../store';
+import { formatNarrativeGameDate } from './gameTimeCalendar';
 
 /**
  * 游戏时间对象接口
@@ -16,6 +17,10 @@ export interface GameTime {
   日: number;
   时: number;
   分: number;
+  纪历体系?: string;
+  纪年名称?: string;
+  纪年年数?: number;
+  时间演算基底?: string;
 }
 
 /**
@@ -39,9 +44,18 @@ export function formatGameTime(
   template: TimeFormatTemplate = 'YYYY年MM月DD日 HH:mm',
 ): string {
   const { 年, 月, 日, 时, 分 } = time;
-
-  // 补零函数
+  const 体系 = time.纪历体系 ?? '公历';
   const pad = (n: number) => String(n).padStart(2, '0');
+
+  if (template === 'HH:mm') return `${pad(时)}:${pad(分)}`;
+  if (template === 'HH时mm分') return `${pad(时)}时${pad(分)}分`;
+  if (
+    template === 'YYYY年MM月DD日 HH:mm' ||
+    template === 'YYYY年MM月DD日' ||
+    template === 'MM月DD日 HH:mm'
+  ) {
+    return formatNarrativeGameDate(time);
+  }
 
   switch (template) {
     case 'YYYY年MM月DD日':
@@ -152,6 +166,10 @@ export function setGameTime(newTime: Partial<GameTime>): void {
   if (newTime.日 !== undefined) gameTime.日 = newTime.日;
   if (newTime.时 !== undefined) gameTime.时 = newTime.时;
   if (newTime.分 !== undefined) gameTime.分 = newTime.分;
+  if (newTime.纪历体系 !== undefined) (gameTime as GameTime).纪历体系 = newTime.纪历体系;
+  if (newTime.纪年名称 !== undefined) (gameTime as GameTime).纪年名称 = newTime.纪年名称;
+  if (newTime.纪年年数 !== undefined) (gameTime as GameTime).纪年年数 = newTime.纪年年数;
+  if (newTime.时间演算基底 !== undefined) (gameTime as GameTime).时间演算基底 = newTime.时间演算基底;
 
   console.log(`[游戏时间] 时间已设置:`, formatGameTime(gameTime));
 }
@@ -171,6 +189,10 @@ export function useGameTime() {
         日: gameTime?.日 ?? 4,
         时: gameTime?.时 ?? 12,
         分: gameTime?.分 ?? 0,
+        纪历体系: gameTime?.纪历体系,
+        纪年名称: gameTime?.纪年名称,
+        纪年年数: gameTime?.纪年年数,
+        时间演算基底: gameTime?.时间演算基底,
       };
     },
     set: (newTime: GameTime) => {
@@ -247,9 +269,9 @@ export function getDayOfWeekChinese(time: GameTime): string {
  * 获取完整时间显示（用于手机锁屏等场景）
  */
 export function getFullTimeDisplay(time: GameTime): string {
-  const dateStr = formatGameTime(time, 'YYYY年MM月DD日');
-  const weekStr = getDayOfWeekChinese(time);
-  const timeStr = formatGameTime(time, 'HH:mm');
+  const 体系 = time.纪历体系 ?? '公历';
+  const dateStr = formatNarrativeGameDate(time);
+  const weekStr = 体系 === '公历' ? getDayOfWeekChinese(time) : '';
 
-  return `${dateStr} ${weekStr} ${timeStr}`;
+  return weekStr ? `${dateStr} ${weekStr}` : dateStr;
 }

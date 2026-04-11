@@ -2,6 +2,9 @@
  * 开局表单：条目库与完整预设（浏览器 localStorage）
  */
 
+import type { SceneEra, WorldType, PresetWorldTag } from '../types';
+import { isPresetWorldTag, migrateLegacyWorldType, sceneEraToWorldType } from '../types';
+
 export const OPENING_STORAGE_KEY = 'rule_modifier_opening_storage_v1';
 
 export interface RuleSnippet {
@@ -23,9 +26,6 @@ export type SceneSnippet = RuleSnippet;
 /** 开局场景细化文案（对应「开局场景描述」） */
 export type OpeningSceneSnippet = RuleSnippet;
 
-// 场景时代类型（与 types.ts 保持一致）
-export type SceneEra = 'modern' | 'medieval' | 'fantasy' | 'future' | 'ancient';
-
 export interface OpeningPresetPayload {
   sceneMode: 'preset' | 'custom';
   sceneId: string | null;
@@ -34,7 +34,16 @@ export interface OpeningPresetPayload {
   customRules: { name: string; desc: string }[];
   characters: { name: string; gender: string; desc: string }[];
   openingSceneDetail: string;
-  sceneEra?: SceneEra; // 场景时代/世界观类型
+  /** 与 MVU 元信息.世界类型 一致 */
+  worldType?: WorldType;
+  /** 与 MVU 元信息.世界简介 一致 */
+  worldIntro?: string;
+  /** 是否来自「自定义」卡片 + 弹窗名称 */
+  customWorldFromOpening?: boolean;
+  /** UI 所选卡片（现代…自定义） */
+  worldTypeCard?: PresetWorldTag;
+  /** 旧预设兼容 */
+  sceneEra?: SceneEra;
 }
 
 export interface OpeningPreset {
@@ -119,9 +128,19 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
         })
         .filter(Boolean) as { name: string; gender: string; desc: string }[]
     : [];
-  // 解析 sceneEra 字段
   const validEras: SceneEra[] = ['modern', 'medieval', 'fantasy', 'future', 'ancient'];
   const sceneEra = validEras.includes(o.sceneEra as SceneEra) ? (o.sceneEra as SceneEra) : undefined;
+  const worldType: WorldType | undefined =
+    migrateLegacyWorldType(o.worldType) ?? (sceneEra ? sceneEraToWorldType(sceneEra) : undefined);
+  const worldIntro = typeof o.worldIntro === 'string' ? o.worldIntro : undefined;
+  const customWorldFromOpening = o.customWorldFromOpening === true;
+  const worldTypeCardRaw = o.worldTypeCard;
+  const worldTypeCard: PresetWorldTag | undefined =
+    typeof worldTypeCardRaw === 'string' && isPresetWorldTag(worldTypeCardRaw)
+      ? worldTypeCardRaw
+      : worldType && isPresetWorldTag(worldType)
+        ? worldType
+        : undefined;
   return {
     sceneMode,
     sceneId,
@@ -130,6 +149,10 @@ function asPresetPayload(x: unknown): OpeningPresetPayload | null {
     customRules,
     characters,
     openingSceneDetail,
+    worldType,
+    worldIntro,
+    customWorldFromOpening,
+    worldTypeCard,
     sceneEra,
   };
 }
