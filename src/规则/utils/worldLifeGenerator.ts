@@ -640,6 +640,7 @@ async function callSecondaryApiForWorldLife(
     should_stream: false,
     should_silence: true,
     max_chat_history: 0,
+    automatic_trigger: true, // 与 apiSettings 第二路一致，避免扩展误处理酒馆同连接请求
     ordered_prompts: [
       { role: 'system', content: WORLD_LIFE_SYSTEM_PROMPT },
       { role: 'user', content: prompt },

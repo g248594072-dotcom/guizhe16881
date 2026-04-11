@@ -292,6 +292,7 @@ export async function testSecondaryApiTavernPlug(modelOverride?: string): Promis
     should_stream: false,
     should_silence: true,
     max_chat_history: 0,
+    automatic_trigger: true, // 与变量第二路一致，避免扩展将静默 generateRaw 当主发送处理
     ordered_prompts: [{ role: 'user', content: 'Reply with exactly one word: OK' }],
   };
   if (modelTrim) {
