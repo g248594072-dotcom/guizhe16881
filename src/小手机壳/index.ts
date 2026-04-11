@@ -2625,7 +2625,7 @@ $(() => {
   }
 
   /**
-   * 在手机左/右/上缘增加透明拖动条（位于 iframe 之上），避免只能点遮罩关闭却无法拖动的问题
+   * 在手机左/右/上缘与右下角手柄增加拖动区域（位于 iframe 之上），避免只能点遮罩关闭却无法拖动的问题
    */
   function bindPhoneDragEdges($inner: JQuery, layoutWin: Window) {
     if (phoneDragListenersBound) {
@@ -2828,6 +2828,37 @@ $(() => {
         height: 28,
       });
 
+    /** 右下角可见拖动手柄（叠在 iframe 之上，与左右上缘条共用 bindPhoneDragEdges） */
+    const $dragCorner = createShellDiv(parentDoc)
+      .attr('data-tavern-phone-drag', 'corner-handle')
+      .attr('title', '点我移动')
+      .attr('aria-label', '点我移动')
+      .text('点我移动')
+      .css({
+        position: 'absolute',
+        zIndex: 11,
+        right: 6,
+        bottom: 8,
+        padding: '6px 10px',
+        boxSizing: 'border-box',
+        borderRadius: 10,
+        touchAction: 'none',
+        cursor: 'grab',
+        userSelect: 'none',
+        color: '#0a0a0a',
+        fontSize: '12px',
+        fontWeight: '600',
+        lineHeight: 1.25,
+        whiteSpace: 'nowrap',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif',
+        backgroundColor: 'rgba(255,255,255,0.92)',
+        border: '1px solid rgba(0,0,0,0.18)',
+        boxShadow: '0 1px 5px rgba(0,0,0,0.18)',
+      });
+
     const iframeEl = parentDoc.createElement('iframe');
     iframeEl.title = 'Tavern Phone';
     iframeEl.setAttribute('frameborder', '0');
@@ -2846,6 +2877,7 @@ $(() => {
     $inner.append($dragLeft);
     $inner.append($dragRight);
     $inner.append($dragTop);
+    $inner.append($dragCorner);
 
     $phoneRoot.append($inner);
 

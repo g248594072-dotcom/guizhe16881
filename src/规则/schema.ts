@@ -122,8 +122,8 @@ const 核心结构 = z.object({
     纪历体系: z.string().prefault('公历'),
     /** 公历下由 transform 固定为「公元」；其它纪历为年号或幻想纪元名 */
     纪年名称: z.string().prefault('公元'),
-    /** 公历下与「年」一致（transform）；其它纪历为该纪元序数 */
-    纪年年数: z.coerce.number().prefault(2026),
+    /** 公历下与「年」一致（由 transform 写入）；其它纪历为该纪元序数。不设 prefault，避免与锚点「年」混淆时误判 */
+    纪年年数: z.coerce.number().optional(),
     /** 实际采用的计时基底（「自定义」界面时为随机六种之一） */
     时间演算基底: z.string().prefault('现代'),
     年: z.coerce.number().prefault(2026),
@@ -161,14 +161,31 @@ const 核心结构 = z.object({
       月 = ((月 - 1) % 12) + 1;
     }
 
-    纪历体系 = 纪历体系 ?? '公历';
-    时间演算基底 = 时间演算基底 ?? '现代';
-    if (纪历体系 === '公历') {
+    纪历体系 = (纪历体系 ?? '').trim() || '公历';
+    时间演算基底 = (时间演算基底 ?? '').trim() || '现代';
+
+    const eraNameRaw = typeof 纪年名称 === 'string' ? 纪年名称.trim() : '';
+    const eraYearProvided =
+      typeof 纪年年数 === 'number' && !Number.isNaN(纪年年数);
+
+    /**
+     * 楼层变量若缺「纪历体系」会 prefault 为公历，但玄幻/修真等数据中「年」常为公元锚点、与「纪年年数」不同。
+     * 仅当明确是典型的「公元 + 与年同值的序数」时才做公历归一，避免把 822 覆盖成 1907。
+     */
+    const isPlainGregorian =
+      纪历体系 === '公历' &&
+      eraNameRaw === '公元' &&
+      (!eraYearProvided || 纪年年数 === 年);
+
+    if (isPlainGregorian) {
       纪年名称 = '公元';
       纪年年数 = 年;
+    } else if (纪历体系 === '公历') {
+      纪年名称 = eraNameRaw;
+      纪年年数 = eraYearProvided ? 纪年年数! : 0;
     } else {
-      纪年名称 = typeof 纪年名称 === 'string' ? 纪年名称 : '';
-      纪年年数 = typeof 纪年年数 === 'number' && !Number.isNaN(纪年年数) ? 纪年年数 : 0;
+      纪年名称 = eraNameRaw;
+      纪年年数 = eraYearProvided ? 纪年年数! : 0;
     }
 
     // 重新钳制，确保数值在有效范围内

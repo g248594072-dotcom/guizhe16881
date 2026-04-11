@@ -1,6 +1,80 @@
 import { StoreDefinition } from 'pinia';
 import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
+/** 从变量表中取出 MVU stat_data（单层；遇双层嵌套则取内层） */
+function extractMvuStatData(variables: any): Record<string, unknown> {
+  if (!variables) return {};
+  if (variables.stat_data && typeof variables.stat_data === 'object') {
+    if (
+      variables.stat_data.stat_data &&
+      typeof variables.stat_data.stat_data === 'object'
+    ) {
+      console.warn('[mvu] 检测到双重嵌套，自动平展');
+      return variables.stat_data.stat_data as Record<string, unknown>;
+    }
+    return variables.stat_data as Record<string, unknown>;
+  }
+  return {};
+}
+
+/**
+ * 合并「游戏时间」后再交给 schema：
+ * - 开局完整对象写在 **message_id: 0**，AI 对最新层的 patch 往往只带锚点「年」与月日时分，纪元字段会丢。
+ * - 绑定 **最新层**（message_id: -1）时：先铺 **0 层** 的 `游戏时间`，再叠 **角色卡**，最后叠 **当前层**（后者覆盖前者同名字段）。
+ * - 历史楼层 iframe：不读 0 层，仅尝试 **角色卡 → 当前层**，避免把当前剧本的纪元套进旧快照。
+ */
+function mergeMessageGameTimeWithCharacter(
+  statData: Record<string, unknown>,
+  option: VariableOption,
+): Record<string, unknown> {
+  if (option.type !== 'message') return statData;
+
+  const mid =
+    option.message_id === undefined || option.message_id === 'latest'
+      ? -1
+      : option.message_id;
+
+  let base: Record<string, unknown> = {};
+
+  if (mid === -1) {
+    try {
+      const v0 = getVariables({ type: 'message', message_id: 0 });
+      const sd0 = sanitizeStatDataRoleArchivesNestedMaps(extractMvuStatData(v0)) as Record<string, unknown>;
+      const g0 = sd0['游戏时间'];
+      if (g0 != null && typeof g0 === 'object' && !Array.isArray(g0)) {
+        base = { ...(g0 as Record<string, unknown>) };
+      }
+    } catch {
+      /* 0 层可能尚未存在 */
+    }
+  }
+
+  try {
+    const charVariables = getVariables({ type: 'character' });
+    const charSd = sanitizeStatDataRoleArchivesNestedMaps(extractMvuStatData(charVariables)) as Record<
+      string,
+      unknown
+    >;
+    const cGt = charSd['游戏时间'];
+    if (cGt != null && typeof cGt === 'object' && !Array.isArray(cGt)) {
+      base = { ...base, ...(cGt as Record<string, unknown>) };
+    }
+  } catch {
+    /* 未打开角色卡等 */
+  }
+
+  const mGt = statData['游戏时间'];
+  const mergedGt =
+    mGt == null || typeof mGt !== 'object' || Array.isArray(mGt)
+      ? Object.keys(base).length > 0
+        ? base
+        : ((mGt ?? {}) as Record<string, unknown>)
+      : { ...base, ...(mGt as Record<string, unknown>) };
+
+  if (_.isEqual(mergedGt, mGt)) return statData;
+  return { ...statData, 游戏时间: mergedGt };
+}
+
 function normalizeMessageVariableOption(option: VariableOption): VariableOption {
   const o = _.cloneDeep(option);
   if (
@@ -52,26 +126,8 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ? (store_opts as () => DefineMvuDataStoreOptions)()
           : store_opts;
       const writeBack = resolvedStoreOpts?.writeBack !== false;
-      // 辅助函数：获取 stat_data，统一使用 MVU 格式，检测并修复双重嵌套
-      function getStatData(variables: any): any {
-        if (!variables) return {};
-
-        // 检查是否是 MVU 格式（有 stat_data 字段）
-        if (variables.stat_data && typeof variables.stat_data === 'object') {
-          // 检测双重嵌套：stat_data 里面还有 stat_data
-          if (variables.stat_data.stat_data && typeof variables.stat_data.stat_data === 'object') {
-            console.warn('[mvu] 检测到双重嵌套，自动平展');
-            // 使用内层 stat_data（实际数据）
-            return variables.stat_data.stat_data;
-          }
-
-          // 单层 MVU 格式，正常返回 stat_data
-          return variables.stat_data;
-        }
-
-        // 不是 MVU 格式（可能是空对象或纯数据），返回空对象
-        // 统一要求 MVU 格式
-        return {};
+      function getStatData(variables: any): Record<string, unknown> {
+        return extractMvuStatData(variables);
       }
 
       // 辅助函数：设置 stat_data，统一使用 MVU 格式，修复双重嵌套。
@@ -104,7 +160,8 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       }
 
       const rawVariables = getVariables(resolvedOption);
-      const statData = sanitizeStatDataRoleArchivesNestedMaps(getStatData(rawVariables)) as Record<string, unknown>;
+      let statData = sanitizeStatDataRoleArchivesNestedMaps(getStatData(rawVariables)) as Record<string, unknown>;
+      statData = mergeMessageGameTimeWithCharacter(statData, resolvedOption);
       const data = ref(
         schema.parse(statData, { reportInput: true }),
       ) as Ref<z.infer<T>>;
@@ -115,8 +172,9 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       useIntervalFn(() => {
         const variables = getVariables(resolvedOption);
         const rawStatData = getStatData(variables);
-        const stat_data = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
-        const hadCorruption = !_.isEqual(rawStatData, stat_data);
+        const sanitizedOnly = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
+        const hadCorruption = !_.isEqual(rawStatData, sanitizedOnly);
+        let stat_data = mergeMessageGameTimeWithCharacter(sanitizedOnly, resolvedOption);
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;

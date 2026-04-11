@@ -158,7 +158,12 @@ export function buildInitialGameTimeRecord(cal: CalendarWorldType, _uiWorldType:
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-/** 剧情/UI 用：按纪历体系输出可读日期时间 */
+/**
+ * 剧情/UI 用：统一为「纪年名称 + 年份序数 + 月日时分」。
+ * - 序数优先用 `纪年年数`（>0），否则用 `年`（兼容旧数据或仅写了公历年）。
+ * - `纪年名称` 缺省为「公元」（公历/未填时）。
+ * - 年号历在末尾保留「（公元…年）」以便对照绝对年。
+ */
 export function formatNarrativeGameDate(t: {
   年: number;
   月: number;
@@ -171,23 +176,12 @@ export function formatNarrativeGameDate(t: {
   时间演算基底?: string;
 }): string {
   const clock = `${pad2(t.时)}:${pad2(t.分)}`;
-  const md = `${t.月}月${t.日}日`;
+  const name = t.纪年名称?.trim() ? t.纪年名称.trim() : '公元';
+  const yOrd = (t.纪年年数 ?? 0) > 0 ? t.纪年年数! : t.年;
+  const body = `${name}${yOrd}年${pad2(t.月)}月${pad2(t.日)}日 ${clock}`;
   const 体系 = t.纪历体系 || '公历';
-
-  if (体系 === '公历') {
-    const name = t.纪年名称?.trim() ? t.纪年名称 : '公元';
-    const yOrd = (t.纪年年数 ?? 0) > 0 ? t.纪年年数! : t.年;
-    return `${name}${yOrd}年${pad2(t.月)}月${pad2(t.日)}日 ${clock}`;
+  if (体系 === '年号历') {
+    return `${body}（公元${t.年}年）`;
   }
-
-  if (体系 === '年号历' && t.纪年名称 && (t.纪年年数 ?? 0) > 0) {
-    return `${t.纪年名称}${t.纪年年数}年${md} ${clock}（公元${t.年}年）`;
-  }
-  if (体系 === '西幻纪' && t.纪年名称 && (t.纪年年数 ?? 0) > 0) {
-    return `${t.纪年名称} ${t.纪年年数}年 ${md} ${clock}`;
-  }
-  if (体系 === '修真历' && t.纪年名称 && (t.纪年年数 ?? 0) > 0) {
-    return `${t.纪年名称}第${t.纪年年数}载 ${md} ${clock}`;
-  }
-  return `${t.年}年${pad2(t.月)}月${pad2(t.日)}日 ${clock}`;
+  return body;
 }
