@@ -19,8 +19,7 @@
  * 非现实时间，与系统时钟无关，随剧情推进而更新
  */
 import { computed } from 'vue';
-import { useGameTime } from '../store';
-import { formatGameTime, getDayOfWeekChinese } from '../utils/gameTime';
+import { formatGameTime, getDayOfWeekChinese, useGameTime } from '../utils/gameTime';
 
 const props = withDefaults(defineProps<{
   isDarkMode?: boolean;

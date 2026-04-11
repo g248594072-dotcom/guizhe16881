@@ -311,23 +311,6 @@ export function bumpUpdateTime() {
 }
 
 /**
- * 获取游戏内时间（响应式）
- * 从 MVU 变量中读取，完全由剧情变量控制，非现实时间
- * 使用方式: const gameTime = useGameTime()
- * 在模板中使用: {{ gameTime.年 }}/{{ gameTime.月 }}/{{ gameTime.日 }}
- */
-export function useGameTime() {
-  const store = useDataStore();
-  return computed(() => ({
-    年: store.data.游戏时间?.年 ?? 2026,
-    月: store.data.游戏时间?.月 ?? 4,
-    日: store.data.游戏时间?.日 ?? 4,
-    时: store.data.游戏时间?.时 ?? 12,
-    分: store.data.游戏时间?.分 ?? 0,
-  }));
-}
-
-/**
  * 推进游戏内时间（修改变量）
  * 推进指定分钟数，触发 schema 的 transform 处理进位
  */
