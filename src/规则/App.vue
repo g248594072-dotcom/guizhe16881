@@ -1676,10 +1676,13 @@ const editCartSubmitBlocked = computed(
 );
 /** 打开个人规则面板时要展开的分组名（与 rule.target / 角色名一致）；由子组件消费后清空 */
 const personalRulesExpandGroup = ref<string | null>(null);
-/** 第二 API 开始请求时顶部绿色横幅 */
+/** 第二 API 处理变量时顶部黄色提示条（至标签检核弹窗打开为止） */
 const secondaryApiBannerVisible = ref(false);
-const secondaryApiBannerText = ref('正在调用第二 API 生成变量更新…');
-let secondaryApiBannerHideTimer: ReturnType<typeof setTimeout> | null = null;
+const secondaryApiBannerText = ref('第二 API 正在生成变量更新，可先阅读正文。');
+
+function hideSecondaryApiBanner() {
+  secondaryApiBannerVisible.value = false;
+}
 const isModalOpen = ref(false);
 const modalType = ref('');
 const modalPayload = ref<Record<string, any> | null>(null);
@@ -3452,6 +3455,7 @@ async function sendMessage() {
 
   } catch (error) {
     console.error('❌ [App] 生成失败:', error);
+    hideSecondaryApiBanner();
     toastr.error('生成失败: ' + String(error));
 
     // 清理流式监听
@@ -3744,6 +3748,7 @@ async function handleRegenerate() {
     openTagValidationDialog(filteredResult);
   } catch (error) {
     console.error('❌ [App] 重 roll 失败:', error);
+    hideSecondaryApiBanner();
     refreshFromRerollAfterTagConfirm.value = false;
     toastr.error('重 roll 失败: ' + String(error));
     loadMessageContent();
@@ -4368,6 +4373,7 @@ async function rollbackToSnapshot() {
     userInput.value = lastUserInputSnapshot.value;
 
     // 4. 清理临时状态
+    hideSecondaryApiBanner();
     lastGenerationRaw.value = '';
     tagDialogEditedRaw.value = '';
     lastGenerationDurationLabel.value = '';
@@ -4390,6 +4396,7 @@ async function rollbackToSnapshot() {
 
 // 打开标签验证弹窗
 function openTagValidationDialog(rawText: string) {
+  hideSecondaryApiBanner();
   lastGenerationRaw.value = rawText;
   tagDialogEditedRaw.value = rawText;
   const elapsed =
@@ -4578,6 +4585,7 @@ async function onTagDialogIgnore() {
 // 停止开局生成（与生成失败一致：删掉本回合 user 楼层并回到开局界面）
 async function stopOpeningGeneration() {
   console.log('🛑 [App] 用户点击停止开局生成');
+  hideSecondaryApiBanner();
   if (openingGenerationId.value) {
     stopGenerationById(openingGenerationId.value);
   } else {
@@ -4935,6 +4943,7 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
   /** 开场白流程失败：删本回合 user 楼层、回到开局界面，避免只剩玩家楼层却被判为「已在游戏中」 */
   const abortOpeningInit = async (toastMessage: string, logError?: unknown) => {
     releaseOpeningStream();
+    hideSecondaryApiBanner();
     if (pendingUserMessageId.value != null && typeof deleteChatMessages === 'function') {
       try {
         await deleteChatMessages([pendingUserMessageId.value], { refresh: 'none' });
@@ -5196,17 +5205,14 @@ function onSecondaryApiStartEvent(ev: Event) {
   const attempt = custom.detail?.attempt;
   if (isGeneratingOpening.value) {
     openingSecondaryApiPhase.value = true;
+    // 开局全屏遮罩已提示「正在解析变量」，不再叠顶栏横幅
+    return;
   }
   secondaryApiBannerText.value =
     attempt != null && attempt > 1
-      ? `第二 API 重试中（第 ${attempt} 次）…`
-      : '正在调用第二 API 生成变量更新…';
+      ? `第二 API 重试中（第 ${attempt} 次），可先阅读正文。`
+      : '第二 API 正在生成变量更新，可先阅读正文。';
   secondaryApiBannerVisible.value = true;
-  if (secondaryApiBannerHideTimer) clearTimeout(secondaryApiBannerHideTimer);
-  secondaryApiBannerHideTimer = setTimeout(() => {
-    secondaryApiBannerVisible.value = false;
-    secondaryApiBannerHideTimer = null;
-  }, 4500);
 }
 
 onMounted(() => {
@@ -5314,10 +5320,7 @@ onUnmounted(() => {
   window.removeEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
   window.removeEventListener('pageshow', onPageShowStaleUserCheck);
   window.removeEventListener('message', onCharacterAvatarParentMessage);
-  if (secondaryApiBannerHideTimer) {
-    clearTimeout(secondaryApiBannerHideTimer);
-    secondaryApiBannerHideTimer = null;
-  }
+  hideSecondaryApiBanner();
   if (typeof unsubscribeMessageUpdate === 'function') {
     unsubscribeMessageUpdate();
   }
@@ -5338,7 +5341,7 @@ onUnmounted(() => {
 @use './styles/cyber-effects' as *;
 @use './styles/cyber-neon-mixins' as *;
 
-// 第二 API 开始请求：全宽绿色横幅（开局与主界面均通过 processWithSecondaryApi 触发）
+// 第二 API 处理变量：全宽黄色提示条（游戏内保持至标签检核弹窗打开）
 .secondary-api-banner {
   position: fixed;
   top: 0;
@@ -5355,11 +5358,11 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: #ecfdf5;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  background: linear-gradient(90deg, #047857 0%, #10b981 45%, #059669 100%);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  color: #422006;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  background: linear-gradient(90deg, #fcd34d 0%, #fbbf24 42%, #f59e0b 100%);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  border-bottom: 1px solid rgba(120, 53, 15, 0.22);
   pointer-events: none;
 }
 
