@@ -116,11 +116,10 @@ async function callBeautifyGenerateRawCustom(
   return String(result ?? '');
 }
 
-async function callBeautifyViaTavernPlug(userPrompt: string, config: SecondaryApiConfig): Promise<string> {
+async function callBeautifyViaTavernPlug(userPrompt: string, _config: SecondaryApiConfig): Promise<string> {
   if (typeof generateRaw !== 'function') {
     throw new Error('generateRaw 不可用，无法使用酒馆相同 API');
   }
-  const modelTrim = String(config.model || '').trim();
   const genConfig: Parameters<typeof generateRaw>[0] = {
     user_input: '',
     should_stream: false,
@@ -132,9 +131,7 @@ async function callBeautifyViaTavernPlug(userPrompt: string, config: SecondaryAp
       { role: 'user', content: userPrompt },
     ],
   };
-  if (modelTrim) {
-    genConfig.custom_api = { model: modelTrim };
-  }
+  // 不设置 custom_api.model：与主插头当前模型一致
   const result = await generateRaw(genConfig);
   return String(result ?? '');
 }

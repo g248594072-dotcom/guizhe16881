@@ -492,6 +492,19 @@
       </div>
 
       <div class="input-area">
+        <div v-if="showAbortGameSendChip" class="game-send-abort-row">
+          <button
+            type="button"
+            class="game-send-abort-btn"
+            :class="{ dark: isDarkMode, light: !isDarkMode }"
+            :aria-busy="gameSendAbortInFlight"
+            @click="void onAbortGameSendBeforeTagConfirm()"
+          >
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+            <span class="game-send-abort-label">回到发送前</span>
+            <span class="game-send-abort-hint">删除本轮玩家楼层，输入已填回</span>
+          </button>
+        </div>
         <div class="input-wrapper">
           <textarea
             id="llm-input"
@@ -1613,6 +1626,9 @@ import {
 /** 构建时注入，见 webpack DefinePlugin `__APP_VERSION__` */
 const appBuildVersion = __APP_VERSION__;
 
+/** 自增：用于在「放弃本回合」时使进行中的 `sendMessage` 在 await 返回后不再打开标签弹窗 */
+let gameSendFlowGeneration = 0;
+
 // 游戏阶段管理
 const gamePhase = ref<GamePhase>(GamePhase.OPENING);
 
@@ -1684,6 +1700,7 @@ const secondaryApiBannerText = ref('第二 API 正在生成变量更新，可先
 function hideSecondaryApiBanner() {
   secondaryApiBannerVisible.value = false;
 }
+
 const isModalOpen = ref(false);
 const modalType = ref('');
 const modalPayload = ref<Record<string, any> | null>(null);
@@ -1820,6 +1837,60 @@ const lastMaintextSnapshot = ref('');
 const lastOptionsSnapshot = ref<Option[]>([]);
 const lastMessageIdSnapshot = ref<number | undefined>(undefined);
 const pendingUserMessageId = ref<number | null>(null);
+
+/** 同 `sendMessage` 注册的流式监听 stop；便于中途取消时与 `sendMessage` 共用清理 */
+const pendingGameStreamUnsub = ref<(() => void) | null>(null);
+
+function clearPendingGameStreamSubscription() {
+  const stop = pendingGameStreamUnsub.value;
+  if (stop) {
+    try {
+      stop();
+    } catch {
+      /* 忽略 */
+    }
+    pendingGameStreamUnsub.value = null;
+  }
+}
+
+/** 当前是否处于「已点发送、尚未打开标签检核」的主线生成（不含重 ROLL / 开局 / 单独重 roll 变量） */
+const gameSendInProgressBeforeTag = ref(false);
+const gameSendAbortInFlight = ref(false);
+
+const showAbortGameSendChip = computed(
+  () =>
+    gamePhase.value === GamePhase.GAME &&
+    viewMode.value === 'normal' &&
+    isGenerating.value &&
+    !isTagDialogOpen.value &&
+    !isRegenerating.value &&
+    !isGeneratingOpening.value &&
+    !isVariablePersistInProgress.value &&
+    gameSendInProgressBeforeTag.value,
+);
+
+async function onAbortGameSendBeforeTagConfirm() {
+  if (gameSendAbortInFlight.value) return;
+  if (!showAbortGameSendChip.value) return;
+
+  gameSendAbortInFlight.value = true;
+  try {
+    gameSendFlowGeneration += 1;
+    gameSendInProgressBeforeTag.value = false;
+    clearPendingGameStreamSubscription();
+    hideSecondaryApiBanner();
+    await rollbackToSnapshot();
+    isGenerating.value = false;
+    streamTextBuffer.value = '';
+    toastr.info('已回到发送前：本轮玩家楼层已移除，输入内容已填回输入框');
+  } catch (e) {
+    console.error('❌ [App] 放弃本回合失败:', e);
+    toastr.error('放弃本回合失败: ' + String(e));
+  } finally {
+    gameSendAbortInFlight.value = false;
+  }
+}
+
 const showAiOutput = ref(false); // 是否展开显示AI完整输出
 /** 展开正文编辑时是否在弹窗内铺满（隐藏上方检核列表，textarea 占满剩余高度） */
 const tagDialogRawMaximized = ref(false);
@@ -3259,6 +3330,7 @@ async function sendMessage() {
   // 清空输入框
   userInput.value = '';
   isGenerating.value = true;
+  gameSendInProgressBeforeTag.value = true;
   streamTextBuffer.value = '';
 
   // 清空当前显示，准备流式接收
@@ -3268,6 +3340,7 @@ async function sendMessage() {
   let unsubscribeStream: any = null;
   let streamSubscriptionSuccess = false;
   let isThinkingComplete = false; // 标记是否已完成 thinking 标签的过滤
+  let myFlowGen = 0;
 
   // 检测当前输出模式（正常游戏使用）
   let isDualMode = false;
@@ -3284,6 +3357,8 @@ async function sendMessage() {
   }
 
   try {
+    myFlowGen = ++gameSendFlowGeneration;
+
     // 检查 generate 函数是否存在
     if (typeof generate !== 'function') {
       throw new Error('generate 函数不可用');
@@ -3294,6 +3369,9 @@ async function sendMessage() {
       // 监听流式传输事件
       if (iframe_events.STREAM_TOKEN_RECEIVED_FULLY) {
         const streamHandler = (text: string) => {
+          if (myFlowGen !== gameSendFlowGeneration) {
+            return;
+          }
           streamTextBuffer.value = text;
 
           // 过滤机制：检查是否所有过滤标签都已闭合
@@ -3318,6 +3396,7 @@ async function sendMessage() {
           const result = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandler);
           if (result && typeof result === 'object' && typeof result.stop === 'function') {
             unsubscribeStream = result.stop;
+            pendingGameStreamUnsub.value = unsubscribeStream;
             streamSubscriptionSuccess = true;
             console.log('✅ [App] 流式事件监听已注册（带过滤机制）');
           } else if (result === undefined || result === null) {
@@ -3372,6 +3451,11 @@ async function sendMessage() {
       }
     }
 
+    if (myFlowGen !== gameSendFlowGeneration) {
+      clearPendingGameStreamSubscription();
+      return;
+    }
+
     // ===== 触发数据库剧情推进 =====
     // 通过触发数据库的 capture 阶段监听器来标记用户发送意图
     // 数据库会在 generate() 调用时自动运行剧情推进流程
@@ -3395,6 +3479,11 @@ async function sendMessage() {
     });
     console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
 
+    if (myFlowGen !== gameSendFlowGeneration) {
+      clearPendingGameStreamSubscription();
+      return;
+    }
+
     // 双API模式：第二 API 变量 + 可选正文美化（并行）
     if (isDualMode && result) {
       try {
@@ -3412,15 +3501,14 @@ async function sendMessage() {
       }
     }
 
-    // 清理流式监听（确保即使 generate 失败也能清理）
-    if (streamSubscriptionSuccess && unsubscribeStream) {
-      try {
-        unsubscribeStream?.();
-        console.log('✅ [App] 流式事件监听已清理');
-      } catch (err) {
-        console.error('❌ [App] 清理流式事件监听失败:', err);
-      }
+    if (myFlowGen !== gameSendFlowGeneration) {
+      clearPendingGameStreamSubscription();
+      return;
     }
+
+    // 清理流式监听（确保即使 generate 失败也能清理）
+    clearPendingGameStreamSubscription();
+    console.log('✅ [App] 流式事件监听已清理');
 
     // 验证结果是否为空或无效
     if (!result || result.trim().length === 0) {
@@ -3435,9 +3523,16 @@ async function sendMessage() {
 
     // 兜底：有时 AI 只返回了被过滤标签，过滤后等于空回
     if (!filteredResult.trim() || (!parsedMaintext && parsedOptions.length === 0)) {
+      if (myFlowGen !== gameSendFlowGeneration) {
+        return;
+      }
       console.error('❌ [App] AI 返回为空（过滤后无正文和选项）');
       toastr.error('AI 本次返回为空，请重试');
       await rollbackToSnapshot();
+      return;
+    }
+
+    if (myFlowGen !== gameSendFlowGeneration) {
       return;
     }
 
@@ -3446,23 +3541,19 @@ async function sendMessage() {
     return; // 等待用户点击确认或回退
 
   } catch (error) {
+    clearPendingGameStreamSubscription();
+    if (myFlowGen !== gameSendFlowGeneration) {
+      return;
+    }
     console.error('❌ [App] 生成失败:', error);
     hideSecondaryApiBanner();
     toastr.error('生成失败: ' + String(error));
-
-    // 清理流式监听
-    if (unsubscribeStream) {
-      try {
-        unsubscribeStream?.();
-      } catch (e) {
-        // 忽略
-      }
-    }
 
     // 回退到快照状态
     await rollbackToSnapshot();
 
   } finally {
+    gameSendInProgressBeforeTag.value = false;
     // 只有在标签验证弹窗未打开时才重置生成状态
     if (!isTagDialogOpen.value) {
       isGenerating.value = false;
@@ -8225,6 +8316,75 @@ body.has-dragging-fab {
 .input-area {
   padding: var(--space-lg) calc(32px * var(--ui-scale, 1));
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.game-send-abort-row {
+  max-width: calc(1000px * var(--ui-scale, 1));
+  margin: 0 auto var(--space-sm);
+  display: flex;
+  justify-content: center;
+}
+
+.game-send-abort-btn {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 14px;
+  border-radius: var(--radius-lg);
+  font-size: calc(13px * var(--ui-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+
+  &:hover {
+    background: rgba(153, 27, 27, 0.5);
+    border-color: rgba(252, 165, 165, 0.65);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+}
+
+.game-send-abort-btn.dark {
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.15);
+}
+
+.game-send-abort-btn.light {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(254, 226, 226, 0.95);
+  color: #991b1b;
+
+  &:hover {
+    background: #fecaca;
+    border-color: rgba(185, 28, 28, 0.45);
+  }
+}
+
+.game-send-abort-label {
+  white-space: nowrap;
+}
+
+.game-send-abort-hint {
+  font-size: calc(11px * var(--ui-scale, 1));
+  font-weight: 500;
+  opacity: 0.88;
+  flex: 1 1 100%;
+  text-align: center;
+}
+
+@media (min-width: 520px) {
+  .game-send-abort-hint {
+    flex: 0 1 auto;
+    text-align: left;
+  }
 }
 
 .dark .input-area {

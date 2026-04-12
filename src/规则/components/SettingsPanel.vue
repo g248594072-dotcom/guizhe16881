@@ -193,7 +193,7 @@
 
       <label class="field-row checkbox-row">
         <input v-model="secondaryApi.useTavernMainConnection" type="checkbox" @change="persistSecondaryApi" />
-        <span>使用酒馆当前聊天补全连接（与主对话同一插头，密钥不写入本地）</span>
+        <span>使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效）</span>
       </label>
 
       <template v-if="!secondaryApi.useTavernMainConnection">
@@ -219,21 +219,28 @@
       </template>
 
       <template v-if="!secondaryApi.useTavernMainConnection">
-        <label class="field-label">模型</label>
+        <label class="field-label" for="secondary-model-text">输入模型名</label>
         <div class="model-row">
           <input
+            id="secondary-model-text"
             v-model="secondaryApi.model"
             class="field-input model-input"
             type="text"
-            list="secondary-model-datalist"
-            placeholder="手动输入或下方获取列表后选择"
+            placeholder="可手动输入；或在下方「可用模型」中点选后自动填入"
             autocomplete="off"
             @blur="persistSecondaryApi"
           />
-          <datalist id="secondary-model-datalist">
-            <option v-for="m in fetchedModels" :key="m" :value="m" />
-          </datalist>
         </div>
+        <label class="field-label" for="secondary-model-select">可用模型</label>
+        <select
+          id="secondary-model-select"
+          class="field-input secondary-model-select"
+          :value="secondaryModelSelectBinding"
+          @change="onSecondaryModelSelectChange"
+        >
+          <option value="">{{ fetchedModels.length ? '— 从列表选择 —' : '— 请先点击「获取可用模型」—' }}</option>
+          <option v-for="m in fetchedModels" :key="m" :value="m">{{ m }}</option>
+        </select>
       </template>
 
       <label class="field-label">最大重试次数（0–10，失败后的额外尝试次数）</label>
@@ -295,18 +302,12 @@
         <span>居民生活 / NPC 状态相关说明</span>
       </label>
 
-      <div class="api-actions">
-        <button
-          type="button"
-          class="btn-api"
-          :disabled="secondaryTestLoading"
-          @click="runSecondaryConnectionTest"
-        >
-          <i class="fa-solid fa-plug"></i>
-          {{ secondaryTestLoading ? '测试中…' : '连接测试' }}
+      <div v-if="!secondaryApi.useTavernMainConnection" class="api-actions">
+        <button type="button" class="btn-api" @click="saveSecondaryApiManual">
+          <i class="fa-solid fa-floppy-disk"></i>
+          保存
         </button>
         <button
-          v-if="!secondaryApi.useTavernMainConnection"
           type="button"
           class="btn-api btn-api-secondary"
           :disabled="secondaryModelsLoading"
@@ -503,7 +504,6 @@ import { ref, onMounted, computed } from 'vue';
 import type { OutputMode, SecondaryApiConfig, InputActionMode } from '../types';
 import {
   DEFAULT_SECONDARY_API_CONFIG,
-  testSecondaryApiConnection,
   fetchSecondaryApiModelList,
   clampSecondaryApiRetries,
 } from '../utils/apiSettings';
@@ -571,12 +571,17 @@ const clampedBeautifyChance = computed(() => {
   return Math.min(100, Math.max(0, v));
 });
 
+/** 当前模型 id 若在已拉取的列表中则与下拉同步，否则下拉显示占位项 */
+const secondaryModelSelectBinding = computed(() => {
+  const m = String(secondaryApi.value.model || '').trim();
+  return fetchedModels.value.includes(m) ? m : '';
+});
+
 const fontSettings = ref<FontSettings>({ ...DEFAULT_FONT_SETTINGS });
 
 const showSaveSuccess = ref(false);
 
 const fetchedModels = ref<string[]>([]);
-const secondaryTestLoading = ref(false);
 const secondaryModelsLoading = ref(false);
 const secondaryTestMessage = ref('');
 const secondaryTestOk = ref(false);
@@ -706,22 +711,19 @@ function onRetriesChange() {
   persistSecondaryApi();
 }
 
-async function runSecondaryConnectionTest() {
-  secondaryTestMessage.value = '';
-  secondaryTestLoading.value = true;
-  try {
-    await testSecondaryApiConnection(secondaryApi.value);
-    secondaryTestOk.value = true;
-    secondaryTestMessage.value = '连接成功：第二 API 可正常响应。';
-    toastr.success('第二 API 连接成功');
-  } catch (e) {
-    secondaryTestOk.value = false;
-    const msg = e instanceof Error ? e.message : String(e);
-    secondaryTestMessage.value = `连接失败：${msg}`;
-    toastr.error('第二 API 连接失败');
-  } finally {
-    secondaryTestLoading.value = false;
-  }
+/** 手动保存第二 API（自定义 URL 时；勾选酒馆插头时无此按钮，配置随各控件变更已自动保存） */
+function saveSecondaryApiManual() {
+  persistSecondaryApi();
+  secondaryTestOk.value = true;
+  secondaryTestMessage.value = '第二 API 配置已保存。';
+  toastr.success('第二 API 已保存');
+}
+
+function onSecondaryModelSelectChange(e: Event) {
+  const v = String((e.target as HTMLSelectElement).value || '').trim();
+  if (!v) return;
+  secondaryApi.value.model = v;
+  persistSecondaryApi();
 }
 
 async function runFetchModels() {
@@ -731,7 +733,7 @@ async function runFetchModels() {
     const list = await fetchSecondaryApiModelList(secondaryApi.value);
     fetchedModels.value = list.slice(0, 500);
     secondaryTestOk.value = true;
-    secondaryTestMessage.value = `已获取 ${list.length} 个模型（列表已填入「模型」下拉联想）。`;
+    secondaryTestMessage.value = `已获取 ${list.length} 个模型（可在下方「可用模型」中选择）。`;
     toastr.success(`已获取 ${list.length} 个模型`);
   } catch (e) {
     secondaryTestOk.value = false;
@@ -1624,6 +1626,37 @@ input:checked + .toggle-slider:before {
 
 .model-input {
   font-family: ui-monospace, monospace;
+}
+
+.secondary-model-select {
+  width: 100%;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+/* 可用模型下拉：黑底白字 / 亮底深字（与 dark 同节点 .dual-api-config.dark） */
+.dual-api-config.dark .secondary-model-select {
+  color-scheme: dark;
+  background-color: #0a0a0a;
+  color: #fafafa;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.dual-api-config.dark .secondary-model-select option {
+  background-color: #0a0a0a;
+  color: #fafafa;
+}
+
+.dual-api-config.light .secondary-model-select {
+  color-scheme: light;
+  background-color: #fff;
+  color: #18181b;
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+.dual-api-config.light .secondary-model-select option {
+  background-color: #fff;
+  color: #18181b;
 }
 
 .retry-row {

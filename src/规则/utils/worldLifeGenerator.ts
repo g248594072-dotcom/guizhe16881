@@ -647,8 +647,8 @@ async function callSecondaryApiForWorldLife(
     ],
   };
 
-  // Use custom model if specified
-  if (modelTrim) {
+  // 仅自定义第二 API 时允许用配置里的模型；使用酒馆插头时与主对话模型一致
+  if (modelTrim && !config.useTavernMainConnection) {
     genConfig.custom_api = { model: modelTrim };
   }
 

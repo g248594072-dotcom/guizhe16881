@@ -281,45 +281,6 @@ async function callSecondaryGenerateRawCustom(
   return String(result ?? '');
 }
 
-/**
- * 测试「使用酒馆相同 API」时第二 API 是否可走通（经 `generateRaw`，不读取页面密钥）
- */
-export async function testSecondaryApiTavernPlug(modelOverride?: string): Promise<void> {
-  if (typeof generateRaw !== 'function') {
-    throw new Error('generateRaw 不可用');
-  }
-  const modelTrim = String(modelOverride || '').trim();
-  const cfg: Parameters<typeof generateRaw>[0] = {
-    user_input: '',
-    should_stream: false,
-    should_silence: true,
-    max_chat_history: 0,
-    automatic_trigger: true, // 与变量第二路一致，避免扩展将静默 generateRaw 当主发送处理
-    ordered_prompts: [{ role: 'user', content: 'Reply with exactly one word: OK' }],
-  };
-  if (modelTrim) {
-    cfg.custom_api = { model: modelTrim };
-  }
-  await generateRaw(cfg);
-}
-
-/**
- * 连接测试：与第二 API 实际调用一致，均走 `generateRaw`（短提示、不注入完整预设/世界书/聊天记录）。
- */
-export async function testSecondaryApiConnection(config: SecondaryApiConfig): Promise<void> {
-  if (config.useTavernMainConnection) {
-    await testSecondaryApiTavernPlug(config.model);
-    return;
-  }
-  if (!String(config.url || '').trim()) {
-    throw new Error('请填写 API URL');
-  }
-  if (!String(config.key || '').trim()) {
-    throw new Error('请填写 API Key');
-  }
-  await callSecondaryGenerateRawCustom('Reply with exactly one word: OK', config, { includeSystem: false });
-}
-
 function stripTrailingUrlSlashes(s: string): string {
   return s.replace(/\/+$/, '');
 }
@@ -710,11 +671,10 @@ ${maintext}
 /**
  * 通过酒馆助手 `generateRaw` 调用当前聊天补全连接（与主对话同一「插头」）
  */
-async function callSecondaryApiViaGenerateRaw(prompt: string, config: SecondaryApiConfig): Promise<string> {
+async function callSecondaryApiViaGenerateRaw(prompt: string, _config: SecondaryApiConfig): Promise<string> {
   if (typeof generateRaw !== 'function') {
     throw new Error('generateRaw 不可用，无法使用酒馆相同 API');
   }
-  const modelTrim = String(config.model || '').trim();
   const genConfig: Parameters<typeof generateRaw>[0] = {
     user_input: '',
     should_stream: false,
@@ -726,9 +686,7 @@ async function callSecondaryApiViaGenerateRaw(prompt: string, config: SecondaryA
       { role: 'user', content: prompt },
     ],
   };
-  if (modelTrim) {
-    genConfig.custom_api = { model: modelTrim };
-  }
+  // 不设置 custom_api.model：与主插头当前模型一致（第二 API「模型」栏仅在自定义 URL 时生效）
   const result = await generateRaw(genConfig);
   return String(result ?? '');
 }
