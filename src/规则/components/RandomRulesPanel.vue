@@ -290,6 +290,7 @@ import {
   isEditCartEnabled,
   stageItem,
 } from '../utils/editCartFlow';
+import { normalizeOpenAiUrl } from '../utils/openaiUrl';
 
 interface GeneratedRule {
   id: string;
@@ -546,9 +547,10 @@ async function callAPI(prompt: string): Promise<string> {
   throw new Error('未找到可用的 API 配置');
 }
 
-// 调用第二 API
+// 调用第二 API（URL 与系统设置一致：根地址或带 /v1，均规范为单一 /v1/chat/completions）
 async function callSecondaryAPI(prompt: string, config: { url: string; key: string; model?: string }): Promise<string> {
-  const response = await fetch(`${config.url}/v1/chat/completions`, {
+  const chatUrl = normalizeOpenAiUrl(String(config.url || '').trim()).chatCompletionsUrl;
+  const response = await fetch(chatUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -594,56 +596,131 @@ async function callTavernAPI(prompt: string, creds: { url: string; key: string; 
   return data.choices?.[0]?.message?.content || '';
 }
 
+/** 将长文本压成一行并截断，便于错误提示里展示 */
+function previewForParseError(text: string, maxLen: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return '（空）';
+  return flat.length > maxLen ? `${flat.slice(0, maxLen)}…` : flat;
+}
+
+/**
+ * 从模型正文中取出供 JSON.parse 的字符串。
+ * 先匹配闭合 ``` 围栏；若无闭合则剥离开头 ```json / ```lang 及末尾可选 ```（不少模型不写结尾围栏）。
+ */
+function extractJsonStringFromAiContent(raw: string): { jsonStr: string; sourceLabel: string } {
+  const mClosedJson = raw.match(/```json\s*([\s\S]*?)```/i);
+  if (mClosedJson) {
+    return { jsonStr: mClosedJson[1].trim(), sourceLabel: '从 markdown 代码块中提取的片段' };
+  }
+  const mClosedGeneric = raw.match(/```[a-zA-Z0-9_-]*\s*([\s\S]*?)```/);
+  if (mClosedGeneric) {
+    return { jsonStr: mClosedGeneric[1].trim(), sourceLabel: '从 markdown 代码块中提取的片段' };
+  }
+
+  const stripTrailingFence = (s: string) => s.replace(/```\s*$/s, '').trim();
+
+  let t = raw.trim();
+  if (/^```json\s*/im.test(t)) {
+    const inner = stripTrailingFence(t.replace(/^```json\s*/im, '').trimEnd());
+    return { jsonStr: inner, sourceLabel: '剥离 ```json 围栏后的正文（未检测到配对闭合 ```）' };
+  }
+  if (/^```/.test(t)) {
+    const inner = stripTrailingFence(t.replace(/^```[a-zA-Z0-9_-]*\s*\n?/, '').trimEnd());
+    return { jsonStr: inner, sourceLabel: '剥离 ``` 代码围栏后的正文（未检测到配对闭合 ```）' };
+  }
+
+  const embedded = t.search(/```json\s*/i);
+  if (embedded >= 0) {
+    const inner = stripTrailingFence(
+      t.slice(embedded).replace(/^```json\s*/i, '').trimEnd(),
+    );
+    return { jsonStr: inner.trim(), sourceLabel: '从正文中定位 ```json 后剥离围栏（无闭合检测）' };
+  }
+
+  return { jsonStr: t, sourceLabel: '去除首尾空白后的全文' };
+}
+
 // 解析 API 返回结果
 function parseGeneratedRules(content: string): GeneratedRule[] {
-  try {
-    // 提取 JSON
-    const jsonMatch = content.match(/```json\s*([\s\S]*?)```/) || content.match(/```\s*([\s\S]*?)```/);
-    const jsonStr = jsonMatch ? jsonMatch[1].trim() : content.trim();
-    const data = JSON.parse(jsonStr);
-
-    const rules: GeneratedRule[] = [];
-
-    // 解析个人规则
-    if (data.personal && Array.isArray(data.personal)) {
-      data.personal.forEach((r: any, idx: number) => {
-        rules.push({
-          id: uniqueRuleId('gen-personal', idx),
-          title: r.title || r.name || '未命名规则',
-          desc: r.desc || r.description || r.effect || '无描述',
-          target: r.target || r.character || r.appliesTo || '未知角色',
-        });
-      });
-    }
-
-    // 解析区域规则
-    if (data.regional && Array.isArray(data.regional)) {
-      data.regional.forEach((r: any, idx: number) => {
-        rules.push({
-          id: uniqueRuleId('gen-regional', idx),
-          title: r.title || r.name || '未命名规则',
-          desc: r.desc || r.description || r.effect || '无描述',
-          regionName: r.regionName || r.region || r.area || '未知区域',
-        });
-      });
-    }
-
-    // 解析世界规则
-    if (data.world && Array.isArray(data.world)) {
-      data.world.forEach((r: any, idx: number) => {
-        rules.push({
-          id: uniqueRuleId('gen-world', idx),
-          title: r.title || r.name || '未命名规则',
-          desc: r.desc || r.description || r.effect || '无描述',
-        });
-      });
-    }
-
-    return rules;
-  } catch (e) {
-    console.error('解析生成结果失败:', e);
-    throw new Error('无法解析 AI 返回的内容');
+  const trimmedContent = content.trim();
+  if (!trimmedContent) {
+    throw new Error(
+      '无法解析 AI 返回的内容：接口返回的正文为空。请确认 API 正常返回了 choices[0].message.content，或模型是否未输出任何文本。',
+    );
   }
+
+  const { jsonStr, sourceLabel } = extractJsonStringFromAiContent(content);
+
+  if (!jsonStr) {
+    throw new Error(
+      `无法解析 AI 返回的内容：${sourceLabel}为空（例如匹配到空的 \`\`\`json 块或块未闭合）。正文预览：${previewForParseError(content, 220)}`,
+    );
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(jsonStr);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const truncatedHint = /unexpected end|end of json/i.test(msg)
+      ? '这通常表示 JSON 被截断（例如 max_tokens 不够）、模型没写完、或返回内容根本不是合法 JSON。'
+      : '';
+    console.error('解析生成结果失败:', e, { jsonPreview: previewForParseError(jsonStr, 400) });
+    throw new Error(
+      `无法解析 AI 返回的内容：JSON.parse 报错「${msg}」。${truncatedHint ? `${truncatedHint} ` : ''}当前${sourceLabel}预览：${previewForParseError(jsonStr, 320)}`,
+    );
+  }
+
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    const kind = data === null ? 'null' : Array.isArray(data) ? '数组' : typeof data;
+    throw new Error(
+      `无法解析 AI 返回的内容：JSON 根节点必须是对象（含 personal / regional / world 等字段），实际为「${kind}」。片段预览：${previewForParseError(jsonStr, 280)}`,
+    );
+  }
+
+  const rules: GeneratedRule[] = [];
+  const obj = data as {
+    personal?: unknown;
+    regional?: unknown;
+    world?: unknown;
+  };
+
+  // 解析个人规则
+  if (obj.personal && Array.isArray(obj.personal)) {
+    obj.personal.forEach((r: any, idx: number) => {
+      rules.push({
+        id: uniqueRuleId('gen-personal', idx),
+        title: r.title || r.name || '未命名规则',
+        desc: r.desc || r.description || r.effect || '无描述',
+        target: r.target || r.character || r.appliesTo || '未知角色',
+      });
+    });
+  }
+
+  // 解析区域规则
+  if (obj.regional && Array.isArray(obj.regional)) {
+    obj.regional.forEach((r: any, idx: number) => {
+      rules.push({
+        id: uniqueRuleId('gen-regional', idx),
+        title: r.title || r.name || '未命名规则',
+        desc: r.desc || r.description || r.effect || '无描述',
+        regionName: r.regionName || r.region || r.area || '未知区域',
+      });
+    });
+  }
+
+  // 解析世界规则
+  if (obj.world && Array.isArray(obj.world)) {
+    obj.world.forEach((r: any, idx: number) => {
+      rules.push({
+        id: uniqueRuleId('gen-world', idx),
+        title: r.title || r.name || '未命名规则',
+        desc: r.desc || r.description || r.effect || '无描述',
+      });
+    });
+  }
+
+  return rules;
 }
 
 // 生成规则主函数

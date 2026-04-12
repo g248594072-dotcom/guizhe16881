@@ -36,6 +36,7 @@
  * 浏览器与 iframe 不会按 HTML 解析（表现为整页源码或黑屏）。壳脚本会 fetch 后检测该情况，将 ./assets 等改为绝对地址并
  * 以 blob:text/html 注入 iframe（仅对上述来源做探测，本地与其它站点仍直接设 src）。
  */
+import { normalizeOpenAiUrl } from '../规则/utils/openaiUrl';
 import {
   PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
   PHONE_CHARACTER_AVATAR_SYNC_TYPE,
@@ -3318,8 +3319,8 @@ $(() => {
           const apiKey = cfg.apiKey;
           const model = request.model || cfg.model || 'default';
 
-          // 调用 API
-          const url = `${apiUrl.replace(/\/$/, '')}/v1/chat/completions`;
+          // 调用 API（避免 apiUrl 已含 /v1 时再拼出 /v1/v1/）
+          const url = normalizeOpenAiUrl(String(apiUrl || '').trim()).chatCompletionsUrl;
           const res = await fetch(url, {
             method: 'POST',
             headers: {
