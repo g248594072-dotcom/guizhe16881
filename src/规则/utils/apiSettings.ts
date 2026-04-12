@@ -6,7 +6,7 @@
 import type { OutputMode, SecondaryApiConfig, WorldbookEntry } from '../types';
 import { getCharBoundWorldbookName } from './charBoundWorldbookName';
 import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
-import { normalizeOpenAiUrl } from './openaiUrl';
+import { normalizeOpenAiUrl, type NormalizedOpenAiUrl } from './openaiUrl';
 import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
 import { getMergedSensitiveDevelopment } from './tagMap';
 import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
@@ -320,8 +320,106 @@ export async function testSecondaryApiConnection(config: SecondaryApiConfig): Pr
   await callSecondaryGenerateRawCustom('Reply with exactly one word: OK', config, { includeSystem: false });
 }
 
+function stripTrailingUrlSlashes(s: string): string {
+  return s.replace(/\/+$/, '');
+}
+
+/** 解析 OpenAI 风格 `GET /v1/models` 的 JSON（`data[].id` 或少数网关的 `models[]`） */
+function parseOpenAiModelsResponse(data: unknown): string[] {
+  if (data == null || typeof data !== 'object') return [];
+  const o = data as Record<string, unknown>;
+  const pickIds = (arr: unknown): string[] => {
+    if (!Array.isArray(arr)) return [];
+    const ids: string[] = [];
+    for (const x of arr) {
+      if (typeof x === 'string' && x.trim()) ids.push(x.trim());
+      else if (x && typeof x === 'object' && 'id' in x) {
+        const id = String((x as { id?: unknown }).id ?? '').trim();
+        if (id) ids.push(id);
+      }
+    }
+    return ids;
+  };
+  const fromData = pickIds(o.data);
+  if (fromData.length) return fromData;
+  return pickIds(o.models);
+}
+
+/**
+ * 与酒馆「自定义端点」对齐：优先带 `/v1` 的 apiBase，再试去掉 `/v1` 的 base，最后试用户原始输入（去尾斜杠）。
+ */
+function uniqueSecondaryGetModelListApiUrls(urlInput: string, normalized: NormalizedOpenAiUrl): string[] {
+  const raw = stripTrailingUrlSlashes(urlInput.trim());
+  const ordered = [normalized.apiBase, normalized.base, raw];
+  const out: string[] = [];
+  for (const u of ordered) {
+    if (u && !out.includes(u)) out.push(u);
+  }
+  return out;
+}
+
+async function trySecondaryGetModelList(
+  apiurl: string,
+  key: string | undefined,
+): Promise<{ ok: true; models: string[] } | { ok: false; reason: string }> {
+  try {
+    const models = await getModelList({ apiurl, key });
+    if (Array.isArray(models) && models.length > 0) {
+      return { ok: true, models };
+    }
+    return {
+      ok: false,
+      reason: !Array.isArray(models) ? '返回非数组' : '列表为空（0 个模型）',
+    };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** 在 iframe 内直连拉取模型列表（绕过部分环境下 `getModelList` 与酒馆主连接行为不一致的问题）；可能受 CORS 限制。 */
+async function tryFetchOpenAiModelsDirect(
+  urls: string[],
+  key: string,
+): Promise<{ ok: true; models: string[] } | { ok: false; reason: string }> {
+  const keyTrim = String(key || '').trim();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (keyTrim) {
+    headers.Authorization = `Bearer ${keyTrim}`;
+  }
+  let last = '';
+  for (const url of urls) {
+    if (!url) continue;
+    try {
+      const res = await fetch(url, { method: 'GET', headers });
+      const text = await res.text();
+      if (!res.ok) {
+        last = `${url} → HTTP ${res.status}${text ? `: ${text.slice(0, 160)}` : ''}`;
+        continue;
+      }
+      let data: unknown;
+      try {
+        data = JSON.parse(text) as unknown;
+      } catch {
+        last = `${url} → 响应不是合法 JSON`;
+        continue;
+      }
+      const ids = parseOpenAiModelsResponse(data);
+      if (ids.length) {
+        const uniq = [...new Set(ids)].sort((a, b) => a.localeCompare(b));
+        return { ok: true, models: uniq };
+      }
+      last = `${url} → JSON 中未解析到模型 id`;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      last = `${url} → ${msg.includes('Failed to fetch') ? 'Failed to fetch（常见于 CORS 或网络）' : msg}`;
+    }
+  }
+  return { ok: false, reason: last || '直连候选 URL 均失败' };
+}
+
 /**
  * 从当前配置拉取可用模型列表（OpenAI 兼容 `/v1/models`）。
+ * 依次：`getModelList`（apiBase → base → 用户原始 URL），仍失败则对 `modelsUrlCandidates` 发起直连 GET 再解析 JSON。
  */
 export async function fetchSecondaryApiModelList(config: SecondaryApiConfig): Promise<string[]> {
   if (typeof getModelList !== 'function') {
@@ -338,7 +436,26 @@ export async function fetchSecondaryApiModelList(config: SecondaryApiConfig): Pr
     throw new Error('请填写 API URL');
   }
   const normalized = normalizeOpenAiUrl(config.url);
-  return getModelList({ apiurl: normalized.base, key: config.key });
+  const key = config.key;
+  const triedLines: string[] = [];
+
+  for (const apiurl of uniqueSecondaryGetModelListApiUrls(config.url, normalized)) {
+    const r = await trySecondaryGetModelList(apiurl, key);
+    if (r.ok) {
+      return r.models;
+    }
+    triedLines.push(`getModelList(${apiurl}): ${r.reason}`);
+  }
+
+  const directUrls = [...new Set(normalized.modelsUrlCandidates)];
+  console.info('[fetchSecondaryApiModelList] getModelList 均未返回列表，尝试直连:', directUrls.join(', '));
+  const direct = await tryFetchOpenAiModelsDirect(directUrls, key);
+  if (direct.ok) {
+    return direct.models;
+  }
+  triedLines.push(`直连: ${direct.reason}`);
+
+  throw new Error(`获取模型列表失败：\n${triedLines.join('\n')}`);
 }
 
 /** 第二 API 即将发起网络请求时派发，供界面显示横幅（`App.vue` 监听） */
