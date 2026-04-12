@@ -9,7 +9,7 @@ import { normalizeOpenAiUrl } from './openAiUrl';
 export const SECONDARY_API_BEAUTIFY_START_EVENT = 'rule-modifier-secondary-api-start' as const;
 
 export const BEAUTIFY_SYSTEM_PROMPT =
-  '你是正文展示层编辑：**以原文为主**，对少量字词做局部 span；是否插入 <htmlcontent> 以用户消息「## 本轮附属指令」为准，不得擅自增减；不得改写事实、对白原句与顺序；不得删除或改写 <!-- … --> 注释；除 <BeautifiedMaintext> 外不要输出任何文字。';
+  '你是正文展示层编辑：**以原文为主**，对少量字词做局部 span；是否插入 <htmlcontent> 以用户消息「## 本轮附属指令」为准，不得擅自增减；若生成 <htmlcontent>，块内**所有玩家可见文案须为简体中文**；不得改写事实、对白原句与顺序；不得删除或改写 <!-- … --> 注释；除 <BeautifiedMaintext> 外不要输出任何文字。';
 
 /** 是否要求本回合生成 htmlcontent（每次美化调用独立 roll） */
 export type BeautifyHtmlcontentDirective = 'include' | 'omit';
@@ -29,6 +29,7 @@ function buildSlotDirective(directive: BeautifyHtmlcontentDirective, chancePerce
   if (directive === 'include') {
     return `## 本轮附属指令（设定几率 ${chancePercent}%：本轮抽中「生成小前端」，必须遵守）
 - 本回合须输出**恰好一块** <htmlcontent>…</htmlcontent>，并**紧跟** <span class="th-ui-meta">（一句话 UI 氛围）</span>（meta 在 htmlcontent 标签外）。
+- **小前端内全部玩家可见文字须为简体中文**（按钮、标题、说明等；禁止英文 UI 占位）。
 - **插入位置**：夹在叙事**中间**某处（两段之间、关键句后、或前段与后段之间），由剧情节奏决定；**禁止**每回合机械地固定在全文最后一句之后。
 - 块须全宽、浅字、可读；与当前段落弱相关或贴合描写，勿编造与正文矛盾的事实。`;
   }
