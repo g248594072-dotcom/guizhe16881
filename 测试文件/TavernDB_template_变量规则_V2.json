@@ -320,12 +320,209 @@
       }
     }
   },
+  "sheet_v2_protagonist": {
+    "uid": "sheet_v2_protagonist",
+    "name": "主角信息",
+    "sourceData": {
+      "note": "【表分工】本表只维护玩家主角（{{user}}）：有且仅有一行。女角、男配、路人 NPC 等剧情角色一律写入「角色核心」，禁止写入本表。\n\n记录主角的核心身份信息。此表必须保证有一行。禁止增删行\n\n【所在地点规则】\n所在地点必须等于世界地图点表中某个\"详细地点\"的值（精准匹配）\n仅填写地点名称本身，不包含层级结构\n正确: \"{{user}}公寓\" | \"御苑\"\n错误: \"东京-{{user}}公寓-卫生间\" | \"新宿区-御苑\"\n\n【位置同步规则】\n- 跨次要地区移动 → 同时更新全局数据表和本表\n- 同次要地区内移动 → 仅更新本表\n\n【字段格式】\n外貌特征: ≤30字，含身高体型等关键外观。普通服装在此描述，仅特殊装备入装备表。\n\n身份: 逗号分隔，≤20字\n示例: \"学生,魔法少女\"\n\n自身状态: 逗号分隔的状态标签\n状态类型: [生理,负面,正面,情绪,伤病]\n默认值: \"正常\"\n示例: \"正常\" | \"饥饿,疲劳\" | \"中毒,轻伤\"\n约束: 无异常时填\"正常\"；有异常时去掉\"正常\"\n\n<属性规则>\n基础属性: \"{基础属性}:{数值}\"，数值范围[5,95]\n示例: \"力量:55; 敏捷:31; 体质:51; 智力:59; 感知:60; 魅力:65\"\n\n特有属性: 角色的特殊能力与技能，体现世界观特色与个体差异。\n格式: \"{特有属性}:{数值}\"，数值范围[0,100]，数值代表成功概率\n示例: \"爆裂魔法:85; 时间回溯:70; 超电磁炮:90\"\n\n【属性标尺】\n5-14:能力缺失 | 15-41:弱项 | 42-59:平均 | 60-77:精英 | 78-86:极限 | 87-95:破格。基准: 数值呈指数增长；分布呈长尾状(绝大多数聚集在42-59，87+呈断崖式稀缺)，依角色[身份背景]生成，当前值受[当前状态]修正。如:重伤→5-14; 肾上腺素→78-86\n</属性规则>\n\n资源数据: \"{资源名}:{数值}\"，多组用分号分隔\n示例: \"金币:250; 行动点:3\"",
+      "initNode": "插入主角唯一条目，设定各列数据。",
+      "deleteNode": "禁止",
+      "updateNode": "触发条件: 年龄、外貌、身份、状态、位置、属性、资源变化时（位置变化时，如果新地点不在世界地图点表中，需先在世界地图点表中添加该地点）",
+      "insertNode": "禁止"
+    },
+    "content": [
+      [
+        null,
+        "姓名",
+        "性别",
+        "年龄",
+        "外貌特征",
+        "身份",
+        "自身状态",
+        "所在地点",
+        "基础属性",
+        "特有属性",
+        "资源数据"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": 4,
+      "updateFrequency": -1,
+      "batchSize": 4,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "主角信息",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "主角信息-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 5
+  },
+  "sheet_v2_inventory": {
+    "uid": "sheet_v2_inventory",
+    "name": "背包物品",
+    "sourceData": {
+      "note": "记录主角拥有的非装备类物品。\n\n【分类规则】\n本表录入: [消耗品,材料,任务物品,道具]\n禁入: [装备类,货币(金/银/铜币,银子,灵石等),点数(行动点、积分]\n\n【堆叠规则】\n- 同名可堆叠物品获取时更新数量，禁止新增重复行\n- 任务物品或唯一物品数量固定为1\n\n【约束】\n- 物品总数≤20条\n\n【字段说明】\n物品名称: ≤10字\n类型: [消耗品,材料,任务物品,道具]\n- 消耗品: 使用后消失，如药水、卷轴、食物\n- 材料: 用于制作/合成/交易\n- 任务物品: 与任务相关，含钥匙、通行证、信物等\n- 道具: 可重复使用的功能性物品，如望远镜、绳索\n数量: 正整数\n品质: [普通,优秀,稀有,史诗,传说,神话]\n描述: ≤30字，含外观、效果、用途",
+      "initNode": "根据设定添加主角初始携带物品。",
+      "deleteNode": "触发条件: ①物品数量归零 ②完全消耗 ③全部丢弃或摧毁 ④超过20条时删除品质最低且最不相关的",
+      "updateNode": "触发条件: ①数量变化 ②描述变化",
+      "insertNode": "触发条件: 获得背包中没有的新物品"
+    },
+    "content": [
+      [
+        null,
+        "物品名称",
+        "类型",
+        "数量",
+        "品质",
+        "描述"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": -1,
+      "updateFrequency": -1,
+      "batchSize": -1,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "物品表",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "物品表-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 6
+  },
+  "sheet_v2_quests": {
+    "uid": "sheet_v2_quests",
+    "name": "任务表",
+    "sourceData": {
+      "note": "记录主角当前承接的所有任务。\n\n【准入规则】\n录入(OR): [主线任务,支线任务,悬赏通缉,委托请求]\n禁入: [单轮可完成动作,世界规则类信息,无明确目标的事项]\n判断标准: 有明确完成目标 AND 需跨越2轮以上交互\n\n【字段说明】\n类型: [主线,支线,日常]\n优先级: [紧急,重要,普通]\n目标: 一句话描述完成条件，≤50字\n进度(%): 必须是百分比数值格式，范围[0%,100%]\n格式: \"{数字}%\"，数字为0-100的整数\n正确示例: \"0%\" | \"50%\"\n错误示例: \"已完成一半\" | \"接近完成\" | \"50\" \n禁止: 任何描述性文字、中文数字、不带百分号或格式错误的数值\n状态(Enum Tag): 必须从以下四个固定值中选择一个，禁止使用百分比或其他格式\n可选值: [进行中,已完成,已失败,已放弃]\n正确示例: \"进行中\" | \"已完成\" | \"已失败\" | \"已放弃\"\n错误示例: \"25%\" | \"50%\" | \"进行中50%\" | \"一半\" | 任何包含百分号的格式\n重要: 状态(Enum Tag)列和进度(%)列是不同字段，状态(Enum Tag)列禁止填入百分比，百分比只能填入进度(%)列",
+      "initNode": "添加初始任务（如有）。",
+      "deleteNode": "触发条件: 每轮必须检查并执行以下清理流程。\n流程1(归档清理): 检查所有[已完成/已失败/已放弃]的终态任务，仅保留最近结束的2条作为记录，其余终态任务必须全部删除。\n流程2(容量控制): 完成流程1后，如果任务总数仍超过10条，则在[进行中]的任务中，按优先级[普通→重要→紧急]顺序，删除最旧的低优先级任务，直到总数≤10。",
+      "updateNode": "触发条件: ①进度(%)变化 ②状态(Enum Tag)变化",
+      "insertNode": "触发条件: 接受新任务"
+    },
+    "content": [
+      [
+        null,
+        "名称",
+        "类型",
+        "优先级",
+        "目标",
+        "进度(%)",
+        "状态(Enum Tag)",
+        "来源",
+        "奖励"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": -1,
+      "updateFrequency": -1,
+      "batchSize": -1,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": false,
+      "splitByRow": false,
+      "entryName": "任务表",
+      "entryType": "constant",
+      "keywords": "",
+      "preventRecursion": true,
+      "injectionTemplate": "",
+      "extraIndexEnabled": false,
+      "extraIndexEntryName": "任务表-索引",
+      "extraIndexColumns": [],
+      "extraIndexColumnModes": {},
+      "extraIndexInjectionTemplate": "",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99990
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 2,
+        "order": 99991
+      }
+    },
+    "orderNo": 7
+  },
   "sheet_v2_character_core": {
     "uid": "sheet_v2_character_core",
     "name": "角色核心",
     "sourceData": {
-      "note": "【对应变量】角色档案.<档案ID> 全量字段。身体部位、敏感点、服装槽位、饰品、性癖条目均在本表同一行的五个 JSON 列中维护，禁止再拆到其它 sheet。\n\n【单表约束】本模板顶层仅：元信息、游戏时间、世界/区域/个人规则、角色核心、游戏状态扩展。每名角色一行。\n\n【检查清单 · 登场】\n1. 正文出现有戏份、有对话、高颜值或性格特殊的女性角色时：本回合必须 insertRow 一行并写满所有列；禁止空列；性格JSON、身份标签JSON 须合法；五个嵌套 JSON 列须为合法 JSON：身体部位与敏感点须覆盖必建部位；饰品无则饰品JSON 可用 {}；性癖条目JSON 至少含一条对象。\n2. 档案ID 唯一，可与姓名相同。\n\n【检查清单 · 标量字段】\n3. 状态：出场中 | 暂时退场；场景切换、进出干涉范围或时间大幅跳跃时更新。\n4. 当前内心想法：高频短对话可更新；随游戏时间可向顺从/发情侧偏移。\n5. 隐藏性癖：文本摘要；极端羞耻显露后：将内容并入性癖条目JSON（可见性改为明面），并清空或缩短本列。\n6. 年龄/身高/体重：数字或可解析字符串；三围、体质特征：文本。\n7. 好感度 ±(1~3)；发情值言语撩拨 +(5~15)，随时间发酵，发泄后可回落；性癖开发值 +(2~8)，达 100 时在性癖条目JSON 内新增或升级条目后本列归零。\n8. 当前综合生理描述：发情值、敏感点、服装破损变化时汇总更新。\n9. 级联：规则表、跨日结算须同步更新本行相关 JSON 与标量。\n\n【身体部位物理状态JSON】\n对象，键=部位名，值={\"外观描述\":\"\",\"当前状态\":\"\"}。建档至少含：脸部、手部、乳房、乳头、小穴、脚部。仅客观物理，禁止主观情绪。服装剥夺/摩擦/规则干涉时更新对应键的当前状态。\n\n【敏感点开发JSON】\n对象，键=部位名（建议与身体部位键对齐），值={\"敏感等级\":0,\"生理反应\":\"\",\"开发细节\":\"\"}。随视线、触碰、规则更新；与性癖开发值增长配合。\n\n【服装槽位JSON】\n对象，固定键：上装、下装、内衣、足部。每键值={\"名称\":\"\",\"状态\":\"\",\"描述\":\"\"}。剥夺/破损只改对应键。未穿着某槽可写 名称空、状态「无」。\n\n【饰品JSON】\n对象，键=饰品名，值={\"状态\":\"\",\"描述\":\"\"}。装备变化时增删改键。\n\n【性癖条目JSON】\n数组，元素={\"性癖名\":\"\",\"等级\":0,\"细节描述\":\"\",\"自我合理化\":\"\",\"可见性\":\"明面|隐藏\"}。隐藏可改为明面或合并；等级质变与性癖开发值归零同一轮完成。\n\n【性格JSON 样例】\n{\"傲娇\":\"嘴硬但会偷看主角\",\"认真\":\"对学业极度执着\"}\n\n【身份标签JSON 样例】\n{\"学姐\":\"同社团前辈\",\"邻居\":\"对门住户\"}",
-      "initNode": "开局每人一行；新角色登场 insertRow 并一次性写满标量列与五个 JSON 列。",
+      "note": "【对应变量】角色档案.<档案ID> 全量字段。身体部位、敏感点、服装槽位、饰品、性癖条目均在本表同一行的五个 JSON 列中维护，禁止再拆到其它 sheet。\n\n【表分工】本表为剧情向角色（女角、须跟踪的配角等），一人一行。玩家主角（{{user}}）禁止出现在本表；主角属性、状态、地点只在「主角信息」，随身物在「背包物品」。\n\n【单表约束】本模板顶层含：元信息、游戏时间、世界/区域/个人规则、主角信息、背包物品、任务表、纪要表、角色核心、游戏状态扩展。「每名角色一行」专指本「角色核心」表中的剧情角色行；玩家主角仅一行写在「主角信息」。\n\n【检查清单 · 登场】\n1. 正文出现有戏份、有对话、高颜值或性格特殊的女性角色或须跟踪的配角时（不含玩家主角）：本回合必须 insertRow 一行并写满所有列；禁止空列；性格JSON、身份标签JSON 须合法；五个嵌套 JSON 列须为合法 JSON：身体部位与敏感点须覆盖必建部位；饰品无则饰品JSON 可用 {}；性癖条目JSON 至少含一条对象。\n2. 档案ID 唯一，可与姓名相同。\n\n【检查清单 · 标量字段】\n3. 状态：出场中 | 暂时退场；场景切换、进出干涉范围或时间大幅跳跃时更新。\n4. 当前内心想法：高频短对话可更新；随游戏时间可向顺从/发情侧偏移。\n5. 隐藏性癖：文本摘要；极端羞耻显露后：将内容并入性癖条目JSON（可见性改为明面），并清空或缩短本列。\n6. 年龄/身高/体重：数字或可解析字符串；三围、体质特征：文本。\n7. 好感度 ±(1~3)；发情值言语撩拨 +(5~15)，随时间发酵，发泄后可回落；性癖开发值 +(2~8)，达 100 时在性癖条目JSON 内新增或升级条目后本列归零。\n8. 当前综合生理描述：发情值、敏感点、服装破损变化时汇总更新。\n9. 级联：规则表、跨日结算须同步更新本行相关 JSON 与标量。\n\n【身体部位物理状态JSON】\n对象，键=部位名，值={\"外观描述\":\"\",\"当前状态\":\"\"}。建档至少含：脸部、手部、乳房、乳头、小穴、脚部。仅客观物理，禁止主观情绪。服装剥夺/摩擦/规则干涉时更新对应键的当前状态。\n\n【敏感点开发JSON】\n对象，键=部位名（建议与身体部位键对齐），值={\"敏感等级\":0,\"生理反应\":\"\",\"开发细节\":\"\"}。随视线、触碰、规则更新；与性癖开发值增长配合。\n\n【服装槽位JSON】\n对象，固定键：上装、下装、内衣、足部。每键值={\"名称\":\"\",\"状态\":\"\",\"描述\":\"\"}。剥夺/破损只改对应键。未穿着某槽可写 名称空、状态「无」。\n\n【饰品JSON】\n对象，键=饰品名，值={\"状态\":\"\",\"描述\":\"\"}。装备变化时增删改键。\n\n【性癖条目JSON】\n数组，元素={\"性癖名\":\"\",\"等级\":0,\"细节描述\":\"\",\"自我合理化\":\"\",\"可见性\":\"明面|隐藏\"}。隐藏可改为明面或合并；等级质变与性癖开发值归零同一轮完成。\n\n【性格JSON 样例】\n{\"傲娇\":\"嘴硬但会偷看主角\",\"认真\":\"对学业极度执着\"}\n\n【身份标签JSON 样例】\n{\"学姐\":\"同社团前辈\",\"邻居\":\"对门住户\"}",
+      "initNode": "开局每名应写入「角色核心」的剧情角色各一行；新角色登场 insertRow 并一次性写满标量列与五个 JSON 列。玩家主角不写本表。",
       "deleteNode": "角色永久退场且不再引用时可删行。",
       "updateNode": "随剧情、规则、时间更新；可只 updateRow 改部分列，但五个 JSON 须保持合法 JSON；性癖开发值 100 质变后归零。",
       "insertNode": "新角色登场；档案ID 唯一。"
@@ -404,7 +601,75 @@
         "order": 99984
       }
     },
-    "orderNo": 5
+    "orderNo": 8
+  },
+  "sheet_v2_summary": {
+    "uid": "sheet_v2_summary",
+    "name": "纪要表",
+    "sourceData": {
+      "note": "轮次日志，每轮交互后必须立即插入一条新记录。\n【编码索引】\n- 格式为 AMXXXX，XX从0001递增\n\n【时间跨度】\n- 本轮事件发生的精确时间范围。格式: \"{起始时间} ~ {结束时间}\"。示例: YYYY-MM-DD HH:MM。\n\n【概览】\n- 30字以内，一句话概括纪要内容，不加入主观判断或推测，不能包含纪要中没有的信息。\n\n【纪要】\n- 以第三方视角客观记录本轮事件，不得加入推测、情绪化语言、负面解读或主观判断。内容必须基于正文明确发生的事实，不得补充未出现的情节，不少于300字，结尾部分禁止进行总结或者升华。\n- 行文生活化，用词直白露骨，文字基调积极向上。避免使用'A与B就某某话题达成协议''A确立了某某计划'一类的正式措辞或官样文章。\n- 保留角色情感细节并摒弃其中的任何支配欲、占有欲描写。\n- 如果上下文包含多轮交互，将其总结为一条记录。\n- 允许内容:[主要事件,涉及角色,角色动作,物品交互,物品全名,物品得失,位置变化,地点全名,状态变化,新发现,伏笔,暗号,重要情报,任务目标]\n- 禁止内容:[极端情绪,夸张,比喻,升华,支配欲,掌控欲]",
+      "initNode": "插入AM0001记录，记录初始场景和角色状态。",
+      "deleteNode": "禁止。",
+      "updateNode": "禁止。",
+      "insertNode": "每轮交互结束后插入新记录，编码索引递增。"
+    },
+    "content": [
+      [
+        null,
+        "编码索引",
+        "时间跨度",
+        "概览",
+        "纪要"
+      ]
+    ],
+    "updateConfig": {
+      "uiSentinel": -1,
+      "contextDepth": -1,
+      "updateFrequency": -1,
+      "batchSize": -1,
+      "skipFloors": -1
+    },
+    "exportConfig": {
+      "enabled": true,
+      "splitByRow": true,
+      "entryName": "纪要",
+      "entryType": "keyword",
+      "keywords": "编码索引",
+      "preventRecursion": true,
+      "injectionTemplate": "<记忆回溯>\n$1\n</记忆回溯>",
+      "extraIndexEnabled": true,
+      "extraIndexEntryName": "总结表-索引",
+      "extraIndexColumns": [
+        "概览",
+        "编码索引"
+      ],
+      "extraIndexColumnModes": {
+        "概览": "index_only",
+        "编码索引": "both"
+      },
+      "extraIndexInjectionTemplate": "<已发生的事件概览>\n$1\n</已发生的事件概览>",
+      "entryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 999,
+        "order": 10000
+      },
+      "extraIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 1000,
+        "order": 10010
+      },
+      "fixedEntryPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 9999,
+        "order": 99987
+      },
+      "fixedIndexPlacement": {
+        "position": "at_depth_as_system",
+        "depth": 9999,
+        "order": 99988
+      }
+    },
+    "orderNo": 9
   },
   "sheet_v2_game_state": {
     "uid": "sheet_v2_game_state",
@@ -464,7 +729,7 @@
         "order": 99991
       }
     },
-    "orderNo": 6
+    "orderNo": 10
   },
   "mate": {
     "type": "chatSheets",

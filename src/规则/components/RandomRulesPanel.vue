@@ -20,7 +20,6 @@
         <i :class="isGenerating ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-wand-magic-sparkles'"></i>
         {{ isGenerating ? '生成中...' : '生成随机规则' }}
       </button>
-      <p v-if="isGenerating" class="generating-hint">正在调用 AI 生成生活规则，请稍候...</p>
     </div>
 
     <!-- 生成结果区 -->
@@ -144,6 +143,21 @@
       <i class="fa-solid fa-circle-exclamation"></i>
       {{ errorMessage }}
     </div>
+
+    <Transition name="generating-fade">
+      <div
+        v-if="isGenerating"
+        class="generating-overlay"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <span class="generating-overlay__label">
+          <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+          生成中....
+        </span>
+      </div>
+    </Transition>
   </div>
 
   <!-- 主题输入弹窗 -->
@@ -806,9 +820,71 @@ async function confirmApplyFromDialog() {
 
 <style scoped lang="scss">
 .random-rules-panel {
+  position: relative;
   padding: 16px;
   max-width: 800px;
   margin: 0 auto;
+}
+
+.generating-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.random-rules-panel.dark .generating-overlay {
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(3px);
+}
+
+.random-rules-panel.light .generating-overlay {
+  background: rgba(248, 250, 252, 0.86);
+  backdrop-filter: blur(3px);
+}
+
+.generating-overlay__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
+.random-rules-panel.dark .generating-overlay__label {
+  color: #f5e8ff;
+  text-shadow:
+    0 0 12px rgba(178, 0, 255, 0.65),
+    0 0 28px rgba(139, 92, 246, 0.45);
+
+  i {
+    color: #c084fc;
+  }
+}
+
+.random-rules-panel.light .generating-overlay__label {
+  color: #6b21a8;
+  text-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+
+  i {
+    color: #7c3aed;
+  }
+}
+
+.generating-fade-enter-active,
+.generating-fade-leave-active {
+  transition: opacity 0.22s ease;
+}
+
+.generating-fade-enter-from,
+.generating-fade-leave-to {
+  opacity: 0;
 }
 
 .panel-description {
@@ -871,18 +947,6 @@ async function confirmApplyFromDialog() {
       cursor: not-allowed;
     }
   }
-
-  .generating-hint {
-    margin-top: 12px;
-    font-size: 0.9em;
-    opacity: 0.7;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
 }
 
 .results-section {
