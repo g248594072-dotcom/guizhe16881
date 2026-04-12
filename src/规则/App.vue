@@ -147,7 +147,6 @@
       'layout-pending': uiLayout.maxHeight === undefined,
       'animate-shake': isShaking,
       'has-mvu-missing-tip': showMvuMissingTip,
-      'has-mvu-archive-banner': rulesMvuArchiveReadOnly,
     }"
     :style="rootStyle"
   >
@@ -174,15 +173,6 @@
       >
         <i class="fa-solid fa-xmark" aria-hidden="true"></i>
       </button>
-    </div>
-    <div
-      v-if="rulesMvuArchiveReadOnly"
-      class="rules-mvu-archive-banner"
-      :class="{ dark: isDarkMode, light: !isDarkMode }"
-      role="status"
-    >
-      <i class="fa-solid fa-eye" aria-hidden="true"></i>
-      <span>历史楼层快照，仅可查看；编辑与变量写入请在<strong>最后一条消息</strong>上的面板中操作。</span>
     </div>
     <!-- Sidebar -->
     <nav class="sidebar">
@@ -370,21 +360,28 @@
       <div class="game-content">
         <!-- 普通模式：正文 + 选项 -->
         <template v-if="viewMode === 'normal'">
-          <!-- 重ROLL 遮罩：仅覆盖主内容区，不挡侧边栏；结束会正常弹出标签检验 -->
-          <div v-if="isRegenerating" class="regenerate-overlay" :class="{ dark: isDarkMode, light: !isDarkMode }">
+          <!-- 重ROLL：仅尚无正文时遮罩（与发消息一致：流出正文后可读，第二 API 顶栏不挡） -->
+          <div
+            v-if="isRegenerating && !mainText"
+            class="regenerate-overlay"
+            :class="{ dark: isDarkMode, light: !isDarkMode }"
+          >
             <i class="fa-solid fa-circle-notch fa-spin regenerate-spin"></i>
             <span>正在重ROLL，请稍等...</span>
           </div>
           <div class="turn-layout">
-            <!-- 正文滚动区域（重ROLL 时虚化） -->
+            <!-- 正文滚动区域（重ROLL 仅无正文时虚化；有正文时与首次生成一样先读再等标签） -->
             <div
               class="maintext-area"
-              :class="{ 'is-blurred': isRegenerating, 'secondary-api-active': secondaryApiBannerVisible }"
+              :class="{
+                'is-blurred': isRegenerating && !mainText,
+                'secondary-api-active': secondaryApiBannerVisible,
+              }"
             >
               <!-- 生成中提示 -->
               <div v-if="isGenerating && !mainText" class="generating-indicator">
                 <i class="fa-solid fa-circle-notch fa-spin"></i>
-                <span>AI 正在思考...</span>
+                <span>{{ isRegenerating ? '正在重ROLL…' : 'AI 正在思考...' }}</span>
               </div>
               <!-- 正文内容（长按显示重roll/编辑） -->
               <div
@@ -1624,7 +1621,7 @@ const gameSurfaceTeleportTarget = computed(() =>
   gamePhase.value === GamePhase.GAME ? '#app-root' : 'body',
 );
 const isInitializing = ref(false);
-/** 历史楼层 iframe：只读快照，不可写入 latest */
+/** 历史楼层 iframe：只读快照（writeBack=false）；用于禁用暂存提交等，不显示顶栏提示 */
 const rulesMvuArchiveReadOnly = ref(false);
 const isStoreReady = ref(false); // store 数据是否就绪
 const showMvuMissingTip = ref(false); // 是否显示 MVU 缺失提示
@@ -1783,7 +1780,7 @@ const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
 // 同层界面状态
 const userInput = ref('');
 const isGenerating = ref(false);
-const isRegenerating = ref(false); // 重 roll 中，用于显示「正在重ROLL请稍等」遮罩与正文虚化
+const isRegenerating = ref(false); // 全文重 roll 中；遮罩/虚化仅在尚无正文时启用（流出正文后与发消息一致可先读）
 /** 长按重 ROLL 生成完成后：在标签弹窗「确认」写入楼层后强制刷新一次（避免 messageId 未变导致 loadMessageContent 跳过） */
 const refreshFromRerollAfterTagConfirm = ref(false);
 /** 单独重roll变量模式：只更新变量，不修改正文/选项/sum，更新现有消息而不是创建新消息 */
@@ -3679,6 +3676,9 @@ async function handleRegenerate() {
     return;
   }
 
+  let unsubscribeStreamReroll: (() => void) | null = null;
+  let streamSubscriptionSuccessReroll = false;
+
   try {
     isGenerating.value = true;
     isRegenerating.value = true;
@@ -3709,11 +3709,53 @@ async function handleRegenerate() {
       throw new Error('generate 函数不可用');
     }
 
+    // 与 sendMessage 一致：流式更新正文，便于重 ROLL 过程中先阅读再进第二 API / 标签检核
+    mainText.value = '';
+    options.value = [];
+    streamTextBuffer.value = '';
+    let isThinkingCompleteReroll = false;
+    if (typeof eventOn === 'function' && typeof iframe_events !== 'undefined' && iframe_events.STREAM_TOKEN_RECEIVED_FULLY) {
+      const streamHandlerReroll = (text: string) => {
+        streamTextBuffer.value = text;
+        if (!isThinkingCompleteReroll) {
+          isThinkingCompleteReroll = isFilteringComplete(text);
+          if (!isThinkingCompleteReroll) {
+            mainText.value = 'AI 正在思考...';
+            return;
+          }
+        }
+        const filteredText = extractFilteredContent(text);
+        const parsed = parseMaintext(filteredText);
+        if (parsed) {
+          mainText.value = parsed;
+        }
+      };
+      try {
+        const sub = eventOn(iframe_events.STREAM_TOKEN_RECEIVED_FULLY, streamHandlerReroll);
+        if (sub && typeof sub === 'object' && typeof sub.stop === 'function') {
+          unsubscribeStreamReroll = sub.stop;
+          streamSubscriptionSuccessReroll = true;
+        }
+      } catch (err) {
+        console.error('❌ [App] 重 ROLL 注册流式监听失败:', err);
+      }
+    }
+
     aiGenerationStartMs.value = Date.now();
     let result = await generate({
       user_input: userMessageText,
       should_stream: true,
     });
+
+    if (streamSubscriptionSuccessReroll && unsubscribeStreamReroll) {
+      try {
+        unsubscribeStreamReroll();
+      } catch (err) {
+        console.error('❌ [App] 重 ROLL 清理流式监听失败:', err);
+      }
+      unsubscribeStreamReroll = null;
+      streamSubscriptionSuccessReroll = false;
+    }
 
     // 双API模式：第二 API 变量 + 可选正文美化
     if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
@@ -3741,6 +3783,13 @@ async function handleRegenerate() {
     toastr.error('重 roll 失败: ' + String(error));
     loadMessageContent();
   } finally {
+    if (streamSubscriptionSuccessReroll && unsubscribeStreamReroll) {
+      try {
+        unsubscribeStreamReroll();
+      } catch {
+        /* 忽略 */
+      }
+    }
     isGenerating.value = false;
     isRegenerating.value = false;
   }
@@ -3789,10 +3838,9 @@ async function handleRegenerateVariablesOnly() {
 
   try {
     isGenerating.value = true;
-    isRegenerating.value = true;
     contextMenu.value = null;
 
-    // 读取输出模式与第二 API 配置
+    // 读取输出模式与第二 API 配置（不置 isRegenerating：保留当前正文可读，仅顶栏第二 API 提示）
     let mode: OutputMode = 'single';
     let secondaryApiConfig: any = null;
     try {
@@ -3945,7 +3993,6 @@ ${maintext}
     loadMessageContent();
   } finally {
     isGenerating.value = false;
-    isRegenerating.value = false;
   }
 }
 
@@ -4159,7 +4206,8 @@ async function handleSaveEdit() {
     );
     editingMessage.value = null;
     editingText.value = '';
-    loadMessageContent();
+    // 同楼层编辑后 messageId 不变，loadMessageContent 会跳过更新，需强制刷新
+    refreshMessage();
     toastr.success('正文已保存');
   } catch (error) {
     console.error('❌ [App] 保存编辑失败:', error);
@@ -5420,47 +5468,6 @@ onUnmounted(() => {
   }
 }
 
-// 历史楼层只读提示（可与 MVU 缺失条并存：下移避免重叠）
-.rules-mvu-archive-banner {
-  position: fixed;
-  left: 0;
-  right: 0;
-  width: 100%;
-  max-width: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px calc(16px * var(--ui-scale, 1));
-  min-height: 40px;
-  box-sizing: border-box;
-  font-size: calc(12px * var(--ui-scale, 1));
-  line-height: 1.45;
-  z-index: 9998;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-  top: 0;
-
-  .rule-modifier.has-mvu-missing-tip & {
-    top: 44px;
-  }
-
-  i {
-    flex-shrink: 0;
-    opacity: 0.9;
-  }
-
-  &.dark {
-    background: #1e3a5f;
-    border-bottom: 1px solid #3b82f6;
-    color: #e0f2fe;
-  }
-
-  &.light {
-    background: #dbeafe;
-    border-bottom: 1px solid #2563eb;
-    color: #1e3a8a;
-  }
-}
-
 .mvu-missing-tip__close {
   flex-shrink: 0;
   display: inline-flex;
@@ -5688,14 +5695,6 @@ onUnmounted(() => {
   // MVU 顶栏占位，避免正文与侧栏被 fixed 条挡住（与 .mvu-missing-tip min-height 一致）
   &.has-mvu-missing-tip {
     padding-top: 44px;
-    box-sizing: border-box;
-  }
-  &.has-mvu-archive-banner:not(.has-mvu-missing-tip) {
-    padding-top: 40px;
-    box-sizing: border-box;
-  }
-  &.has-mvu-missing-tip.has-mvu-archive-banner {
-    padding-top: 84px;
     box-sizing: border-box;
   }
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

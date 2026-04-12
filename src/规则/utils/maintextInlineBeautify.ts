@@ -1,7 +1,58 @@
 /**
  * 正文展示用：不调用模型，在纯文本/HTML 片段上对 ** / * 心理、「」/“”/直引号 " " 对白 做固定 class 替换，供 v-html 与宿主 CSS 配合。
  * 不修改写回楼层的 mainText 原文，仅在 formatMaintextForHtmlView 之后套用。
+ *
+ * 展示前会先拆掉模型/第二路写入的 <span class="th-…">…</span>，再按符号规则重新包一层，实现「前端固定模板」对白与心理，而不依赖 AI 塞标签。
  */
+
+/** 可剥离的模型装饰 span（不含 th-ui-meta：须保留以维持 display:none 等）；class 可在任意属性位 */
+const TH_SPAN_OPEN =
+  /<span\b[^>]*\bclass=["']([^"']*\bth-(?!ui-meta\b)[^"']*)["'][^>]*>/gi;
+
+/** 拆掉最外层一处 <span class="th-…">…</span>（按任意 <span / </span> 嵌套深度配对），返回新串或 null */
+function unwrapOneOutermostThSpan(t: string): string | null {
+  TH_SPAN_OPEN.lastIndex = 0;
+  const m = TH_SPAN_OPEN.exec(t);
+  if (!m) return null;
+  const openStart = m.index;
+  const openEnd = TH_SPAN_OPEN.lastIndex;
+  let depth = 1;
+  let i = openEnd;
+  while (i < t.length && depth > 0) {
+    const rest = t.slice(i);
+    const op = rest.search(/<span\b/i);
+    const cl = rest.search(/<\/span>/i);
+    const opi = op === -1 ? Infinity : i + op;
+    const cli = cl === -1 ? Infinity : i + cl;
+    if (cli === Infinity) return null;
+    if (opi < cli) {
+      depth++;
+      const gt = t.indexOf('>', opi);
+      if (gt === -1) return null;
+      i = gt + 1;
+    } else {
+      depth--;
+      const closeEnd = cli + (t.slice(cli).match(/^<\/span>/i)?.[0].length ?? 7);
+      if (depth === 0) {
+        const inner = t.slice(openEnd, cli);
+        return t.slice(0, openStart) + inner + t.slice(closeEnd);
+      }
+      i = closeEnd;
+    }
+  }
+  return null;
+}
+
+/** 反复拆掉模型写入的 <span class="th-…">…</span>，保留内文 */
+export function unwrapThPresentationSpans(raw: string): string {
+  let t = raw;
+  for (let g = 0; g < 500; g++) {
+    const next = unwrapOneOutermostThSpan(t);
+    if (next === null) break;
+    t = next;
+  }
+  return t;
+}
 
 function escapeHtml(s: string): string {
   return s
@@ -81,6 +132,7 @@ export function applyMaintextInlineBeautify(text: string): string {
   if (/<\s*script\b/i.test(text)) {
     return text;
   }
-  const cleaned = stripLegacyBeautifierArtifacts(text);
+  const stripped = unwrapThPresentationSpans(text);
+  const cleaned = stripLegacyBeautifierArtifacts(stripped);
   return transformPlainSegments(cleaned, seg => applyDialogueMarks(applyThoughtMarks(seg)));
 }
