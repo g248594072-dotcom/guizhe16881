@@ -3,6 +3,7 @@
  * 与 MVU `游戏时间` 扩展字段（纪历体系、纪年名称、纪年年数、时间演算基底）一致。
  */
 
+import type { OpeningGregorianDateOverride } from './openingUserDateParse';
 
 /** 用于计时的六种世界基底（不含「自定义」） */
 export const CALENDAR_WORLD_TYPES = ['现代', '西幻', '玄幻', '未来', '西方中世纪', '东方中世纪'] as const;
@@ -62,8 +63,13 @@ export type GameTimeInitRecord = {
  * 根据纪年基底生成完整 `游戏时间` 初始对象。
  * @param cal 已解析后的纪历基底（「自定义」时须先调用 resolveCalendarWorldType）
  * @param uiWorldType 界面所选世界类型（写入「时间演算基底」语义用；与 cal 一并存变量）
+ * @param openingGregorianOverride 仅对纪历基底「现代」生效：若开局文案中解析出公历日期，则覆盖本机「今天」
  */
-export function buildInitialGameTimeRecord(cal: CalendarWorldType, _uiWorldType: string): GameTimeInitRecord {
+export function buildInitialGameTimeRecord(
+  cal: CalendarWorldType,
+  _uiWorldType: string,
+  openingGregorianOverride?: OpeningGregorianDateOverride | null,
+): GameTimeInitRecord {
   const { 月, 日 } = randomMd();
   const 时 = 12;
   const 分 = 0;
@@ -82,12 +88,39 @@ export function buildInitialGameTimeRecord(cal: CalendarWorldType, _uiWorldType:
 
   switch (cal) {
     case '现代': {
-      const 年 = cy;
+      let 年 = cy;
+      let 月Out = cm;
+      let 日Out = cd;
+      let 时Out = 时;
+      let 分Out = 分;
+      const o = openingGregorianOverride;
+      if (o) {
+        const dt = new Date(o.年, o.月 - 1, o.日);
+        if (
+          dt.getFullYear() === o.年 &&
+          dt.getMonth() === o.月 - 1 &&
+          dt.getDate() === o.日 &&
+          o.年 >= 100 &&
+          o.年 <= 9999
+        ) {
+          年 = o.年;
+          月Out = o.月;
+          日Out = o.日;
+          if (typeof o.时 === 'number' && typeof o.分 === 'number') {
+            if (o.时 >= 0 && o.时 <= 23 && o.分 >= 0 && o.分 <= 59) {
+              时Out = o.时;
+              分Out = o.分;
+            }
+          }
+        }
+      }
       return {
         ...base,
         年,
-        月: cm,
-        日: cd,
+        月: 月Out,
+        日: 日Out,
+        时: 时Out,
+        分: 分Out,
         纪历体系: '公历',
         纪年名称: '公元',
         纪年年数: 年,

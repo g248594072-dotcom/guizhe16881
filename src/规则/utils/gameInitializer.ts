@@ -12,6 +12,7 @@ import {
   resolveCalendarWorldType,
   type GameTimeInitRecord,
 } from './gameTimeCalendar';
+import { parseGregorianYmdFromOpeningForm } from './openingUserDateParse';
 
 /** 若 0 层已写入（initialize 先于本函数），提示词与变量共用同一时间 */
 function tryReadZeroLayerGameTimeFull(): GameTimeInitRecord | null {
@@ -52,6 +53,19 @@ function tryReadZeroLayerGameTimeFull(): GameTimeInitRecord | null {
     /* 0 层不存在或未初始化 */
   }
   return null;
+}
+
+/** 0 层已写入则用变量内时间；否则按纪历生成，「现代」时优先采用开局文案中的公历日期 */
+function resolveOpeningGameTimeRecord(formData: OpeningFormData): GameTimeInitRecord {
+  const fromZero = tryReadZeroLayerGameTimeFull();
+  if (fromZero) return fromZero;
+  const wt = resolveWorldType(formData);
+  const cal = resolveCalendarWorldType(wt);
+  const override = cal === '现代' ? parseGregorianYmdFromOpeningForm(formData) : null;
+  if (override) {
+    console.info('[gameInitializer] 「现代」纪历：使用开局文案中的故事时间', override);
+  }
+  return buildInitialGameTimeRecord(cal, wt, override);
 }
 
 function getDefaultRegionNameByWorldType(wt: WorldType): string {
@@ -207,6 +221,10 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
 
         const wt = resolveWorldType(formData);
         const calWt = resolveCalendarWorldType(wt);
+        const modernOpeningOverride = calWt === '现代' ? parseGregorianYmdFromOpeningForm(formData) : null;
+        if (modernOpeningOverride) {
+          console.info('[gameInitializer] 「现代」纪历：0 层游戏时间采用开局文案日期', modernOpeningOverride);
+        }
 
         // MVU 中文元信息（与 schema 一致）
         vars.stat_data.元信息 = {
@@ -222,8 +240,8 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
         // 保存开局配置
         vars.stat_data.openingConfig = formData;
 
-        // 按纪历基底初始化游戏时间（「自定义」时 calWt 为随机六种之一）
-        const initialGameTime = buildInitialGameTimeRecord(calWt, wt);
+        // 按纪历基底初始化游戏时间（「自定义」时 calWt 为随机六种之一；「现代」时若有开局文案日期则用之）
+        const initialGameTime = buildInitialGameTimeRecord(calWt, wt, modernOpeningOverride);
         vars.stat_data.游戏时间 = initialGameTime;
         console.log(
           `✅ [gameInitializer] 游戏时间: ${formatNarrativeGameDate(initialGameTime)}（界面世界类型：${wt}，计时基底：${calWt}）`,
@@ -286,11 +304,9 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
   const useCustomOpeningFlow = formData.customWorldFromOpening === true || wt === '自定义';
   const backdrop = getWorldTypePromptBackdrop(wt);
   const worldIntroBlock = String(formData.worldIntro ?? '').trim();
-  const fromZero = tryReadZeroLayerGameTimeFull();
-  const calForFallback = resolveCalendarWorldType(wt);
-  const timeRecord = fromZero ?? buildInitialGameTimeRecord(calForFallback, wt);
+  const timeRecord = resolveOpeningGameTimeRecord(formData);
   const timeDescription = formatNarrativeGameDate(timeRecord);
-  const randomBase = fromZero?.时间演算基底 ?? timeRecord.时间演算基底;
+  const randomBase = timeRecord.时间演算基底;
 
   const rules = (formData.selectedRules ?? []) as Array<{ name: string; desc: string; isCustom?: boolean }>;
   const presetRules = rules.filter(r => !r.isCustom);

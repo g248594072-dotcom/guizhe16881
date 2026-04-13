@@ -69,7 +69,8 @@ export interface OpeningFormData {
   initialRules: string[];      // 初始规则选择
   // 新的书本式开局表单字段
   sceneDescription?: string;   // 场景描述
-  openingSceneDetail?: string; // 开场白场景详细描述（追加到首次生成提示词）
+  /** 开场白场景详细描述（追加到首次生成提示词）。纪历为「现代」时若含可解析公历日期（如 2008年6月10日），优先作为游戏时间 */
+  openingSceneDetail?: string;
   selectedRules?: Array<{ name: string; desc: string }>;  // 选中的规则列表
   characters?: Array<{ name: string; gender: string; desc: string }>;  // 角色列表
   /** 与 MVU `元信息.世界类型` 一致；开局界面先选 */

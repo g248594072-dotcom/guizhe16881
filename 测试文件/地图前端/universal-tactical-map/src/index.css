@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  :root {
+    /* Default: Sci-Fi (Dark/Cyan) */
+    --bg-color: #020617;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-color: #2dd4bf;
+    --panel-bg: rgba(15, 23, 42, 0.85);
+    --border-color: rgba(45, 212, 191, 0.3);
+    --grid-color: rgba(45, 212, 191, 0.1);
+    --building-bg: rgba(15, 23, 42, 0.9);
+    --building-border: rgba(45, 212, 191, 0.4);
+    --building-selected: #2dd4bf;
+    --input-bg: rgba(2, 6, 23, 0.8);
+  }
+
+  .theme-western {
+    /* Western Medieval (Parchment/Brown) */
+    --bg-color: #f4ebd8;
+    --text-main: #3e2723;
+    --text-muted: #795548;
+    --accent-color: #8b5a2b;
+    --panel-bg: rgba(232, 220, 196, 0.95);
+    --border-color: rgba(139, 90, 43, 0.3);
+    --grid-color: rgba(139, 90, 43, 0.15);
+    --building-bg: rgba(232, 220, 196, 0.95);
+    --building-border: rgba(139, 90, 43, 0.5);
+    --building-selected: #8b5a2b;
+    --input-bg: rgba(244, 235, 216, 0.8);
+  }
+
+  .theme-eastern {
+    /* Eastern Medieval (Ink Wash/Jade) */
+    --bg-color: #e9e4d4;
+    --text-main: #2c3e50;
+    --text-muted: #546e7a;
+    --accent-color: #2e7d32;
+    --panel-bg: rgba(215, 208, 189, 0.95);
+    --border-color: rgba(46, 125, 50, 0.3);
+    --grid-color: rgba(44, 62, 80, 0.1);
+    --building-bg: rgba(224, 218, 200, 0.95);
+    --building-border: rgba(44, 62, 80, 0.4);
+    --building-selected: #2e7d32;
+    --input-bg: rgba(233, 228, 212, 0.8);
+  }
+
+  .theme-future {
+    /* Future/Cyberpunk (Black/Neon Purple & Pink) */
+    --bg-color: #09090b;
+    --text-main: #f3e8ff;
+    --text-muted: #a855f7;
+    --accent-color: #d946ef;
+    --panel-bg: rgba(24, 24, 27, 0.85);
+    --border-color: rgba(217, 70, 239, 0.4);
+    --grid-color: rgba(168, 85, 247, 0.15);
+    --building-bg: rgba(24, 24, 27, 0.9);
+    --building-border: rgba(168, 85, 247, 0.5);
+    --building-selected: #d946ef;
+    --input-bg: rgba(9, 9, 11, 0.8);
+  }
+
+  .theme-modern {
+    /* Modern (Clean White/Blue) */
+    --bg-color: #f8fafc;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --accent-color: #2563eb;
+    --panel-bg: rgba(255, 255, 255, 0.95);
+    --border-color: rgba(148, 163, 184, 0.4);
+    --grid-color: rgba(148, 163, 184, 0.2);
+    --building-bg: rgba(255, 255, 255, 0.95);
+    --building-border: rgba(100, 116, 139, 0.4);
+    --building-selected: #2563eb;
+    --input-bg: rgba(241, 245, 249, 0.8);
+  }
+}
+
+@layer utilities {
+  .dynamic-bg { background-color: var(--bg-color); color: var(--text-main); }
+  .dynamic-panel { background-color: var(--panel-bg); border-color: var(--border-color); backdrop-filter: blur(12px); }
+  .dynamic-text { color: var(--text-main); }
+  .dynamic-text-muted { color: var(--text-muted); }
+  .dynamic-accent { color: var(--accent-color); }
+  .dynamic-border { border-color: var(--border-color); }
+  .dynamic-input { background-color: var(--input-bg); color: var(--text-main); border-color: var(--border-color); }
+  
+  .dynamic-grid {
+    background-image: linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+                      linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+    background-size: 64px 64px;
+  }
+
+  .dynamic-building {
+    background-color: var(--building-bg);
+    border-color: var(--building-border);
+  }
+  .dynamic-building-selected {
+    border-color: var(--building-selected);
+    box-shadow: 0 0 20px var(--building-selected);
+  }
+}
+
