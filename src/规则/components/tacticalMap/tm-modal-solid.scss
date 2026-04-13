@@ -1,0 +1,12 @@
+/* Teleport 到 body 时仍尽量贴合战术地图主题；无变量时用近似实色 */
+@mixin tm-modal-solid-surface {
+  $panel-fb: rgba(15, 23, 42, 0.98);
+  $bg-fb: #020617;
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--panel-bg, #{$panel-fb}) 100%, transparent) 0%,
+      color-mix(in srgb, var(--panel-bg, #{$panel-fb}) 52%, var(--bg-color, #{$bg-fb})) 100%
+    ),
+    color-mix(in srgb, var(--panel-bg, #{$panel-fb}) 92%, var(--bg-color, #{$bg-fb}));
+}

@@ -257,11 +257,10 @@
         <span class="retry-note">总尝试次数 = 1 + 该值</span>
       </div>
 
-      <div class="field-label">第二 API 任务</div>
-      <label class="field-row checkbox-row">
-        <input v-model="secondaryApi.tasks.includeVariableUpdate" type="checkbox" @change="persistSecondaryApi" />
-        <span>变量更新（&lt;UpdateVariable&gt;）</span>
-      </label>
+      <div class="field-label">第二 API 额外任务</div>
+      <p class="secondary-api-tasks-lead">
+        变量更新（&lt;UpdateVariable&gt;）为第二 API 的默认行为，无需开关；下方仅控制可选附加任务。
+      </p>
       <label class="field-row checkbox-row">
         <input
           v-model="secondaryApi.tasks.includeMaintextBeautification"
@@ -294,12 +293,15 @@
         </p>
       </div>
       <label class="field-row checkbox-row">
-        <input v-model="secondaryApi.tasks.includeWorldTrend" type="checkbox" @change="persistSecondaryApi" />
-        <span>世界大势相关说明</span>
+        <input v-model="secondaryApi.tasks.includeWorldChanges" type="checkbox" @change="persistSecondaryApi" />
+        <span>世界变化（世界大势与居民生活 / NPC 状态相关说明，一并生成）</span>
       </label>
-      <label class="field-row checkbox-row">
-        <input v-model="secondaryApi.tasks.includeResidentLife" type="checkbox" @change="persistSecondaryApi" />
-        <span>居民生活 / NPC 状态相关说明</span>
+      <label class="field-row checkbox-row world-evolution-row">
+        <input v-model="secondaryApi.tasks.includeWorldEvolution" type="checkbox" @change="persistSecondaryApi" />
+        <span class="world-evolution-label">
+          世界演化
+          <span class="world-evolution-hint">演化地图中的世界</span>
+        </span>
       </label>
 
       <div v-if="!secondaryApi.useTavernMainConnection" class="api-actions">
@@ -1719,6 +1721,26 @@ input:checked + .toggle-slider:before {
   margin: 8px 0 0;
   font-size: 11px;
   line-height: 1.45;
+  opacity: 0.72;
+}
+
+.secondary-api-tasks-lead {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.75;
+}
+
+.world-evolution-row .world-evolution-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.world-evolution-hint {
+  font-size: 11px;
+  font-weight: 400;
   opacity: 0.72;
 }
 

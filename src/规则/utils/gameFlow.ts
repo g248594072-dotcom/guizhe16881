@@ -325,16 +325,11 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
     return mainResult;
   }
 
-  const wantVar = secondaryConfig.tasks?.includeVariableUpdate !== false;
   const wantBeautify = secondaryConfig.tasks?.includeMaintextBeautification === true;
-  if (!wantVar && !wantBeautify) {
-    console.warn('⚠️ [gameFlow] 第二API已配置但未启用变量与正文美化，跳过第二路');
-    return mainResult;
-  }
 
-  // 4. 并行：变量（原始 maintext）与正文美化（原始 maintext）
+  // 4. 并行：变量（原始 maintext，第二 API 默认）与正文美化（原始 maintext，可选额外任务）
   try {
-    const varPromise = wantVar ? processWithSecondaryApi(maintext, secondaryConfig) : Promise.resolve('');
+    const varPromise = processWithSecondaryApi(maintext, secondaryConfig);
     const beautifyPromise = wantBeautify ? processMaintextBeautification(maintext, secondaryConfig) : Promise.resolve(null);
     const [variableUpdate, beautifiedInner] = await Promise.all([varPromise, beautifyPromise]);
 

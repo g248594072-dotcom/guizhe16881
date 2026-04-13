@@ -434,10 +434,6 @@ export function notifySecondaryApiStart(detail?: { attempt?: number }): void {
  * @returns 生成的变量更新内容
  */
 export async function processWithSecondaryApi(maintext: string, config: SecondaryApiConfig): Promise<string> {
-  if (config.tasks && config.tasks.includeVariableUpdate === false) {
-    return '';
-  }
-
   const retryCount = clampSecondaryApiRetries(config.maxRetries);
   const maxAttempts = 1 + retryCount;
   let lastError: Error | null = null;
@@ -560,16 +556,12 @@ function buildSecondaryApiPrompt(
     variableOutputFormat: string;
   },
 ): string {
-  // 构建任务说明
-  let tasksDescription = '';
-  if (tasks.includeVariableUpdate) {
-    tasksDescription += '- 根据正文内容和当前变量数据，按照变量更新规则输出 <UpdateVariable> 标签\n';
-  }
-  if (tasks.includeWorldTrend) {
-    tasksDescription += '- 分析正文对世界大势的影响，更新相关数据\n';
-  }
-  if (tasks.includeResidentLife) {
-    tasksDescription += '- 分析正文对居民生活的影响，更新NPC状态\n';
+  // 构建任务说明（变量更新为第二 API 默认职责，始终说明）
+  let tasksDescription =
+    '- 根据正文内容和当前变量数据，按照变量更新规则输出 <UpdateVariable> 标签\n';
+  if (tasks.includeWorldChanges) {
+    tasksDescription +=
+      '- 分析正文对世界大势与居民生活 / NPC 状态的影响，更新相关数据（若规则或变量结构要求）\n';
   }
 
   // 准备变量数据JSON（限制大小避免提示词过长）
@@ -729,14 +721,10 @@ export async function mergeSecondaryPipelineIntoAssistantText(
     return assistantRaw;
   }
 
-  const wantVar = config.tasks?.includeVariableUpdate !== false;
   const wantBeautify = config.tasks?.includeMaintextBeautification === true;
-  if (!wantVar && !wantBeautify) {
-    return assistantRaw;
-  }
 
   const [variableUpdate, beautifiedInner] = await Promise.all([
-    wantVar ? processWithSecondaryApi(maintext, config) : Promise.resolve(''),
+    processWithSecondaryApi(maintext, config),
     wantBeautify ? processMaintextBeautification(maintext, config) : Promise.resolve(null),
   ]);
 

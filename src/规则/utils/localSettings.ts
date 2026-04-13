@@ -5,7 +5,7 @@
 
 import type { OutputMode, SecondaryApiConfig, InputActionMode, OtherSettings } from '../types';
 import type { UiLayoutSettings } from './uiLayoutLimits';
-import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
+import { DEFAULT_SECONDARY_API_CONFIG, normalizeSecondaryApiTasks } from './secondaryApiDefaults';
 
 function clampSecondaryRetriesLoaded(n: unknown): number {
   const x = Math.floor(Number(n));
@@ -90,13 +90,7 @@ export function loadSecondaryApiConfig(): SecondaryApiConfig {
         maintextBeautifyHtmlcontentChance: clampHtmlcontentChanceLoaded(
           parsed.maintextBeautifyHtmlcontentChance ?? DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance,
         ),
-        tasks: {
-          includeVariableUpdate: parsed.tasks?.includeVariableUpdate ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeVariableUpdate,
-          includeMaintextBeautification:
-            parsed.tasks?.includeMaintextBeautification ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeMaintextBeautification,
-          includeWorldTrend: parsed.tasks?.includeWorldTrend ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeWorldTrend,
-          includeResidentLife: parsed.tasks?.includeResidentLife ?? DEFAULT_SECONDARY_API_CONFIG.tasks.includeResidentLife,
-        },
+        tasks: normalizeSecondaryApiTasks(parsed.tasks),
       };
     }
   } catch (error) {

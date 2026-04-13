@@ -11,9 +11,27 @@ export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
   useTavernMainConnection: true,
   maintextBeautifyHtmlcontentChance: 50,
   tasks: {
-    includeVariableUpdate: true,
     includeMaintextBeautification: false,
-    includeWorldTrend: false,
-    includeResidentLife: false,
+    includeWorldChanges: false,
+    includeWorldEvolution: false,
   },
 };
+
+/** 将旧版或部分字段 tasks 规范为当前 schema（变量更新始终为第二 API 默认行为，不再存开关） */
+export function normalizeSecondaryApiTasks(raw: unknown): SecondaryApiConfig['tasks'] {
+  const t = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const legacyWorldEnabled = t.includeWorldTrend === true || t.includeResidentLife === true;
+  const includeWorldChanges =
+    typeof t.includeWorldChanges === 'boolean' ? t.includeWorldChanges : legacyWorldEnabled;
+  return {
+    includeMaintextBeautification:
+      typeof t.includeMaintextBeautification === 'boolean'
+        ? t.includeMaintextBeautification
+        : DEFAULT_SECONDARY_API_CONFIG.tasks.includeMaintextBeautification,
+    includeWorldChanges,
+    includeWorldEvolution:
+      typeof t.includeWorldEvolution === 'boolean'
+        ? t.includeWorldEvolution
+        : DEFAULT_SECONDARY_API_CONFIG.tasks.includeWorldEvolution,
+  };
+}

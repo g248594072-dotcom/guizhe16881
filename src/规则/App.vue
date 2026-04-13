@@ -147,6 +147,7 @@
       'layout-pending': uiLayout.maxHeight === undefined,
       'animate-shake': isShaking,
       'has-mvu-missing-tip': showMvuMissingTip,
+      'layout-regional-map-bleed': regionalMapFullBleed,
     }"
     :style="rootStyle"
   >
@@ -249,9 +250,9 @@
             <i class="fa-solid fa-xmark"></i>
           </button>
         </header>
-        <div class="panel-content">
+        <div class="panel-content" :class="{ 'panel-content--map-bleed': regionalMapFullBleed }">
           <Transition name="fade" mode="out-in">
-            <div :key="activeTab">
+            <div :key="activeTab" class="panel-tab-page">
               <CharacterPanel
                 v-if="activeTab === 'character'"
                 :is-dark-mode="isDarkMode"
@@ -263,10 +264,11 @@
                 :is-dark-mode="isDarkMode"
                 @open-modal="openModal"
               />
-              <RegionalRulesPanel
+              <RegionalRulesHub
                 v-else-if="activeTab === 'regional_rules'"
                 :is-dark-mode="isDarkMode"
                 @open-modal="openModal"
+                @sub-tab-change="onRegionalHubSubTabChange"
               />
               <PersonalRulesPanel
                 v-else-if="activeTab === 'personal_rules'"
@@ -1531,7 +1533,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { storeToRefs } from 'pinia';
 import CharacterPanel from './components/CharacterPanel.vue';
 import WorldRulesPanel from './components/WorldRulesPanel.vue';
-import RegionalRulesPanel from './components/RegionalRulesPanel.vue';
+import RegionalRulesHub from './components/RegionalRulesHub.vue';
 import PersonalRulesPanel from './components/PersonalRulesPanel.vue';
 import PersonalRuleCharacterPicker from './components/PersonalRuleCharacterPicker.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
@@ -1662,6 +1664,8 @@ let lastIframeMinHeightApplied: number | null = null;
 
 // 界面状态
 const activeTab = ref<string | null>(null);
+/** 区域规则 →「地图」子标签时桌面端铺满侧栏+原正文区（隐藏主栏） */
+const regionalMapFullBleed = ref(false);
 /** 与 SettingsPanel 一致：来自 MVU / localStorage，用于显示侧栏「暂存」入口 */
 const editStagingCartEnabled = computed(() => getOtherSettings().enableEditStagingCart === true);
 const editCartStore = useEditCartStore();
@@ -2064,7 +2068,12 @@ const variableFabStyle = computed(() => ({
 watch(activeTab, (newVal, oldVal) => {
   console.log(`[调试] activeTab 变化: ${oldVal} -> ${newVal}`);
   if (newVal !== 'personal_rules') personalRulesExpandGroup.value = null;
+  if (newVal !== 'regional_rules') regionalMapFullBleed.value = false;
 }, { immediate: true });
+
+function onRegionalHubSubTabChange(tab: 'rules' | 'map') {
+  regionalMapFullBleed.value = tab === 'map';
+}
 
 watch(
   [gamePhase, () => uiLayout.value.maxHeight],
@@ -5829,6 +5838,28 @@ onUnmounted(() => {
     min-height: 600px;
     opacity: 0.85;
   }
+
+  // 区域规则「地图」：中间栏占满侧栏右侧全部宽度，正文区暂隐以腾出画布
+  &.layout-regional-map-bleed {
+    .main-panel {
+      display: none !important;
+    }
+
+    .middle-panel {
+      flex: 1 1 auto !important;
+      width: auto !important;
+      min-width: 0;
+      max-width: none;
+      height: 100%;
+      max-height: none;
+      align-self: stretch;
+    }
+
+    .panel-inner {
+      width: 100% !important;
+      max-width: none;
+    }
+  }
 }
 
 // Sidebar
@@ -6206,6 +6237,20 @@ onUnmounted(() => {
     min-height: 0;
     max-height: 100%;
   }
+
+  &.panel-content--map-bleed {
+    padding: 0.5rem calc(12px * var(--ui-scale, 1)) 0.75rem;
+    overflow: hidden;
+  }
+}
+
+.panel-tab-page {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .dark .panel-content {
@@ -7495,12 +7540,22 @@ onUnmounted(() => {
     padding: 16px 16px;
   }
 
+  .panel-content.panel-content--map-bleed {
+    padding: 6px 8px 10px;
+  }
+
   .panel-header {
     padding: 0 16px;
   }
 
   // 主面板占满宽度；输入区避免被底部导航遮挡
   .main-panel {
+    max-height: none;
+  }
+
+  // 地图全幅时抽屉内仍铺满可视区（底栏由 rule-modifier padding-bottom 预留）
+  .rule-modifier.layout-regional-map-bleed .middle-panel {
+    height: 100%;
     max-height: none;
   }
 

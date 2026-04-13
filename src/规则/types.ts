@@ -368,11 +368,17 @@ export interface SecondaryApiConfig {
    */
   maintextBeautifyHtmlcontentChance: number;
   tasks: {
-    includeVariableUpdate: boolean;
     /** 第二路 generateRaw：根据原始 maintext 生成 HTML 展示层，合并进 `<maintext>`；变量仍基于原始正文 */
     includeMaintextBeautification: boolean;
-    includeWorldTrend: boolean;
-    includeResidentLife: boolean;
+    /**
+     * 世界变化：世界大势说明与居民生活 / NPC 状态说明（第二 API 路径上一并受控）。
+     * 旧版 `includeWorldTrend` / `includeResidentLife` 在加载配置时会合并为该开关。
+     */
+    includeWorldChanges: boolean;
+    /**
+     * 世界演化：演化战术地图中的世界（占位开关，具体逻辑后续接入）。
+     */
+    includeWorldEvolution: boolean;
   };
 }
 

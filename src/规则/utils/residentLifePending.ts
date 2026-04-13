@@ -91,7 +91,7 @@ export function markPendingIfPersonalRulePatches(
  */
 export async function tryFlushPendingResidentLife(statData: Record<string, unknown>): Promise<void> {
   const config = loadSecondaryApiConfig();
-  if (!config?.tasks?.includeResidentLife) {
+  if (!config?.tasks?.includeWorldChanges) {
     return;
   }
 

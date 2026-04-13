@@ -1,0 +1,87 @@
+/* 战术地图弹窗：下拉/输入框高对比 + 主按钮实色；轻量「荧光」呼吸描边（非真跑马灯，避免性能与可访问性过噪） */
+@keyframes tm-vivid-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent-color, #2dd4bf) 55%, transparent),
+      0 0 10px color-mix(in srgb, var(--accent-color, #2dd4bf) 22%, transparent);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent-color, #2dd4bf) 88%, #e2e8f0),
+      0 0 22px color-mix(in srgb, var(--accent-color, #2dd4bf) 48%, transparent);
+  }
+}
+
+@mixin tm-modal-vivid-controls {
+  color-scheme: dark;
+
+  & .tm-modal-foot {
+    background: color-mix(in srgb, var(--panel-bg, rgba(30, 41, 59, 0.98)) 82%, var(--bg-color, #020617));
+  }
+
+  & select,
+  & input[type='text'],
+  & textarea,
+  & .tm-textarea {
+    border-width: 2px !important;
+    border-style: solid !important;
+    border-color: color-mix(in srgb, var(--accent-color, #2dd4bf) 72%, transparent) !important;
+    background-color: color-mix(in srgb, var(--input-bg, #0f172a) 94%, #020617) !important;
+    color: var(--text-main, #f1f5f9) !important;
+    animation: tm-vivid-glow 2.6s ease-in-out infinite;
+  }
+
+  & select:focus,
+  & input[type='text']:focus,
+  & textarea:focus,
+  & .tm-textarea:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent-color, #2dd4bf) 92%, #fff) !important;
+  }
+
+  /* 部分浏览器下拉选项可读 */
+  & select option {
+    background-color: #0f172a;
+    color: #f8fafc;
+  }
+
+  & .tm-btn-primary:not(:disabled) {
+    background: linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--accent-color, #2dd4bf) 85%, #ecfeff) 0%,
+      var(--accent-color, #2dd4bf) 42%,
+      color-mix(in srgb, var(--accent-color, #2dd4bf) 72%, #022c22) 100%
+    ) !important;
+    color: #020617 !important;
+    font-weight: 700 !important;
+    border: 1px solid color-mix(in srgb, var(--accent-color, #2dd4bf) 55%, #fff) !important;
+    animation: tm-vivid-glow 2.6s ease-in-out infinite;
+  }
+
+  & .tm-btn-primary:disabled {
+    animation: none !important;
+    opacity: 1 !important;
+    background: #64748b !important;
+    color: #f8fafc !important;
+    border-color: #94a3b8 !important;
+    cursor: not-allowed !important;
+  }
+
+  & .tm-btn:not(.tm-btn-primary):not(.tm-btn-del-text):not(.tm-btn-danger) {
+    border-color: color-mix(in srgb, var(--accent-color, #2dd4bf) 42%, var(--border-color, rgba(148, 163, 184, 0.45))) !important;
+    color: var(--text-main, #f8fafc) !important;
+    background: color-mix(in srgb, var(--panel-bg, #1e293b) 35%, transparent) !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    & select,
+    & input[type='text'],
+    & textarea,
+    & .tm-textarea,
+    & .tm-btn-primary:not(:disabled) {
+      animation: none !important;
+    }
+  }
+}
