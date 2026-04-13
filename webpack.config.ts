@@ -229,7 +229,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
     experiments: {
       outputModule: true,
     },
-    devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
+    // 开发勿用 eval-source-map：与 HtmlInlineScript 组合时会把巨量 inline map 写进 index.html（可达十 MB 级）。
+    // 生产默认不产出 .map；需要排查生产问题时设置环境变量 TAVERN_HELPER_SOURCE_MAP=true 再构建。
+    devtool:
+      argv.mode === 'production'
+        ? process.env.TAVERN_HELPER_SOURCE_MAP === 'true'
+          ? 'source-map'
+          : false
+        : 'eval-cheap-module-source-map',
     watchOptions: {
       ignored: ['**/dist', '**/node_modules', '**/src/手机/**'],
     },
@@ -511,7 +518,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
         new webpack.DefinePlugin({
           __VUE_OPTIONS_API__: false,
-          __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
+          __VUE_PROD_DEVTOOLS__: argv.mode === 'production' ? false : process.env.CI !== 'true',
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
           __APP_VERSION__: JSON.stringify(BUILD_VERSION),
         }),
