@@ -1,5 +1,6 @@
 {
   "scripts": {
+<<<<<<< HEAD
     "build:phone:vite": "npm install --prefix src/手机 && npm run build --prefix src/手机",
     "build:phone": "pnpm run build:phone:vite && node scripts/sync-phone-dist.mjs",
     "build:dev": "webpack --mode development",
@@ -8,6 +9,11 @@
     "watch:webpack": "webpack --mode development --watch --progress",
     "watch": "node scripts/watch-all.mjs",
     "watch:phone": "node scripts/watch-phone-sync.mjs",
+=======
+    "build:dev": "webpack --mode development",
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch --progress",
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,scss,html,vue}\" --no-error-on-unmatched-pattern",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
@@ -88,6 +94,10 @@
     "@vueuse/integrations": "^13.9.0",
     "@vueuse/shared": "^13.9.0",
     "async-wait-until": "^2.0.31",
+<<<<<<< HEAD
+=======
+    "axios": "1.14.0",
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
     "compare-versions": "^6.1.1",
     "dedent": "^1.7.2",
     "gsap": "^3.15.0",
@@ -101,7 +111,10 @@
     "pixi.js": "^8.18.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+<<<<<<< HEAD
     "sweetalert2": "^11.26.24",
+=======
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
     "toastr": "^2.1.4",
     "vue": "^3.5.32",
     "vue-final-modal": "^4.5.5",

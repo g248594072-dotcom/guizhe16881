@@ -1,4 +1,5 @@
 import { StoreDefinition } from 'pinia';
+<<<<<<< HEAD
 import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
 /** 从变量表中取出 MVU stat_data（单层；遇双层嵌套则取内层） */
@@ -164,17 +165,45 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       statData = mergeMessageGameTimeWithCharacter(statData, resolvedOption);
       const data = ref(
         schema.parse(statData, { reportInput: true }),
+=======
+
+export function defineMvuDataStore<T extends z.ZodObject>(
+  schema: T,
+  variable_option: VariableOption,
+  additional_setup?: (data: Ref<z.infer<T>>) => void,
+): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
+  if (
+    variable_option.type === 'message' &&
+    (variable_option.message_id === undefined || variable_option.message_id === 'latest')
+  ) {
+    variable_option.message_id = -1;
+  }
+
+  return defineStore(
+    `mvu_data.${_(variable_option)
+      .entries()
+      .sortBy(entry => entry[0])
+      .map(entry => entry[1])
+      .join('.')}`,
+    errorCatched(() => {
+      const data = ref(
+        schema.parse(_.get(getVariables(variable_option), 'stat_data', {}), { reportInput: true }),
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
       ) as Ref<z.infer<T>>;
       if (additional_setup) {
         additional_setup(data);
       }
 
       useIntervalFn(() => {
+<<<<<<< HEAD
         const variables = getVariables(resolvedOption);
         const rawStatData = getStatData(variables);
         const sanitizedOnly = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
         const hadCorruption = !_.isEqual(rawStatData, sanitizedOnly);
         let stat_data = mergeMessageGameTimeWithCharacter(sanitizedOnly, resolvedOption);
+=======
+        const stat_data = _.get(getVariables(variable_option), 'stat_data', {});
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;
@@ -183,6 +212,7 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           ignoreUpdates(() => {
             data.value = result.data;
           });
+<<<<<<< HEAD
           if (
             writeBack &&
             (!_.isEqual(stat_data, result.data) || hadCorruption)
@@ -194,6 +224,11 @@ export function defineMvuDataStore<T extends z.ZodObject>(
           updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
         } else if (hadCorruption && !writeBack) {
           console.warn('[mvu] 检测到嵌套对象污染，但 writeBack=false 跳过写回');
+=======
+          if (!_.isEqual(stat_data, result.data)) {
+            updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+          }
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
         }
       }, 2000);
 
@@ -209,9 +244,13 @@ export function defineMvuDataStore<T extends z.ZodObject>(
               data.value = result.data;
             });
           }
+<<<<<<< HEAD
           if (writeBack) {
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
           }
+=======
+          updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+>>>>>>> 098e1f6e4ff8f2f726c3a97ca746d13033a2c842
         },
         { deep: true },
       );
