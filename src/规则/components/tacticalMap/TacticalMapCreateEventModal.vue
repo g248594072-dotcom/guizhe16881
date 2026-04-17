@@ -4,7 +4,7 @@
       <div class="tm-modal-head dynamic-border">
         <h2 class="dynamic-text tm-head-title">
           <i class="fa-solid fa-wand-magic-sparkles dynamic-accent" aria-hidden="true"></i>
-          随机创建活动
+          创建活动（第二 API）
         </h2>
         <button type="button" class="tm-close dynamic-text-muted" aria-label="关闭" @click="$emit('close')">
           <i class="fa-solid fa-xmark" aria-hidden="true"></i>
@@ -16,16 +16,24 @@
           <option value="all">所有区域</option>
           <option v-for="r in regions" :key="r.id" :value="r.id">{{ r.name }}</option>
         </select>
+        <label class="tm-label dynamic-text-muted">活动类型</label>
+        <input
+          v-model.trim="activityTypeHint"
+          type="text"
+          class="tm-input dynamic-input dynamic-border dynamic-text"
+          placeholder="随机"
+          autocomplete="off"
+          aria-label="活动类型"
+        />
         <p class="hint dynamic-text-muted">
-          AI 将根据所选区域内建筑的用途和人员，自动生成符合逻辑的事件或活动。（当前为占位，不调用外部模型）
+          将使用<strong class="dynamic-text">设置中的第二 API</strong>在后台生成「活动数据」的 JSON Patch；生成完成后请回到地图，在底部确认条写入酒馆发送框。
         </p>
       </div>
       <div class="tm-modal-foot dynamic-border">
         <button type="button" class="tm-btn dynamic-text" @click="$emit('close')">取消</button>
-        <button type="button" class="tm-btn tm-btn-primary" :disabled="busy" @click="onStubGenerate">
-          <i v-if="busy" class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
-          <i v-else class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-          {{ busy ? '生成中…' : '开始生成' }}
+        <button type="button" class="tm-btn tm-btn-primary" @click="onRequest">
+          <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+          开始生成
         </button>
       </div>
     </div>
@@ -42,18 +50,17 @@ defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  requestAi: [payload: { selectedRegionId: string; activityTypeHint: string }];
 }>();
 
 const selectedRegionId = ref('all');
-const busy = ref(false);
+/** 空则按「随机」处理 */
+const activityTypeHint = ref('随机');
 
-function onStubGenerate() {
-  busy.value = true;
-  setTimeout(() => {
-    busy.value = false;
-    toastr.info('AI 批量创建活动功能待接入');
-    emit('close');
-  }, 400);
+function onRequest() {
+  const hint = activityTypeHint.value.trim() || '随机';
+  emit('requestAi', { selectedRegionId: selectedRegionId.value, activityTypeHint: hint });
+  emit('close');
 }
 </script>
 
@@ -121,52 +128,38 @@ function onStubGenerate() {
 
 .tm-label {
   font-size: 0.8rem;
-  font-weight: 600;
 }
 
 .tm-input {
   width: 100%;
+  padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
-  padding: 0.5rem 0.6rem;
-  font-size: 0.8125rem;
-  outline: none;
+  font-size: 0.9rem;
 }
 
 .hint {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   line-height: 1.45;
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 
 .tm-modal-foot {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-  padding: 0.85rem 1rem;
+  padding: 1rem;
   border-top-width: 1px;
 }
 
 .tm-btn {
-  padding: 0.45rem 0.85rem;
+  padding: 0.5rem 1rem;
   border-radius: 0.375rem;
-  border: 1px solid var(--border-color);
-  background: transparent;
+  font-size: 0.875rem;
   cursor: pointer;
-  font-size: 0.8125rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+  border: 1px solid;
 }
 
 .tm-btn-primary {
-  border-color: transparent;
-  background: var(--accent-color);
-  color: var(--bg-color, #020617);
-  font-weight: 600;
-}
-
-.tm-btn-primary:disabled {
-  opacity: 0.55;
-  cursor: wait;
+  border: none;
 }
 </style>

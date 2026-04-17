@@ -77,6 +77,11 @@ export function useCharacters() {
       const status = char.状态 === '出场中' ? 'active' : 'inactive';
 
       const currentThought = char.当前内心想法 || char.currentThought || '';
+      const rawLoc = char.当前位置;
+      const 当前位置 =
+        rawLoc != null && typeof rawLoc === 'object' && !Array.isArray(rawLoc)
+          ? (rawLoc as CharacterData['当前位置'])
+          : undefined;
       const traits = normalizeTagMap(char.性格 ?? char.traits);
       // 性癖和敏感点开发（旧键「敏感部位」）是复杂对象结构，不走 normalizeTagMap
       // 它们在下面的 fetishDetails / sensitivePartDetails 中正确解析
@@ -125,6 +130,13 @@ export function useCharacters() {
           ? (char.身体部位物理状态 as CharacterData['身体部位物理状态'])
           : undefined;
 
+      const 参与活动记录 =
+        char.参与活动记录 != null &&
+        typeof char.参与活动记录 === 'object' &&
+        !Array.isArray(char.参与活动记录)
+          ? (char.参与活动记录 as CharacterData['参与活动记录'])
+          : undefined;
+
       return {
         id,
         name,
@@ -143,6 +155,7 @@ export function useCharacters() {
           lust: stats.发情值 || stats.lust || char.estrus || char.lust || 0,
         },
         currentThought,
+        当前位置,
         traits,
         // 性癖和敏感点开发：从复杂对象生成可读的字符串格式供UI展示
         fetishes: Object.fromEntries(
@@ -164,6 +177,7 @@ export function useCharacters() {
         identityTags,
         服装状态,
         身体部位物理状态,
+        参与活动记录,
       };
     });
   });

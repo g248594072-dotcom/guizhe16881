@@ -87,6 +87,10 @@ export function loadSecondaryApiConfig(): SecondaryApiConfig {
         model: parsed.model ?? DEFAULT_SECONDARY_API_CONFIG.model,
         maxRetries: clampSecondaryRetriesLoaded(parsed.maxRetries ?? DEFAULT_SECONDARY_API_CONFIG.maxRetries),
         useTavernMainConnection: parsed.useTavernMainConnection ?? DEFAULT_SECONDARY_API_CONFIG.useTavernMainConnection,
+        splitSecondaryVariablePassAndExtras:
+          typeof parsed.splitSecondaryVariablePassAndExtras === 'boolean'
+            ? parsed.splitSecondaryVariablePassAndExtras
+            : DEFAULT_SECONDARY_API_CONFIG.splitSecondaryVariablePassAndExtras,
         maintextBeautifyHtmlcontentChance: clampHtmlcontentChanceLoaded(
           parsed.maintextBeautifyHtmlcontentChance ?? DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance,
         ),

@@ -8,8 +8,8 @@ export interface Person {
   role: string;
 }
 
-/** 事件所处阶段：即将举办 / 已在进行 */
-export type ActivityPhase = 'upcoming' | 'ongoing';
+/** 事件所处阶段：与 MVU「活动数据.状态」及地图 UI 对齐 */
+export type ActivityPhase = 'upcoming' | 'ongoing' | 'ended' | 'cancelled';
 
 /** 集体向事件 vs 个人向事件（书写与生成规则可后续约定） */
 export type ActivityScope = 'collective' | 'personal';

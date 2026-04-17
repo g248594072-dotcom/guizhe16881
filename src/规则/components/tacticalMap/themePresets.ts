@@ -1,5 +1,5 @@
 import type { Building, BuildingType, MapStyle, Region, World } from './types';
-import { normalizeWorlds } from './migrate';
+import { normalizeWorld } from './migrate';
 
 export const CELL_SIZE = 64;
 export const ZOOM_THRESHOLD = 0.5;
@@ -116,16 +116,15 @@ const INITIAL_BUILDINGS_RAW: Building[] = [
   },
 ];
 
-export const INITIAL_WORLDS: World[] = normalizeWorlds([
-  {
-    id: 'w_default',
-    name: '默认世界',
-    theme: 'modern',
-    details: '',
-    buildings: INITIAL_BUILDINGS_RAW,
-    regions: [R_INIT, R_OUTPOST],
-  },
-]);
+/** 单地图默认数据（不再支持多世界切换） */
+export const INITIAL_WORLD: World = normalizeWorld({
+  id: 'w_default',
+  name: '默认世界',
+  theme: 'modern',
+  details: '',
+  buildings: INITIAL_BUILDINGS_RAW,
+  regions: [R_INIT, R_OUTPOST],
+});
 
 export const TYPE_CONFIG: Record<
   BuildingType,

@@ -8,9 +8,8 @@ import {
   getCurrentOutputMode,
   getSecondaryApiConfig,
   isSecondaryApiConfigured,
-  processWithSecondaryApi,
+  runSecondaryApiForMaintextPipeline,
 } from './apiSettings';
-import { processMaintextBeautification } from './maintextBeautify';
 
 // 生成状态
 let isGenerating = false;
@@ -325,15 +324,11 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
     return mainResult;
   }
 
-  const wantBeautify = secondaryConfig.tasks?.includeMaintextBeautification === true;
-
-  // 4. 并行：变量（原始 maintext，第二 API 默认）与正文美化（原始 maintext，可选额外任务）
+  // 4. 第二 API：变量（及可选内联世界演化）与正文美化；若开启「分两轮」则先变量再附加任务
   try {
-    const varPromise = processWithSecondaryApi(maintext, secondaryConfig);
-    const beautifyPromise = wantBeautify ? processMaintextBeautification(maintext, secondaryConfig) : Promise.resolve(null);
-    const [variableUpdate, beautifiedInner] = await Promise.all([varPromise, beautifyPromise]);
+    const { variableUpdate, beautifiedInner } = await runSecondaryApiForMaintextPipeline(maintext, secondaryConfig);
 
-    console.log('✅ [gameFlow] 第二API 分支完成（变量 / 美化）');
+    console.log('✅ [gameFlow] 第二API 分支完成（变量 / 附加任务）');
 
     const mergedMaintext =
       beautifiedInner != null && String(beautifiedInner).trim().length > 0

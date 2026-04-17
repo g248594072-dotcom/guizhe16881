@@ -172,6 +172,47 @@
         </div>
       </article>
 
+      <!-- 位置与参与活动（MVU 角色档案：当前位置 / 参与活动记录） -->
+      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
+        <div class="card-title">
+          <i class="fa-solid fa-location-crosshairs"></i>
+          <h3>位置与参与活动</h3>
+        </div>
+        <div class="location-participation-block">
+          <div v-if="locationLine !== '—'" class="detail-row">
+            <span class="detail-label">区域 / 建筑 / 活动</span>
+            <span class="detail-value">{{ locationLine }}</span>
+          </div>
+          <div v-if="displayLocation.当前行为描述" class="detail-row">
+            <span class="detail-label">当前行为</span>
+            <span class="detail-value">{{ displayLocation.当前行为描述 }}</span>
+          </div>
+          <div v-if="buildingOccupantsSummary" class="detail-row">
+            <span class="detail-label">同建筑在场（变量索引）</span>
+            <span class="detail-value">{{ buildingOccupantsSummary }}</span>
+          </div>
+          <template v-if="participationRows.length > 0">
+            <span class="section-label sub">参与活动记录</span>
+            <ul class="participation-list">
+              <li v-for="row in participationRows" :key="row.id">
+                <strong>{{ row.id }}</strong>：{{ row.summary }}
+              </li>
+            </ul>
+          </template>
+          <p
+            v-if="
+              locationLine === '—' &&
+              !displayLocation.当前行为描述 &&
+              !buildingOccupantsSummary &&
+              participationRows.length === 0
+            "
+            class="empty-hint"
+          >
+            暂无位置与活动记录（由剧情变量写入「当前位置」「参与活动记录」后显示）
+          </p>
+        </div>
+      </article>
+
       <!-- Fetishes -->
       <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
@@ -306,7 +347,7 @@
                   <span class="slot-text">{{ clothingSlotSummary(slotKey) }}</span>
                 </div>
               </template>
-              <span v-if="!hasAnyClothingSlot" class="empty-hint">暂无（点「编辑」填写上装/下装/内衣/足部）</span>
+              <span v-if="!hasAnyClothingSlot" class="empty-hint">暂无（点「编辑」填写上装/下装/内衣/腿部/足部）</span>
             </div>
             <span class="section-label sub">饰品</span>
             <ul v-if="jewelryDisplayLines.length > 0" class="appearance-list">
@@ -444,11 +485,18 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.css';
-import type { CharacterData, ClothingStateZh, RuleData } from '../types';
+import type {
+  ActivityParticipationRecordZh,
+  CharacterData,
+  CharacterLocationZh,
+  ClothingStateZh,
+  RuleData,
+} from '../types';
+import { CLOTHING_BODY_SLOT_KEYS } from '../types';
 import StatRow from './StatRow.vue';
 import StatBar from './StatBar.vue';
 import Badge from './Badge.vue';
-import { useCharacters, usePersonalRules } from '../store';
+import { useCharacters, useDataStore, usePersonalRules } from '../store';
 import {
   loadCharacterAvatarOverrides,
   PHONE_CHARACTER_AVATARS_CHANGED,
@@ -461,6 +509,7 @@ import {
   stageItem,
 } from '../utils/editCartFlow';
 import { tagFieldToBadgeLines } from '../utils/tagMap';
+import { formatMvuBuildingOccupantsLine } from '../utils/mvuOccupantValue';
 
 const props = defineProps<{
   characterId: string;
@@ -469,6 +518,70 @@ const props = defineProps<{
 
 const isDarkMode = computed(() => !!props.isDarkMode);
 
+const dataStore = useDataStore();
+const displayLocation = ref<CharacterLocationZh>({});
+const participationMap = ref<Record<string, ActivityParticipationRecordZh>>({});
+
+watch(
+  () => dataStore.data.角色档案?.[props.characterId],
+  raw => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      displayLocation.value = {};
+      participationMap.value = {};
+      return;
+    }
+    const loc = (raw as Record<string, unknown>).当前位置;
+    if (loc && typeof loc === 'object' && !Array.isArray(loc)) {
+      const o = loc as Record<string, unknown>;
+      displayLocation.value = {
+        区域ID: String(o['区域ID'] ?? '').trim(),
+        建筑ID: String(o['建筑ID'] ?? '').trim(),
+        活动ID: String(o['活动ID'] ?? '').trim(),
+        当前行为描述: String(o['当前行为描述'] ?? '').trim(),
+      };
+    } else {
+      displayLocation.value = {};
+    }
+    const pr = (raw as Record<string, unknown>).参与活动记录;
+    if (pr && typeof pr === 'object' && !Array.isArray(pr)) {
+      participationMap.value = { ...(pr as Record<string, ActivityParticipationRecordZh>) };
+    } else {
+      participationMap.value = {};
+    }
+  },
+  { deep: true, immediate: true },
+);
+
+const locationLine = computed(() => {
+  const a = displayLocation.value;
+  const parts = [a.区域ID, a.建筑ID, a.活动ID].map(x => String(x ?? '').trim()).filter(Boolean);
+  return parts.length > 0 ? parts.join(' / ') : '—';
+});
+
+const participationRows = computed(() =>
+  Object.entries(participationMap.value).map(([id, rec]) => ({
+    id,
+    summary: [
+      rec.开始时间 && `起 ${rec.开始时间}`,
+      rec.结束时间 && `止 ${rec.结束时间}`,
+      rec.参与程度 && `程度：${rec.参与程度}`,
+    ]
+      .filter(Boolean)
+      .join('；') || '（无起止与程度字段）',
+  })),
+);
+
+/** 自 MVU「建筑数据.<建筑ID>.当前角色」读取在场标识（兼容 true / "在场" / 1） */
+const buildingOccupantsSummary = computed(() => {
+  const bid = String(displayLocation.value.建筑ID ?? '').trim();
+  if (!bid) return '';
+  const b = dataStore.data.建筑数据?.[bid] as Record<string, unknown> | undefined;
+  const cur = b?.['当前角色'];
+  return formatMvuBuildingOccupantsLine(
+    cur != null && typeof cur === 'object' && !Array.isArray(cur) ? (cur as Record<string, unknown>) : undefined,
+  );
+});
+
 const avatarStorageRev = ref(0);
 function onBrowserAvatarStorageChange() {
   avatarStorageRev.value += 1;
@@ -476,7 +589,7 @@ function onBrowserAvatarStorageChange() {
 
 const defaultName = computed(() => '未知');
 
-const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
+const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 
 const currentExtra = ref<{
   currentThought?: string;
@@ -861,6 +974,19 @@ const emit = defineEmits<{
   max-width: 1400px;
   margin-inline: auto;
   box-sizing: border-box;
+}
+
+.location-participation-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.participation-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
 }
 
 .edit-mode-bar {

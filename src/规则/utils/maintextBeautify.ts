@@ -3,7 +3,7 @@
  */
 import type { SecondaryApiConfig } from '../types';
 import { MAIN_TEXT_BEAUTIFY_RULES } from './maintextBeautifyPrompt';
-import { normalizeOpenAiUrl } from './openAiUrl';
+import { normalizeOpenAiUrl } from './openaiUrl';
 
 /** 与 apiSettings 中横幅事件名一致，便于 App.vue 统一监听 */
 export const SECONDARY_API_BEAUTIFY_START_EVENT = 'rule-modifier-secondary-api-start' as const;

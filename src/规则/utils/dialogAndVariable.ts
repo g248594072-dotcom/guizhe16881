@@ -15,6 +15,7 @@ import type {
   RegionData,
   RuleData,
 } from '../types';
+import { CLOTHING_BODY_SLOT_KEYS } from '../types';
 import {
   useDataStore,
   bumpUpdateTime,
@@ -95,6 +96,12 @@ export function addCharacterToVariables(name: string, description: string): void
     状态: '出场中',
     描写: desc,
     当前内心想法: '',
+    当前位置: {
+      区域ID: '',
+      建筑ID: '',
+      活动ID: '',
+      当前行为描述: '待命',
+    },
     性格: {},
     性癖: {},
     敏感点开发: {},
@@ -107,10 +114,7 @@ export function addCharacterToVariables(name: string, description: string): void
       体质特征: '普通',
     },
     服装状态: {
-      上装: slot(),
-      下装: slot(),
-      内衣: slot(),
-      足部: slot(),
+      ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, slot()])),
       饰品: {},
     },
     身体部位物理状态: {},
@@ -121,6 +125,7 @@ export function addCharacterToVariables(name: string, description: string): void
     },
     身份标签: {},
     当前综合生理描述: '',
+    参与活动记录: {},
   };
   
   bumpUpdateTime();
@@ -451,12 +456,9 @@ export function updateCharacterIdentityTags(
 export function defaultEmptyClothingState(): ClothingStateZh {
   const s: ClothingSlotZh = { 名称: '', 状态: '正常', 描述: '' };
   return {
-    上装: { ...s },
-    下装: { ...s },
-    内衣: { ...s },
-    足部: { ...s },
+    ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, { ...s }])),
     饰品: {},
-  };
+  } as ClothingStateZh;
 }
 
 function mergeClothingState(incoming: ClothingStateZh): ClothingStateZh {
@@ -467,13 +469,11 @@ function mergeClothingState(incoming: ClothingStateZh): ClothingStateZh {
     描述: String(b?.描述 ?? a.描述 ?? ''),
   });
   const jewelry = { ...base.饰品, ...(incoming.饰品 && typeof incoming.饰品 === 'object' ? incoming.饰品 : {}) };
-  return {
-    上装: slot(base.上装!, incoming.上装),
-    下装: slot(base.下装!, incoming.下装),
-    内衣: slot(base.内衣!, incoming.内衣),
-    足部: slot(base.足部!, incoming.足部),
-    饰品: jewelry,
-  };
+  const out: ClothingStateZh = { 饰品: jewelry };
+  for (const k of CLOTHING_BODY_SLOT_KEYS) {
+    out[k] = slot(base[k]!, incoming[k]);
+  }
+  return out;
 }
 
 export function updateCharacterAppearanceInVariables(
@@ -510,8 +510,7 @@ export function formatEditCharacterAppearanceMessage(
   身体部位物理状态: Record<string, BodyPartPhysicsZh>,
 ): string {
   const lines = ['[编辑角色外观与身体状态]', `角色ID：${characterId}`];
-  const keys = ['上装', '下装', '内衣', '足部'] as const;
-  for (const k of keys) {
+  for (const k of CLOTHING_BODY_SLOT_KEYS) {
     const x = 服装状态[k];
     if (x && (String(x.名称 || '').trim() || String(x.状态 || '').trim() || String(x.描述 || '').trim())) {
       lines.push(`${k}：${x.名称 || '—'} / ${x.状态 || '—'} / ${x.描述 || ''}`.trim());

@@ -199,7 +199,7 @@ export async function generateWorldTrend(
 ): Promise<boolean> {
   const config = loadSecondaryApiConfig();
   if (!config?.tasks?.includeWorldChanges) {
-    console.log('[WorldTrend] 世界变化任务未启用，跳过生成');
+    console.log('[WorldTrend] NPC生活任务未启用，跳过生成');
     return false;
   }
 
@@ -345,7 +345,7 @@ export async function generateResidentLife(
 ): Promise<boolean> {
   const config = loadSecondaryApiConfig();
   if (!config?.tasks?.includeWorldChanges) {
-    console.log('[ResidentLife] 世界变化任务未启用，跳过生成');
+    console.log('[ResidentLife] NPC生活任务未启用，跳过生成');
     return false;
   }
 
@@ -395,7 +395,7 @@ export async function generateResidentLife(
 export async function generateResidentLifeAggregated(statData: Record<string, unknown>): Promise<boolean> {
   const config = loadSecondaryApiConfig();
   if (!config?.tasks?.includeWorldChanges) {
-    console.log('[ResidentLife] 世界变化任务未启用，跳过聚合生成');
+    console.log('[ResidentLife] NPC生活任务未启用，跳过聚合生成');
     return false;
   }
 

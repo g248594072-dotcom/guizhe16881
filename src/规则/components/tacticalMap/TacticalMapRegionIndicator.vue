@@ -27,7 +27,7 @@ const props = defineProps<{
   panX: number;
   panY: number;
   scale: number;
-  /** 战术地图视口 DOM（与 pan/scale 同一坐标系），箭头仅在此区域内定位 */
+  /** 地图视口 DOM（与 pan/scale 同一坐标系），箭头仅在此区域内定位 */
   viewportEl: HTMLElement | null;
 }>();
 

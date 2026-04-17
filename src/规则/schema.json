@@ -1,305 +1,664 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "allOf": [
-    {
+  "default": {},
+  "type": "object",
+  "properties": {
+    "世界规则": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "世界规则名"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "区域规则": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "区域规则名"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "个人规则": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "个人规则名"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "区域数据": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "区域唯一ID，格式如 REG-001"
+      },
+      "additionalProperties": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "名称": {
+            "default": "未知区域",
+            "type": "string"
+          },
+          "描述": {
+            "type": "string"
+          },
+          "包含建筑": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "description": "建筑ID引用"
+            },
+            "additionalProperties": {
+              "default": true,
+              "type": "boolean",
+              "description": "是否属于该区域"
+            }
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "建筑数据": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "建筑唯一ID，格式如 BLD-001"
+      },
+      "additionalProperties": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "名称": {
+            "default": "未知建筑",
+            "type": "string"
+          },
+          "描述": {
+            "type": "string"
+          },
+          "所属区域ID": {
+            "type": "string",
+            "description": "关联的区域ID，必须存在于区域数据中"
+          },
+          "内部房间布局": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "description": "房间名，如：客厅、卧室、地下室"
+            },
+            "additionalProperties": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "描述": {
+                  "type": "string",
+                  "description": "关于这个房间的详细描述"
+                }
+              }
+            }
+          },
+          "当前活动": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "description": "活动ID引用"
+            },
+            "additionalProperties": {
+              "default": true,
+              "type": "boolean",
+              "description": "是否在该建筑进行"
+            }
+          },
+          "当前角色": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "description": "角色标识符，可以是CHR-ID或文字描述"
+            },
+            "additionalProperties": {
+              "default": true,
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/__schema1"
+                },
+                {
+                  "$ref": "#/$defs/__schema2"
+                },
+                {
+                  "$ref": "#/$defs/__schema3"
+                }
+              ],
+              "description": "是否在该建筑内：可为 true/false、短文字或数字"
+            }
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    "活动数据": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "活动唯一ID，格式如 ACT-001"
+      },
+      "additionalProperties": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "所在建筑ID": {
+            "type": "string",
+            "description": "关联的建筑ID，必须存在于建筑数据中"
+          },
+          "活动名称": {
+            "default": "未知活动",
+            "type": "string"
+          },
+          "活动内容": {
+            "type": "string"
+          },
+          "开始时间": {
+            "type": "string",
+            "description": "记录活动开始的具体游戏时间"
+          },
+          "参与者": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "description": "角色唯一ID"
+            },
+            "additionalProperties": {
+              "default": true,
+              "type": "boolean",
+              "description": "是否正在参与"
+            }
+          },
+          "状态": {
+            "default": "进行中",
+            "type": "string",
+            "enum": [
+              "进行中",
+              "已结束",
+              "已取消"
+            ],
+            "description": "与地图活动阶段对应"
+          }
+        },
+        "required": [
+          "参与者",
+          "状态"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "游戏时间": {
       "default": {},
       "type": "object",
       "properties": {
-        "世界规则": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema0"
-          }
+        "纪历体系": {
+          "default": "公历",
+          "type": "string"
         },
-        "区域规则": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema0"
-          }
+        "纪年名称": {
+          "default": "公元",
+          "type": "string"
         },
-        "个人规则": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/__schema0"
-          }
+        "纪年年数": {
+          "type": "number"
         },
-        "角色档案": {
-          "default": {},
-          "type": "object",
-          "propertyNames": {
+        "时间演算基底": {
+          "default": "现代",
+          "type": "string"
+        },
+        "年": {
+          "default": 2026,
+          "type": "number"
+        },
+        "月": {
+          "default": 4,
+          "type": "number"
+        },
+        "日": {
+          "default": 4,
+          "type": "number"
+        },
+        "时": {
+          "default": 12,
+          "type": "number"
+        },
+        "分": {
+          "type": "number"
+        }
+      }
+    },
+    "角色档案": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "description": "角色档案键名：须为 CHR- 加三位序号，如 CHR-001"
+      },
+      "additionalProperties": {
+        "default": {},
+        "type": "object",
+        "properties": {
+          "姓名": {
+            "default": "未知",
             "type": "string"
           },
-          "additionalProperties": {
+          "状态": {
+            "default": "出场中",
+            "type": "string",
+            "enum": [
+              "出场中",
+              "暂时退场"
+            ]
+          },
+          "描写": {
+            "type": "string"
+          },
+          "当前内心想法": {
+            "type": "string"
+          },
+          "当前位置": {
             "default": {},
-            "allOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "姓名": {
-                    "default": "未知",
-                    "type": "string"
-                  },
-                  "状态": {
-                    "default": "出场中",
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "enum": [
-                          "出场中",
-                          "暂时退场"
-                        ]
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "描写": {
-                    "type": "string"
-                  },
-                  "当前内心想法": {
-                    "type": "string"
-                  },
-                  "性格": {
-                    "default": [],
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "性癖": {
-                    "default": {},
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object",
-                      "properties": {
-                        "等级": { "type": "number" },
-                        "细节描述": { "type": "string" },
-                        "自我合理化": { "type": "string" }
-                      },
-                      "additionalProperties": true
-                    }
-                  },
-                  "敏感部位": {
-                    "default": {},
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": "object",
-                      "properties": {
-                        "敏感等级": { "type": "number" },
-                        "生理反应": { "type": "string" },
-                        "开发细节": { "type": "string" }
-                      },
-                      "additionalProperties": true
-                    }
-                  },
-                  "隐藏性癖": {
-                    "type": "string"
-                  },
-                  "身体信息": {
-                    "default": {},
-                    "type": "object",
-                    "properties": {
-                      "年龄": {
-                        "default": 17,
-                        "type": "number"
-                      },
-                      "身高": {
-                        "default": 160,
-                        "type": "number"
-                      },
-                      "体重": {
-                        "default": 48,
-                        "type": "number"
-                      },
-                      "三围": {
-                        "default": "未知",
-                        "type": "string"
-                      },
-                      "体质特征": {
-                        "default": "普通",
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "数值": {
-                    "default": {},
-                    "type": "object",
-                    "properties": {
-                      "好感度": {
-                        "type": "number"
-                      },
-                      "性癖开发值": {
-                        "type": "number"
-                      },
-                      "发情值": {
-                        "type": "number"
-                      }
-                    }
-                  },
-                  "当前综合生理描述": {
-                    "type": "string"
-                  }
+            "type": "object",
+            "properties": {
+              "区域ID": {
+                "type": "string",
+                "description": "当前所在区域的ID"
+              },
+              "建筑ID": {
+                "type": "string",
+                "description": "当前所在建筑的ID"
+              },
+              "活动ID": {
+                "type": "string",
+                "description": "当前参与的活动ID，若无则留空"
+              },
+              "当前行为描述": {
+                "default": "待命",
+                "type": "string",
+                "description": "角色正在做什么的具体动作或状态"
+              }
+            },
+            "additionalProperties": {}
+          },
+          "性格": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "性癖": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "等级": {
+                  "default": 1,
+                  "type": "number"
+                },
+                "细节描述": {
+                  "type": "string"
+                },
+                "自我合理化": {
+                  "type": "string"
                 }
               },
-              {
+              "additionalProperties": {}
+            }
+          },
+          "隐藏性癖": {
+            "type": "string"
+          },
+          "身体信息": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "年龄": {
+                "default": 17,
+                "type": "number"
+              },
+              "身高": {
+                "default": 160,
+                "type": "number"
+              },
+              "体重": {
+                "default": 48,
+                "type": "number"
+              },
+              "三围": {
+                "default": "未知",
+                "type": "string"
+              },
+              "体质特征": {
+                "default": "普通",
+                "type": "string"
+              }
+            }
+          },
+          "服装状态": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "上装": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "下装": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "内衣": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "腿部": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "足部": {
+                "$ref": "#/$defs/__schema4"
+              },
+              "饰品": {
+                "default": {},
                 "type": "object",
                 "propertyNames": {
                   "type": "string"
                 },
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "default": {},
+                  "type": "object",
+                  "properties": {
+                    "部位": {
+                      "default": "未知",
+                      "type": "string"
+                    },
+                    "状态": {
+                      "default": "正常",
+                      "type": "string"
+                    },
+                    "描述": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": {}
+                }
               }
-            ]
-          }
-        },
-        "元信息": {
-          "default": {},
-          "type": "object",
-          "properties": {
-            "玩家名称": {
-              "default": "玩家",
+            },
+            "additionalProperties": {}
+          },
+          "身体部位物理状态": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
               "type": "string"
             },
-            "玩家设置": {
+            "additionalProperties": {
               "default": {},
               "type": "object",
-              "propertyNames": {
-                "type": "string"
+              "properties": {
+                "外观描述": {
+                  "default": "未详细观察",
+                  "type": "string"
+                },
+                "当前状态": {
+                  "default": "正常",
+                  "type": "string"
+                }
               },
               "additionalProperties": {}
-            },
-            "当前阶段": {
-              "default": "开局",
+            }
+          },
+          "敏感点开发": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
               "type": "string"
             },
-            "世界类型": {
-              "default": "现代",
+            "additionalProperties": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "敏感等级": {
+                  "default": 1,
+                  "type": "number"
+                },
+                "生理反应": {
+                  "type": "string"
+                },
+                "开发细节": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": {}
+            }
+          },
+          "数值": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "好感度": {
+                "type": "number"
+              },
+              "性癖开发值": {
+                "type": "number"
+              },
+              "发情值": {
+                "type": "number"
+              }
+            }
+          },
+          "身份标签": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "当前综合生理描述": {
+            "type": "string"
+          },
+          "参与活动记录": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
               "type": "string",
-              "enum": [
-                "现代",
-                "西幻",
-                "玄幻",
-                "未来",
-                "西方中世纪",
-                "东方中世纪",
-                "自定义"
-              ]
+              "description": "活动ID"
             },
-            "进度": {
-              "default": 1,
-              "type": "number"
-            },
-            "最近更新时间": {
-              "default": 1774748097987,
-              "type": "number"
+            "additionalProperties": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "开始时间": {
+                  "type": "string"
+                },
+                "结束时间": {
+                  "type": "string"
+                },
+                "参与程度": {
+                  "default": "次要参与者",
+                  "type": "string",
+                  "enum": [
+                    "主要参与者",
+                    "次要参与者",
+                    "旁观者"
+                  ]
+                }
+              },
+              "required": [
+                "参与程度"
+              ],
+              "additionalProperties": {}
             }
           }
         },
-        "游戏状态": {
+        "required": [
+          "当前位置"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    "元信息": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "玩家名称": {
+          "default": "玩家",
+          "type": "string"
+        },
+        "玩家设置": {
           "default": {},
           "type": "object",
           "propertyNames": {
             "type": "string"
           },
           "additionalProperties": {}
+        },
+        "当前阶段": {
+          "default": "开局",
+          "type": "string"
+        },
+        "世界类型": {
+          "default": "现代",
+          "type": "string",
+          "description": "可填入现代、西幻等预设，或玩家自定义世界名称，最长 64 字"
+        },
+        "世界简介": {
+          "type": "string",
+          "description": "自定义或补充的世界观简介，建议开局由玩家填写"
+        },
+        "进度": {
+          "default": 1,
+          "type": "number"
+        },
+        "最近更新时间": {
+          "default": 1776389996528,
+          "type": "number"
         }
       }
     },
-    {
+    "游戏状态": {
+      "default": {},
       "type": "object",
       "propertyNames": {
-        "type": "string"
+        "type": "string",
+        "description": "状态名"
       },
       "additionalProperties": {}
     }
-  ],
+  },
+  "additionalProperties": {},
   "$defs": {
     "__schema0": {
       "default": {},
-      "allOf": [
-        {
-          "type": "object",
-          "properties": {
-            "名称": {
-              "type": "string"
-            },
-            "效果描述": {
-              "type": "string"
-            },
-            "状态": {
-              "default": "生效中",
-              "anyOf": [
-                {
-                  "type": "string",
-                  "enum": [
-                    "生效中",
-                    "已归档"
-                  ]
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "细分规则": {
-              "default": {},
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {
-                "default": {},
-                "type": "object",
-                "properties": {
-                  "描述": {
-                    "type": "string"
-                  },
-                  "状态": {
-                    "default": "生效中",
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "enum": [
-                          "生效中",
-                          "已归档"
-                        ]
-                      },
-                      {
-                        "type": "string"
-                      }
-                    ]
-                  }
-                }
-              }
-            },
-            "适用对象": {
-              "type": "string"
-            },
-            "标记": {
-              "type": "string"
-            }
-          }
+      "type": "object",
+      "properties": {
+        "名称": {
+          "type": "string"
         },
-        {
+        "效果描述": {
+          "type": "string"
+        },
+        "状态": {
+          "default": "生效中",
+          "type": "string",
+          "enum": [
+            "生效中",
+            "已归档"
+          ]
+        },
+        "细分规则": {
+          "default": {},
           "type": "object",
           "propertyNames": {
-            "type": "string"
+            "type": "string",
+            "description": "细分规则名"
           },
-          "additionalProperties": {}
+          "additionalProperties": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "描述": {
+                "type": "string"
+              },
+              "状态": {
+                "default": "生效中",
+                "type": "string",
+                "enum": [
+                  "生效中",
+                  "已归档"
+                ]
+              }
+            },
+            "required": [
+              "状态"
+            ]
+          }
+        },
+        "适用对象": {
+          "type": "string"
+        },
+        "标记": {
+          "type": "string"
         }
-      ]
+      },
+      "required": [
+        "状态"
+      ],
+      "additionalProperties": {}
+    },
+    "__schema1": {
+      "type": "boolean"
+    },
+    "__schema2": {
+      "type": "string"
+    },
+    "__schema3": {
+      "type": "number"
+    },
+    "__schema4": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "名称": {
+          "type": "string"
+        },
+        "状态": {
+          "default": "正常",
+          "type": "string"
+        },
+        "描述": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
     }
   }
 }

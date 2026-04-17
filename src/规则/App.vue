@@ -1563,7 +1563,13 @@ import {
   type TagCheckResult
 } from './utils/messageParser';
 import { applyMaintextInlineBeautify } from './utils/maintextInlineBeautify';
-import { GamePhase, type JewelryEditRow, type OpeningFormData, type OutputMode } from './types';
+import {
+  GamePhase,
+  CLOTHING_BODY_SLOT_KEYS,
+  type JewelryEditRow,
+  type OpeningFormData,
+  type OutputMode,
+} from './types';
 import type { EditCartItem, EditCartModalForm } from './types/editCart';
 import { klona } from 'klona';
 import Swal from 'sweetalert2';
@@ -1575,7 +1581,10 @@ import {
 import {
   updateWorldbookEntriesByMode,
   isSecondaryApiConfigured,
+  SECONDARY_API_END_EVENT,
   SECONDARY_API_START_EVENT,
+  type SecondaryApiEndDetail,
+  type SecondaryApiStartDetail,
 } from './utils/apiSettings';
 import {
   formatPersonalRuleKeysSection,
@@ -1700,9 +1709,12 @@ const personalRulesExpandGroup = ref<string | null>(null);
 /** 第二 API 处理变量时顶部黄色提示条（至标签检核弹窗打开为止） */
 const secondaryApiBannerVisible = ref(false);
 const secondaryApiBannerText = ref('第二 API 正在生成变量更新，可先阅读正文。');
+/** 当前顶栏条语义：变量合并路 vs 地图短请求（后者由专用 end 事件收起） */
+const secondaryApiBannerScope = ref<'none' | 'variable' | 'tactical'>('none');
 
 function hideSecondaryApiBanner() {
   secondaryApiBannerVisible.value = false;
+  secondaryApiBannerScope.value = 'none';
 }
 
 const isModalOpen = ref(false);
@@ -1796,7 +1808,7 @@ const modalForm = ref({
   appearanceBodyPartRows: [] as Array<{ key: string; 外观描述: string; 当前状态: string }>,
 });
 
-const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
+const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 
 // 同层界面状态
 const userInput = ref('');
@@ -2245,7 +2257,7 @@ const navItems = [
   {
     id: 'world_life',
     icon: 'fa-solid fa-earth-americas',
-    label: '世界和生活的变化',
+    label: 'NPC生活',
   },
   {
     id: 'random_rules',
@@ -2260,7 +2272,7 @@ const panelTitles: Record<string, string> = {
   regional_rules: '区域规则管理',
   personal_rules: '个人规则管理',
   phone: '手机',
-  world_life: '世界和生活的变化',
+  world_life: 'NPC生活',
   random_rules: '随机规则生成器',
   settings: '系统设置',
 };
@@ -3501,7 +3513,13 @@ async function sendMessage() {
         );
         if (isSecondaryApiConfigured(secondaryApiConfig)) {
           console.log('🔄 [App] 双API模式：第二 API（变量 / 正文美化）…');
-          result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
+          const statMid =
+            pendingUserMessageId.value != null && pendingUserMessageId.value !== undefined
+              ? pendingUserMessageId.value
+              : 'latest';
+          result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
+            statDataMessageId: statMid,
+          });
           console.log('✅ [App] 第二 API 合并完成');
         }
       } catch (error) {
@@ -3861,7 +3879,9 @@ async function handleRegenerate() {
     if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
       try {
         const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
-        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
+        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
+          statDataMessageId: info.userMessageId,
+        });
       } catch (error) {
         console.error('❌ [App] 第二API处理失败:', error);
       }
@@ -3951,31 +3971,32 @@ async function handleRegenerateVariablesOnly() {
       console.warn('⚠️ [App] 获取输出模式/第二API配置失败，将按单API回退:', e);
     }
 
-    // 获取“本楼层之前”的变量快照，作为变量更新基底
-    let baseData: any = null;
-    try {
-      await waitGlobalInitialized('Mvu');
-      const baseId = Math.max(info.messageId - 1, 0);
-      baseData = Mvu.getMvuData({ type: 'message', message_id: baseId });
-    } catch (e) {
-      console.warn('⚠️ [App] 获取 MVU 基底数据失败:', e);
-    }
-
     const buildVariableOnlyPrompt = async (): Promise<string> => {
-      const currentVariables = (baseData?.stat_data ?? {}) as Record<string, any>;
+      let currentVariables: Record<string, any> = {};
+      try {
+        await waitGlobalInitialized('Mvu');
+        const layerData = Mvu.getMvuData({ type: 'message', message_id: info.messageId! });
+        currentVariables = (layerData?.stat_data ?? {}) as Record<string, any>;
+      } catch (e) {
+        console.warn('⚠️ [App] 获取本楼层 MVU stat_data 失败:', e);
+      }
 
       // 读取世界书中“变量相关条目”的内容（即使双API模式下这些条目被关闭，也能读取 content）
       let variableUpdateRule = '';
       let variableList = '';
       let variableOutputFormat = '';
+      let mvuPrefixedEntriesFull = '';
       try {
-        const { collectVariableWorldbookContentsFromEntries } = await import('./utils/apiSettings');
+        const { collectVariableWorldbookContentsFromEntries, joinAllMvUPrefixedEntryBlocks } = await import(
+          './utils/apiSettings',
+        );
         const worldbookName = ((SillyTavern as any).getCharacterInfo?.()?.worldbook_name) || '规则系统';
         const entries = await getWorldbook(worldbookName);
         const sections = collectVariableWorldbookContentsFromEntries(entries);
         variableUpdateRule = sections.variableUpdateRule;
         variableList = sections.variableList;
         variableOutputFormat = sections.variableOutputFormat;
+        mvuPrefixedEntriesFull = joinAllMvUPrefixedEntryBlocks(entries);
       } catch (e) {
         console.warn('⚠️ [App] 读取世界书变量条目失败，将使用默认格式:', e);
       }
@@ -3998,6 +4019,16 @@ async function handleRegenerateVariablesOnly() {
         }
         if (!c.隐藏性癖 || c.隐藏性癖 === '') gaps.push('隐藏性癖（空字符串，需填充）');
         if (!c.当前内心想法 || c.当前内心想法 === '') gaps.push('当前内心想法（空，需基于正文推断）');
+        const loc = c.当前位置;
+        const locBad =
+          loc == null ||
+          typeof loc !== 'object' ||
+          Array.isArray(loc) ||
+          (String((loc as Record<string, unknown>).区域ID ?? '').trim() === '' &&
+            String((loc as Record<string, unknown>).建筑ID ?? '').trim() === '');
+        if (locBad) {
+          gaps.push('当前位置（须为对象且含区域ID、建筑ID；与区域数据/建筑数据 id 对齐；活动ID可空）');
+        }
         if (!c.当前综合生理描述 || c.当前综合生理描述 === '') gaps.push('当前综合生理描述（空，需基于正文推断）');
         if (gaps.length > 0) {
           characterGaps.push(`- ${c.姓名 || charId}: ${gaps.join('、')}`);
@@ -4008,6 +4039,11 @@ async function handleRegenerateVariablesOnly() {
         ? `## ⚠️ 现有角色档案空缺检测\n以下角色存在空缺的字段，请**务必基于正文内容**进行推断和填充：\n${characterGaps.join('\n')}\n\n`
         : '';
 
+      const mvuFullSection =
+        (mvuPrefixedEntriesFull || '').trim().length > 0
+          ? `## 世界书：以 [mvu] / [mvu_update] 开头的全部条目（变量工作时必读，勿遗漏；与下文「变量列表 / 更新规则」互补）\n${mvuPrefixedEntriesFull.trim()}\n\n`
+          : '';
+
       return `你是一位专门负责游戏变量更新的AI助手。你的任务是根据提供的游戏正文和当前变量数据，生成变量更新指令。
 
 ## 当前变量数据（JSON格式）
@@ -4015,7 +4051,10 @@ async function handleRegenerateVariablesOnly() {
 ${JSON.stringify(currentVariables, null, 2)}
 \`\`\`
 
-${formatPersonalRuleKeysSection(currentVariables)}${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+## 变量快照来源
+以下 JSON 取自：**当前长按所在消息楼层 #${info.messageId} 的 stat_data**。请在该快照基础上输出 JSON Patch。
+
+${mvuFullSection}${formatPersonalRuleKeysSection(currentVariables)}${variableList ? `## 变量列表\n${variableList}\n\n` : ''}${variableUpdateRule ? `## 变量更新规则\n${variableUpdateRule}\n\n` : ''}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
 ## 变量输出格式
 请严格按照以下 JSON Patch 格式输出变量更新：
 \`\`\`json
@@ -4028,7 +4067,7 @@ ${maintext}
 </maintext>
 
 ## 核心任务（优先级从高到低）
-1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
+1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、**当前位置**、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
 2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
 3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
 4. **更新世界规则**：如有新规则生效或规则状态变化
@@ -4052,13 +4091,19 @@ ${maintext}
     // 生成新的 UpdateVariable
     let updateVariable = '';
     if (mode === 'dual' && isSecondaryApiConfigured(secondaryApiConfig)) {
-      // 双API：优先走第二 API（generateRaw + 短上下文）
-      const { processWithSecondaryApi } = await import('./utils/apiSettings');
-      updateVariable = await processWithSecondaryApi(maintext, secondaryApiConfig);
+      // 双API：优先走第二 API（generateRaw + 短上下文；若开启分轮则含附加任务合并）
+      const { runSecondaryApiForMaintextPipeline } = await import('./utils/apiSettings');
+      const { variableUpdate } = await runSecondaryApiForMaintextPipeline(maintext, secondaryApiConfig, {
+        statDataMessageId: info.messageId!,
+      });
+      updateVariable = variableUpdate;
     } else if (isSecondaryApiConfigured(secondaryApiConfig)) {
       // 单API但配置了第二 API：同样可以走第二 API 来“只重roll变量”
-      const { processWithSecondaryApi } = await import('./utils/apiSettings');
-      updateVariable = await processWithSecondaryApi(maintext, secondaryApiConfig);
+      const { runSecondaryApiForMaintextPipeline } = await import('./utils/apiSettings');
+      const { variableUpdate } = await runSecondaryApiForMaintextPipeline(maintext, secondaryApiConfig, {
+        statDataMessageId: info.messageId!,
+      });
+      updateVariable = variableUpdate;
     } else {
       // 单API且未配置第二 API：用主 API 按“第二 API 的任务格式”生成变量
       if (typeof generate !== 'function') throw new Error('generate 函数不可用');
@@ -4811,7 +4856,7 @@ async function refineOpeningAssistantWithSecondaryApi(
   assistantMessageId: number,
 ): Promise<void> {
   try {
-    const { getSecondaryApiConfig, processWithSecondaryApi, isSecondaryApiConfigured } = await import(
+    const { getSecondaryApiConfig, runSecondaryApiForMaintextPipeline, isSecondaryApiConfigured } = await import(
       './utils/apiSettings',
     );
     const secondaryApiConfig = getSecondaryApiConfig();
@@ -4832,7 +4877,13 @@ async function refineOpeningAssistantWithSecondaryApi(
       return;
     }
 
-    const updateVariable = await processWithSecondaryApi(maintext, secondaryApiConfig);
+    const { variableUpdate: updateVariable } = await runSecondaryApiForMaintextPipeline(
+      maintext,
+      secondaryApiConfig,
+      {
+        statDataMessageId: assistantMessageId,
+      },
+    );
     if (!updateVariable?.trim()) return;
 
     const oldPatch = extractLastTagContent(filtered, 'UpdateVariable');
@@ -5236,7 +5287,13 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
     if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
       try {
         const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
-        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig);
+        const openingStatMid =
+          pendingUserMessageId.value != null && pendingUserMessageId.value !== undefined
+            ? pendingUserMessageId.value
+            : 'latest';
+        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
+          statDataMessageId: openingStatMid,
+        });
         console.log('✅ [App] 开局流程：第二 API 合并完成');
       } catch (error) {
         console.error('❌ [App] 开局流程：第二API处理失败:', error);
@@ -5330,18 +5387,36 @@ function onPageShowStaleUserCheck() {
 }
 
 function onSecondaryApiStartEvent(ev: Event) {
-  const custom = ev as CustomEvent<{ attempt?: number }>;
-  const attempt = custom.detail?.attempt;
+  const custom = ev as CustomEvent<SecondaryApiStartDetail>;
+  const detail = custom.detail ?? {};
+  const attempt = detail.attempt;
+  const scope = detail.scope ?? 'variable_update';
   if (isGeneratingOpening.value) {
     openingSecondaryApiPhase.value = true;
     // 开局全屏遮罩已提示「正在解析变量」，不再叠顶栏横幅
     return;
   }
-  secondaryApiBannerText.value =
-    attempt != null && attempt > 1
-      ? `第二 API 重试中（第 ${attempt} 次），可先阅读正文。`
-      : '第二 API 正在生成变量更新，可先阅读正文。';
+  if (scope === 'tactical_map') {
+    secondaryApiBannerScope.value = 'tactical';
+    secondaryApiBannerText.value = detail.message?.trim() || 'AI 正在处理地图请求…';
+  } else {
+    secondaryApiBannerScope.value = 'variable';
+    const customMsg = detail.message?.trim();
+    secondaryApiBannerText.value =
+      customMsg ||
+      (attempt != null && attempt > 1
+        ? `第二 API 重试中（第 ${attempt} 次），可先阅读正文。`
+        : '第二 API 正在生成变量更新，可先阅读正文。');
+  }
   secondaryApiBannerVisible.value = true;
+}
+
+function onSecondaryApiEndEvent(ev: Event) {
+  const custom = ev as CustomEvent<SecondaryApiEndDetail>;
+  const scope = custom.detail?.scope ?? 'tactical_map';
+  if (scope === 'tactical_map' && secondaryApiBannerScope.value === 'tactical') {
+    hideSecondaryApiBanner();
+  }
 }
 
 onMounted(() => {
@@ -5396,6 +5471,7 @@ onMounted(() => {
   // 监听工具层发来的“写入前端对话框”事件
   window.addEventListener('th:copy-to-input', onCopyToInputEvent as EventListener);
   window.addEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
+  window.addEventListener(SECONDARY_API_END_EVENT, onSecondaryApiEndEvent);
 
   // 监听酒馆消息更新事件（用于检测外部消息变化，如分支切换）
   try {
@@ -5447,6 +5523,7 @@ onUnmounted(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   window.removeEventListener('th:copy-to-input', onCopyToInputEvent as EventListener);
   window.removeEventListener(SECONDARY_API_START_EVENT, onSecondaryApiStartEvent);
+  window.removeEventListener(SECONDARY_API_END_EVENT, onSecondaryApiEndEvent);
   window.removeEventListener('pageshow', onPageShowStaleUserCheck);
   window.removeEventListener('message', onCharacterAvatarParentMessage);
   hideSecondaryApiBanner();

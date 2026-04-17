@@ -38,3 +38,46 @@ export const ICON_MAP: Record<string, string> = {
 };
 
 export const ICON_KEYS = Object.keys(ICON_MAP);
+
+/** 地图图标选择器展示用中文（键名仍存盘，与 MVU / 旧数据兼容） */
+export const ICON_LABEL_ZH: Record<string, string> = {
+  Mountain: '山峰',
+  Trees: '树林',
+  Castle: '城堡',
+  Tent: '营地',
+  Factory: '工厂',
+  Building2: '楼宇',
+  Home: '房屋',
+  Landmark: '地标',
+  MapPin: '定位',
+  Flag: '旗帜',
+  Anchor: '船锚',
+  Rocket: '火箭',
+  Zap: '闪电',
+  Flame: '火焰',
+  Droplets: '水滴',
+  Wind: '风',
+  Sun: '太阳',
+  Moon: '月亮',
+  Star: '星星',
+  Cloud: '云朵',
+  Snowflake: '雪花',
+  Skull: '骷髅',
+  Heart: '心形',
+  Gem: '宝石',
+  Swords: '剑盾',
+  Crown: '王冠',
+  Key: '钥匙',
+  Book: '书本',
+  Scroll: '卷轴',
+  Music: '音乐',
+  Hexagon: '六边形',
+  Shield: '盾牌',
+  Store: '商店',
+  Sparkles: '魔法',
+  Wrench: '扳手',
+};
+
+export function getIconLabelZh(key: string): string {
+  return ICON_LABEL_ZH[key] ?? key;
+}

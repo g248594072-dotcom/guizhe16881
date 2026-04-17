@@ -20,9 +20,14 @@ export function normalizeCustomProperty(raw: unknown): CustomProperty {
 }
 
 export function normalizeActivity(a: Activity): Activity {
+  const phaseOk =
+    a.phase === 'upcoming' ||
+    a.phase === 'ongoing' ||
+    a.phase === 'ended' ||
+    a.phase === 'cancelled';
   return {
     ...a,
-    phase: a.phase === 'upcoming' || a.phase === 'ongoing' ? a.phase : 'ongoing',
+    phase: phaseOk ? a.phase : 'ongoing',
     scope: a.scope === 'personal' || a.scope === 'collective' ? a.scope : 'collective',
   };
 }

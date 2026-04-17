@@ -9,6 +9,7 @@ export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
   model: '',
   maxRetries: 2,
   useTavernMainConnection: true,
+  splitSecondaryVariablePassAndExtras: false,
   maintextBeautifyHtmlcontentChance: 50,
   tasks: {
     includeMaintextBeautification: false,

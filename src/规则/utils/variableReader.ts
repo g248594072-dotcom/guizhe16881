@@ -3,7 +3,7 @@
  * 从最新消息楼层读取游戏变量，支持 MVU 格式 [值, "描述"]
  */
 
-import type { GameData, MvuData, CharacterData, RuleData, RegionData } from '../types';
+import type { GameData, GameStatus, MvuData, CharacterData, RuleData, RegionData } from '../types';
 import {
   getMergedSensitiveDevelopment,
   normalizeFetishRecord,
@@ -352,6 +352,18 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
     const 状态 = value?.['状态'] ?? '出场中';
 
     const 当前内心想法 = value?.['当前内心想法'] ?? value?.['currentThought'] ?? '';
+    const rawLoc = value?.['当前位置'];
+    const 当前位置 =
+      rawLoc != null && typeof rawLoc === 'object' && !Array.isArray(rawLoc)
+        ? {
+            区域ID: String((rawLoc as Record<string, unknown>)['区域ID'] ?? '').trim(),
+            建筑ID: String((rawLoc as Record<string, unknown>)['建筑ID'] ?? '').trim(),
+            活动ID: String((rawLoc as Record<string, unknown>)['活动ID'] ?? '').trim(),
+            当前行为描述: String(
+              (rawLoc as Record<string, unknown>)['当前行为描述'] ?? '待命',
+            ).trim(),
+          }
+        : undefined;
     const 性格 = normalizeTagMap(value?.['性格'] ?? value?.['traits']);
     const fetishNorm = normalizeFetishRecord(value?.['性癖'] ?? value?.['fetishes']);
     const sensitiveNorm = getMergedSensitiveDevelopment(value);
@@ -450,6 +462,12 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
         ? (raw身体 as CharacterData['身体部位物理状态'])
         : undefined;
 
+    const rawParticipation = value?.['参与活动记录'];
+    const 参与活动记录 =
+      rawParticipation != null && typeof rawParticipation === 'object' && !Array.isArray(rawParticipation)
+        ? (rawParticipation as CharacterData['参与活动记录'])
+        : undefined;
+
     return {
       id,
       name,
@@ -458,6 +476,7 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       basic,
       stats,
       currentThought: 当前内心想法,
+      当前位置,
       traits: 性格,
       fetishes: 性癖,
       sensitiveParts: 敏感部位,
@@ -468,8 +487,42 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       identityTags,
       服装状态,
       身体部位物理状态,
+      参与活动记录,
     } as CharacterData;
   });
+}
+
+/** 合并 MVU「游戏状态」与旧版 `gameStatus`，供仍读 `GameData.gameStatus` 的界面使用 */
+function mapGameStatusFromStat(stat: Record<string, any>): GameStatus {
+  const fallback: GameStatus = {
+    phase: 'playing',
+    turn: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+  const legacy = pick(stat, 'gameStatus', fallback);
+  const gs = stat['游戏状态'];
+  if (gs != null && typeof gs === 'object' && !Array.isArray(gs)) {
+    const g = gs as Record<string, unknown>;
+    const phaseRaw = g.phase ?? g['阶段'];
+    const phase =
+      phaseRaw === 'opening' || phaseRaw === 'playing' || phaseRaw === 'paused'
+        ? phaseRaw
+        : legacy.phase;
+    const turn =
+      typeof g.turn === 'number' && Number.isFinite(g.turn)
+        ? g.turn
+        : typeof g['回合'] === 'number' && Number.isFinite(g['回合'])
+          ? (g['回合'] as number)
+          : legacy.turn;
+    const lastUpdated =
+      typeof g.lastUpdated === 'string'
+        ? g.lastUpdated
+        : typeof g['最近更新'] === 'string'
+          ? (g['最近更新'] as string)
+          : legacy.lastUpdated;
+    return { ...legacy, ...g, phase, turn, lastUpdated } as GameStatus;
+  }
+  return legacy as GameStatus;
 }
 
 /**
@@ -482,14 +535,8 @@ export async function readGameData(): Promise<GameData> {
 
   console.log('🔍 [variableReader] stat_data 内容:', stat);
 
-  // 读取游戏状态
-  const gameStatus = pick(stat, 'gameStatus', {
-    phase: 'playing',
-    turn: 0,
-    lastUpdated: new Date().toISOString(),
-  });
+  const gameStatus = mapGameStatusFromStat(stat);
 
-  // 读取玩家信息
   const player = pick(stat, 'player', {
     name: '玩家',
     settings: {},
@@ -533,9 +580,17 @@ export async function readGameData(): Promise<GameData> {
     元信息 && typeof 元信息 === 'object' && typeof (元信息 as any)['玩家名称'] === 'string'
       ? String((元信息 as any)['玩家名称']).trim()
       : '';
+  const metaSettings =
+    元信息 && typeof 元信息 === 'object' && (元信息 as any)['玩家设置'] != null && typeof (元信息 as any)['玩家设置'] === 'object' && !Array.isArray((元信息 as any)['玩家设置'])
+      ? ((元信息 as any)['玩家设置'] as Record<string, unknown>)
+      : null;
   const playerOut = {
     ...player,
     ...(playerNameFromMeta ? { name: playerNameFromMeta } : {}),
+    settings:
+      metaSettings && Object.keys(metaSettings).length > 0
+        ? { ...(player.settings || {}), ...metaSettings }
+        : player.settings,
   };
 
   const result: GameData = {

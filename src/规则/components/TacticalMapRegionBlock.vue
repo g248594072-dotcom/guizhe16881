@@ -9,22 +9,44 @@
     @pointerup="onRegionPointerUp"
     @pointercancel="onRegionPointerUp"
   >
+    <!-- 放大：框外左上角小卡片（名称 + 简介），为建筑腾出框内空间 -->
     <div
-      class="tm-region-block-header dynamic-panel dynamic-border"
-      :class="{ dashed: showBuildings }"
+      v-if="showBuildings"
+      class="tm-region-outside-card dynamic-panel dynamic-border"
+      :style="{ borderColor: borderColor }"
       @pointerdown.stop
-      @click.stop="onHeaderClick"
     >
-      <h3 class="tm-region-block-title dynamic-text" :class="{ large: !showBuildings }">
+      <div
+        class="tm-region-outside-card-name dynamic-text"
+        @click.stop="onHeaderClick"
+      >
         <i :class="regionIconClass" class="dynamic-accent" aria-hidden="true" />
-        {{ region.name }}
-        <i v-if="isGlobalEditMode" class="fa-solid fa-pen-to-square text-xs opacity-50" aria-hidden="true" />
-      </h3>
-      <p v-if="showBuildings" class="tm-region-block-desc dynamic-text-muted">{{ region.description }}</p>
+        <span>{{ region.name }}</span>
+        <i v-if="isGlobalEditMode" class="fa-solid fa-pen-to-square text-[0.65rem] opacity-60" aria-hidden="true" />
+      </div>
+      <p
+        v-if="descriptionTrimmed"
+        class="tm-region-outside-card-desc dynamic-text-muted"
+        :title="descriptionTrimmed"
+      >
+        {{ descriptionTrimmed }}
+      </p>
     </div>
 
-    <div v-if="!showBuildings" class="tm-region-block-body">
-      <p class="tm-region-block-big-desc dynamic-text-muted">{{ region.description }}</p>
+    <!-- 缩小：框内居中名称 + 简介 -->
+    <div v-if="!showBuildings" class="tm-region-center-stack">
+      <div
+        class="tm-region-center-name dynamic-text"
+        @pointerdown.stop
+        @click.stop="onHeaderClick"
+      >
+        <i :class="regionIconClass" class="dynamic-accent" aria-hidden="true" />
+        <span>{{ region.name }}</span>
+        <i v-if="isGlobalEditMode" class="fa-solid fa-pen-to-square text-xs opacity-50" aria-hidden="true" />
+      </div>
+      <p v-if="descriptionTrimmed" class="tm-region-center-desc dynamic-text-muted">
+        {{ descriptionTrimmed }}
+      </p>
     </div>
 
     <template v-if="showBuildings">
@@ -88,6 +110,8 @@ const regionIconClass = computed(() => {
   return 'fa-solid fa-map';
 });
 
+const descriptionTrimmed = computed(() => (props.region.description ?? '').trim());
+
 const regionBoxStyle = computed(() => ({
   left: `${props.region.x * CELL_SIZE + regionDragPx.value.x}px`,
   top: `${props.region.y * CELL_SIZE + regionDragPx.value.y}px`,
@@ -109,12 +133,15 @@ const regionDrag = ref<{
 } | null>(null);
 
 function onHeaderClick() {
-  if (props.isGlobalEditMode) emit('edit');
+  if (!props.isGlobalEditMode) return;
+  emit('edit');
 }
 
 function onRegionPointerDown(e: PointerEvent) {
   if (!props.isGlobalEditMode) return;
   if ((e.target as HTMLElement).closest('.tm-building-marker')) return;
+  if ((e.target as HTMLElement).closest('.tm-region-outside-card')) return;
+  if ((e.target as HTMLElement).closest('.tm-region-center-name')) return;
   regionDrag.value = {
     pointerId: e.pointerId,
     startClientX: e.clientX,
@@ -173,7 +200,7 @@ function onRegionPointerUp(e: PointerEvent) {
   border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   transition: opacity 0.35s;
   z-index: 1;
 }
@@ -187,53 +214,101 @@ function onRegionPointerUp(e: PointerEvent) {
   cursor: move;
 }
 
-.tm-region-block-header {
+/* 放大：贴在区域框左上角外侧（名称/简介不占框内） */
+.tm-region-outside-card {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 0.35rem;
+  z-index: 3;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.42rem 0.55rem 0.48rem;
+  border-radius: 0.45rem;
+  text-align: left;
   pointer-events: auto;
-  padding: 0.4rem 0.75rem;
-  width: fit-content;
-  border-radius: 0 0 0.75rem 0;
-  border-bottom-width: 1px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
 }
 
-.tm-region-block-header.dashed {
-  border-style: dashed;
-}
-
-.tm-region-block-title {
+.tm-region-outside-card-name {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.35rem;
   font-weight: 700;
-  font-size: 0.875rem;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.tm-region-block-title.large {
-  font-size: 1.35rem;
+.tm-region-outside-card-name > i:first-of-type {
+  flex-shrink: 0;
+  margin-top: 0.12em;
 }
 
-.tm-region-block-desc {
-  font-size: 0.7rem;
-  margin-top: 0.15rem;
-  max-width: 200px;
+.tm-region-block:not(.tm-region-block--edit) .tm-region-outside-card-name {
+  cursor: default;
+}
+
+.tm-region-block--edit .tm-region-outside-card-name {
+  cursor: pointer;
+}
+
+.tm-region-outside-card-desc {
+  margin: 0.32rem 0 0;
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
-.tm-region-block-body {
-  flex: 1;
+/* 缩小：框内垂直居中 */
+.tm-region-center-stack {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
+  padding: 0.6rem 0.75rem;
+  text-align: center;
   pointer-events: none;
 }
 
-.tm-region-block-big-desc {
-  text-align: center;
-  max-width: 28rem;
-  line-height: 1.6;
-  font-size: 1.1rem;
-  opacity: 0.75;
+.tm-region-center-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: clamp(1.25rem, 4.8vw, 2rem);
+  line-height: 1.3;
+  max-width: 96%;
+  pointer-events: auto;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+}
+
+.tm-region-block:not(.tm-region-block--edit) .tm-region-center-name {
+  cursor: default;
+}
+
+.tm-region-block--edit .tm-region-center-name {
+  cursor: pointer;
+}
+
+.tm-region-center-desc {
+  margin: 0.6rem 0 0;
+  max-width: 96%;
+  max-height: 58%;
+  overflow-y: auto;
+  font-size: clamp(1.02rem, 3.2vw, 1.45rem);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
 }
 </style>

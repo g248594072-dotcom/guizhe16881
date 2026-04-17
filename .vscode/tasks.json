@@ -6,7 +6,8 @@
       "type": "shell",
       "command": "pnpm",
       "args": [
-        "watch"
+        "run",
+        "watch:webpack"
       ],
       "problemMatcher": [
         {

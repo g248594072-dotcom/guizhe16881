@@ -227,6 +227,7 @@
 
 <script setup lang="ts">
 import type { EditCartModalForm } from '../types/editCart';
+import { CLOTHING_BODY_SLOT_KEYS } from '../types';
 import PersonalRuleCharacterPicker from './PersonalRuleCharacterPicker.vue';
 
 defineProps<{
@@ -234,7 +235,7 @@ defineProps<{
   form: EditCartModalForm;
 }>();
 
-const appearanceSlotKeys = ['上装', '下装', '内衣', '足部'] as const;
+const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 </script>
 
 <style scoped lang="scss">

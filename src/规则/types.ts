@@ -134,12 +134,17 @@ export interface JewelryItemZh {
   状态?: string;
 }
 
+/** 服装状态「服装类」槽位（不含饰品），与 schema、角色详情与编辑弹窗一致 */
+export const CLOTHING_BODY_SLOT_KEYS = ['上装', '下装', '内衣', '腿部', '足部'] as const;
+export type ClothingBodySlotKeyZh = (typeof CLOTHING_BODY_SLOT_KEYS)[number];
+
 /** MVU「服装状态」根对象 */
 export interface ClothingStateZh {
   上装?: ClothingSlotZh;
   下装?: ClothingSlotZh;
   内衣?: ClothingSlotZh;
   足部?: ClothingSlotZh;
+  腿部?: ClothingSlotZh;
   饰品?: Record<string, JewelryItemZh>;
 }
 
@@ -154,6 +159,21 @@ export interface JewelryEditRow {
 export interface BodyPartPhysicsZh {
   外观描述?: string;
   当前状态?: string;
+}
+
+/** MVU「当前位置」：与 区域数据 / 建筑数据 / 活动数据 的键名对齐 */
+export interface CharacterLocationZh {
+  区域ID?: string;
+  建筑ID?: string;
+  活动ID?: string;
+  当前行为描述?: string;
+}
+
+/** MVU「参与活动记录」单条，与 schema 一致 */
+export interface ActivityParticipationRecordZh {
+  开始时间?: string;
+  结束时间?: string;
+  参与程度?: '主要参与者' | '次要参与者' | '旁观者' | string;
 }
 
 export interface CharacterData {
@@ -187,6 +207,10 @@ export interface CharacterData {
   服装状态?: ClothingStateZh;
   /** MVU「身体部位物理状态」 */
   身体部位物理状态?: Record<string, BodyPartPhysicsZh>;
+  /** MVU「当前位置」：地图语义 id + 行为描述 */
+  当前位置?: CharacterLocationZh;
+  /** MVU「参与活动记录」：活动 ID → 起止时间与参与程度 */
+  参与活动记录?: Record<string, ActivityParticipationRecordZh>;
   [key: string]: any;
 }
 
@@ -363,6 +387,12 @@ export interface SecondaryApiConfig {
   /** 为 true 时运行时从 SillyTavern 当前聊天补全（插头）读取 URL / 密钥 / 模型，不保存密钥到变量 */
   useTavernMainConnection?: boolean;
   /**
+   * 为 true 时：第二 API 先**仅**跑一轮变量 Patch（不含正文美化 / NPC生活 / 世界演化），再**单独**第二轮
+   * 合并处理已勾选的附加任务（各任务仍按原逻辑，Patch 会拼进同一条 &lt;UpdateVariable&gt;）。
+   * 关闭时保持旧行为（变量与正文美化可并行；世界演化仍在变量轮后内联等）。
+   */
+  splitSecondaryVariablePassAndExtras?: boolean;
+  /**
    * 开启「正文美化」时，每回合要求生成 &lt;htmlcontent&gt; 小前端块的概率 0–100。
    * 每次美化调用独立随机；0 = 永不出块，100 = 每回必出。
    */
@@ -371,12 +401,14 @@ export interface SecondaryApiConfig {
     /** 第二路 generateRaw：根据原始 maintext 生成 HTML 展示层，合并进 `<maintext>`；变量仍基于原始正文 */
     includeMaintextBeautification: boolean;
     /**
-     * 世界变化：世界大势说明与居民生活 / NPC 状态说明（第二 API 路径上一并受控）。
+     * NPC生活（配置键 includeWorldChanges）：世界大势说明与居民生活 / NPC 状态说明（第二 API 路径上一并受控）。
      * 旧版 `includeWorldTrend` / `includeResidentLife` 在加载配置时会合并为该开关。
      */
     includeWorldChanges: boolean;
     /**
-     * 世界演化：演化战术地图中的世界（占位开关，具体逻辑后续接入）。
+     * 世界演化：在第二 API 变量更新之后，再据正文与 stat 中多源上下文（世界大势、角色内心与位置、
+     * 已有区域/建筑等）推断地图语义增量，生成仅含 /区域数据、/建筑数据、/活动数据 的 JSON Patch，
+     * 与本轮变量 Patch 合并为同一 &lt;UpdateVariable&gt; 内数组。
      */
     includeWorldEvolution: boolean;
   };

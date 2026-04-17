@@ -13,20 +13,25 @@
         <input v-model="form.name" type="text" class="tm-input dynamic-input dynamic-border dynamic-text" />
       </div>
 
-      <div class="tm-edit-row">
-        <div class="tm-edit-grow">
-          <label class="tm-label dynamic-text-muted">类型</label>
-          <select v-model="form.type" class="tm-input dynamic-input dynamic-border dynamic-text">
-            <option v-for="(cfg, key) in TYPE_CONFIG" :key="key" :value="key">{{ cfg.label }}</option>
-          </select>
-        </div>
-        <div class="tm-edit-grow">
-          <label class="tm-label dynamic-text-muted">地图图标（可选）</label>
-          <select v-model="formIconKey" class="tm-input dynamic-input dynamic-border dynamic-text">
-            <option value="">默认（随类型）</option>
-            <option v-for="key in ICON_KEYS" :key="key" :value="key">{{ key }}</option>
-          </select>
-        </div>
+      <div class="tm-edit-section">
+        <label class="tm-label dynamic-text-muted">地图图标（可选）</label>
+        <button
+          type="button"
+          class="tm-icon-picker-trigger dynamic-input dynamic-border dynamic-text"
+          @click="iconPickerOpen = true"
+        >
+          <span class="tm-icon-picker-trigger-main">
+            <i
+              v-if="form.icon && ICON_MAP[form.icon]"
+              :class="ICON_MAP[form.icon]"
+              class="dynamic-accent"
+              aria-hidden="true"
+            />
+            <i v-else :class="defaultTypeIconClass" class="dynamic-accent opacity-70" aria-hidden="true" />
+            <span class="tm-icon-picker-trigger-label">{{ iconPickerSummary }}</span>
+          </span>
+          <i class="fa-solid fa-chevron-down tm-icon-picker-trigger-hint dynamic-text-muted" aria-hidden="true" />
+        </button>
       </div>
 
       <div class="tm-edit-section">
@@ -115,6 +120,8 @@
               <select v-model="act.phase" class="tm-input tm-select-compact dynamic-input dynamic-border dynamic-text">
                 <option value="upcoming">即将举办</option>
                 <option value="ongoing">进行中</option>
+                <option value="ended">已结束</option>
+                <option value="cancelled">已取消</option>
               </select>
             </div>
             <div class="tm-act-meta-field">
@@ -159,14 +166,56 @@
         <i class="fa-solid fa-trash" aria-hidden="true"></i>
       </button>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="iconPickerOpen"
+        class="tm-icon-picker-overlay"
+        aria-modal="true"
+        role="dialog"
+        aria-labelledby="tm-icon-picker-title"
+        @click.self="iconPickerOpen = false"
+      >
+        <div class="tm-icon-picker-dialog dynamic-panel dynamic-border" @click.stop>
+          <div class="tm-icon-picker-head dynamic-border">
+            <h3 id="tm-icon-picker-title" class="dynamic-text">选择地图图标</h3>
+            <button type="button" class="tm-close dynamic-text-muted" aria-label="关闭" @click="iconPickerOpen = false">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="tm-icon-picker-grid">
+            <button
+              type="button"
+              class="tm-icon-choice"
+              :class="{ 'tm-icon-choice--active': !form.icon }"
+              @click="selectIconKey('')"
+            >
+              <i :class="defaultTypeIconClass" class="dynamic-accent" aria-hidden="true" />
+              <span>默认（随类型）</span>
+            </button>
+            <button
+              v-for="key in ICON_KEYS"
+              :key="key"
+              type="button"
+              class="tm-icon-choice"
+              :class="{ 'tm-icon-choice--active': form.icon === key }"
+              @click="selectIconKey(key)"
+            >
+              <i :class="ICON_MAP[key]" class="dynamic-accent" aria-hidden="true" />
+              <span>{{ getIconLabelZh(key) }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import type { Activity, ActivityPhase, ActivityScope, Building, BuildingType, CustomProperty, Person, Room } from './tacticalMap/types';
 import { TYPE_CONFIG } from './tacticalMap/themePresets';
-import { ICON_KEYS } from './tacticalMap/iconMap';
+import { ICON_KEYS, ICON_MAP, getIconLabelZh } from './tacticalMap/iconMap';
 import { normalizeBuilding } from './tacticalMap/migrate';
 
 const props = defineProps<{ building: Building }>();
@@ -200,12 +249,20 @@ watch(
   { deep: true },
 );
 
-const formIconKey = computed({
-  get: () => form.icon ?? '',
-  set: (v: string) => {
-    form.icon = v || undefined;
-  },
+const iconPickerOpen = ref(false);
+
+const defaultTypeIconClass = computed(() => TYPE_CONFIG[form.type]?.iconClass ?? 'fa-solid fa-building');
+
+const iconPickerSummary = computed(() => {
+  const k = form.icon;
+  if (k && ICON_MAP[k]) return getIconLabelZh(k);
+  return '默认（随类型）';
 });
+
+function selectIconKey(key: string) {
+  form.icon = key === '' ? undefined : key;
+  iconPickerOpen.value = false;
+}
 
 function addCustomProperty() {
   form.customProperties.push({
@@ -256,7 +313,14 @@ function handleSave() {
   const activities: Activity[] = form.activities.map(a => ({
     ...a,
     progress: Math.min(100, Math.max(0, Number(a.progress) || 0)),
-    phase: (a.phase === 'upcoming' || a.phase === 'ongoing' ? a.phase : 'ongoing') as ActivityPhase,
+    phase: (
+      a.phase === 'upcoming' ||
+      a.phase === 'ongoing' ||
+      a.phase === 'ended' ||
+      a.phase === 'cancelled'
+        ? a.phase
+        : 'ongoing'
+    ) as ActivityPhase,
     scope: (a.scope === 'personal' || a.scope === 'collective' ? a.scope : 'collective') as ActivityScope,
   }));
   emit('save', {
@@ -349,26 +413,6 @@ function handleSave() {
   background: transparent;
   cursor: pointer;
   padding: 0.2rem;
-}
-
-.tm-edit-row {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-.tm-edit-grow {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.tm-edit-sizes {
-  width: 38%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
 }
 
 .tm-size-inputs {
@@ -551,5 +595,118 @@ function handleSave() {
   background-color: var(--input-bg);
   color: var(--text-main);
   border: 1px solid var(--border-color);
+}
+
+.tm-icon-picker-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 0.375rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.8125rem;
+}
+
+.tm-icon-picker-trigger-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.tm-icon-picker-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-icon-picker-trigger-hint {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.tm-icon-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(5px);
+}
+
+.tm-icon-picker-dialog {
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: min(72vh, 30rem);
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  background: rgba(15, 23, 42, 0.98);
+  border: 1px solid #0a0a0a;
+}
+
+.tm-icon-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom-width: 1px;
+  flex-shrink: 0;
+}
+
+.tm-icon-picker-head h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.tm-icon-picker-grid {
+  padding: 0.65rem;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+  gap: 0.45rem;
+  background: #020617;
+}
+
+.tm-icon-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid #0a0a0a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  font-size: 0.65rem;
+  line-height: 1.25;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+.tm-icon-choice i {
+  font-size: 1.15rem;
+}
+
+.tm-icon-choice--active {
+  border-color: var(--accent-color);
+  box-shadow:
+    0 0 0 1px #0a0a0a,
+    0 0 0 3px rgba(45, 212, 191, 0.45);
+}
+
+.tm-icon-choice span {
+  word-break: break-word;
+  text-align: center;
+  color: #f1f5f9;
 }
 </style>

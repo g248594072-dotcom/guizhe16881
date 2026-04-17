@@ -10,6 +10,7 @@ import {
   BookHeart,
   Aperture,
   Settings as SettingsIcon,
+  PhoneOff,
   X,
   MessageSquare,
   UserCheck,
@@ -257,19 +258,38 @@ export default function App() {
           </div>
 
           {/* Dock */}
-          <div className="absolute bottom-5 inset-x-4 h-[88px] bg-white/25 backdrop-blur-2xl rounded-[34px] flex items-center justify-center gap-6 px-4 border border-white/10 shadow-xl">
-             {APPS.slice(7, 8).map((app) => (
-                <button
-                  key={app.id}
-                  onClick={() => setActiveApp(app.id)}
-                  className="flex flex-col items-center group"
-                >
-                  <div className={`w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 ${app.color} relative overflow-hidden`}>
-                    <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
-                    {app.icon}
-                  </div>
-                </button>
-              ))}
+          <div className="absolute bottom-5 inset-x-4 min-h-[88px] bg-white/25 backdrop-blur-2xl rounded-[34px] flex items-start justify-center gap-6 px-4 pt-2.5 pb-2 border border-white/10 shadow-xl">
+            <button
+              type="button"
+              onClick={() => postRequestCloseTavernPhone()}
+              className="flex flex-col items-center gap-1 group"
+              title="关闭手机"
+              aria-label="关闭手机"
+            >
+              <div className="w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 bg-[#3A3A3C] relative overflow-hidden">
+                <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
+                <PhoneOff size={34} color="white" strokeWidth={1.5} aria-hidden />
+              </div>
+              <span
+                className="text-[11px] font-medium tracking-wide"
+                style={{ color: 'var(--app-label-color, white)', textShadow: 'var(--app-label-shadow)' }}
+              >
+                关闭手机
+              </span>
+            </button>
+            {APPS.slice(7, 8).map((app) => (
+              <button
+                key={app.id}
+                type="button"
+                onClick={() => setActiveApp(app.id)}
+                className="flex flex-col items-center gap-1 group"
+              >
+                <div className={`w-[62px] h-[62px] rounded-[18px] flex items-center justify-center shadow-sm group-active:scale-90 transition-transform duration-200 ${app.color} relative overflow-hidden`}>
+                  <div className="absolute inset-0 bg-linear-to-b from-white/20 to-transparent opacity-50"></div>
+                  {app.icon}
+                </div>
+              </button>
+            ))}
           </div>
 
           {/* Home Indicator */}

@@ -84,12 +84,6 @@
           </label>
         </div>
 
-        <p
-          class="shujuku-inject-hint"
-          :class="{ dark: isDarkMode, light: !isDarkMode }"
-        >
-          将随本前端构建打包的内置表格模板写入数据库扩展（与扩展「导入模板」等效），会替换当前聊天所用的表格模板结构，保证与当前版本一致。结构：元信息、游戏时间、世界/区域/个人规则、主角信息（仅玩家主角一行）、背包物品、任务表、纪要表、角色核心（仅剧情向女角/配角等；身体部位、敏感点、服装、饰品、性癖均在 JSON 列）、游戏状态扩展。
-        </p>
         <div class="shujuku-inject-actions">
           <button
             type="button"
@@ -184,12 +178,6 @@
         <i class="fa-solid fa-sliders"></i>
         第二 API 配置
       </h3>
-      <p class="dual-api-hint">
-        主 API 仅生成与解析剧情（含 option/sum 等）；当主回复中最后一对
-        <code>&lt;maintext&gt;</code> 闭合后，将其中正文与变量规则等合并为<strong>独立提示词</strong>，通过
-        <code>generateRaw</code> 调用第二 API（默认不附带完整预设、聊天记录），仅输出
-        <code>&lt;UpdateVariable&gt;</code>，再与主文合并为一条消息。
-      </p>
 
       <label class="field-row checkbox-row">
         <input v-model="secondaryApi.useTavernMainConnection" type="checkbox" @change="persistSecondaryApi" />
@@ -257,18 +245,70 @@
         <span class="retry-note">总尝试次数 = 1 + 该值</span>
       </div>
 
-      <div class="field-label">第二 API 额外任务</div>
-      <p class="secondary-api-tasks-lead">
-        变量更新（&lt;UpdateVariable&gt;）为第二 API 的默认行为，无需开关；下方仅控制可选附加任务。
-      </p>
-      <label class="field-row checkbox-row">
-        <input
-          v-model="secondaryApi.tasks.includeMaintextBeautification"
-          type="checkbox"
-          @change="persistSecondaryApi"
-        />
-        <span>正文美化（第二 API，将 HTML 写回 &lt;maintext&gt;；变量仍按美化前正文计算）</span>
-      </label>
+      <div class="secondary-api-extra-head">
+        <div class="secondary-api-extra-head-left">
+          <span class="secondary-api-extra-head-title secondary-extra-streamer">第二 API 额外任务</span>
+          <div class="secondary-task-info-anchor" data-extra-info-key="intro">
+            <button
+              type="button"
+              class="secondary-task-info-btn"
+              :aria-expanded="extraInfoOpen === 'intro'"
+              aria-label="本区说明"
+              @click.stop="toggleExtraInfo('intro')"
+            >
+              !
+            </button>
+          </div>
+        </div>
+        <div class="secondary-api-extra-head-spacer"></div>
+        <div class="secondary-api-extra-head-right">
+          <label class="secondary-api-split-inline">
+            <input
+              v-model="secondaryApi.splitSecondaryVariablePassAndExtras"
+              class="secondary-extra-task-checkbox"
+              type="checkbox"
+              @change="persistSecondaryApi"
+            />
+            <span class="secondary-split-label secondary-extra-streamer secondary-extra-streamer--soft">额外API执行额外任务</span>
+          </label>
+          <div class="secondary-task-info-anchor" data-extra-info-key="split">
+            <button
+              type="button"
+              class="secondary-task-info-btn"
+              :aria-expanded="extraInfoOpen === 'split'"
+              aria-label="额外API执行额外任务说明"
+              @click.stop="toggleExtraInfo('split')"
+            >
+              !
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row checkbox-row secondary-extra-task-row">
+        <div class="secondary-extra-task-main">
+          <label class="secondary-extra-task-check">
+            <input
+              v-model="secondaryApi.tasks.includeMaintextBeautification"
+              class="secondary-extra-task-checkbox"
+              type="checkbox"
+              @change="persistSecondaryApi"
+            />
+            <span class="secondary-extra-task-label secondary-extra-streamer">正文美化</span>
+          </label>
+          <div class="secondary-task-info-anchor" data-extra-info-key="beautify">
+            <button
+              type="button"
+              class="secondary-task-info-btn"
+              :aria-expanded="extraInfoOpen === 'beautify'"
+              aria-label="正文美化说明"
+              @click.stop="toggleExtraInfo('beautify')"
+            >
+              !
+            </button>
+          </div>
+        </div>
+      </div>
       <div
         v-if="secondaryApi.tasks.includeMaintextBeautification"
         class="beautify-html-chance-block"
@@ -288,21 +328,55 @@
           />
           <span class="beautify-html-chance-value">{{ clampedBeautifyChance }}%</span>
         </div>
-        <p class="beautify-html-chance-hint">
-          每回合美化时单独随机：0% 永不出块，100% 每回必出；仅勾选「正文美化」时参与计算。
-        </p>
       </div>
-      <label class="field-row checkbox-row">
-        <input v-model="secondaryApi.tasks.includeWorldChanges" type="checkbox" @change="persistSecondaryApi" />
-        <span>世界变化（世界大势与居民生活 / NPC 状态相关说明，一并生成）</span>
-      </label>
-      <label class="field-row checkbox-row world-evolution-row">
-        <input v-model="secondaryApi.tasks.includeWorldEvolution" type="checkbox" @change="persistSecondaryApi" />
-        <span class="world-evolution-label">
-          世界演化
-          <span class="world-evolution-hint">演化地图中的世界</span>
-        </span>
-      </label>
+      <div class="field-row checkbox-row secondary-extra-task-row">
+        <div class="secondary-extra-task-main">
+          <label class="secondary-extra-task-check">
+            <input
+              v-model="secondaryApi.tasks.includeWorldChanges"
+              class="secondary-extra-task-checkbox"
+              type="checkbox"
+              @change="persistSecondaryApi"
+            />
+            <span class="secondary-extra-task-label secondary-extra-streamer">NPC生活</span>
+          </label>
+          <div class="secondary-task-info-anchor" data-extra-info-key="world">
+            <button
+              type="button"
+              class="secondary-task-info-btn"
+              :aria-expanded="extraInfoOpen === 'world'"
+              aria-label="NPC生活说明"
+              @click.stop="toggleExtraInfo('world')"
+            >
+              !
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="field-row checkbox-row secondary-extra-task-row">
+        <div class="secondary-extra-task-main">
+          <label class="secondary-extra-task-check">
+            <input
+              v-model="secondaryApi.tasks.includeWorldEvolution"
+              class="secondary-extra-task-checkbox"
+              type="checkbox"
+              @change="persistSecondaryApi"
+            />
+            <span class="secondary-extra-task-label secondary-extra-streamer">世界演化</span>
+          </label>
+          <div class="secondary-task-info-anchor" data-extra-info-key="evolution">
+            <button
+              type="button"
+              class="secondary-task-info-btn"
+              :aria-expanded="extraInfoOpen === 'evolution'"
+              aria-label="世界演化说明"
+              @click.stop="toggleExtraInfo('evolution')"
+            >
+              !
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div v-if="!secondaryApi.useTavernMainConnection" class="api-actions">
         <button type="button" class="btn-api" @click="saveSecondaryApiManual">
@@ -491,6 +565,54 @@
       </p>
     </div>
 
+    <!-- 第二 API 额外任务说明：挂到 body + fixed，避免侧栏 overflow 裁切 -->
+    <Teleport to="body">
+      <div
+        v-if="extraInfoOpen"
+        ref="extraInfoPopoverRoot"
+        class="secondary-task-popover secondary-task-popover--teleported"
+        :class="isDarkMode ? 'teleported-popover--dark' : 'teleported-popover--light'"
+        :style="extraInfoFixedBoxStyle"
+        role="tooltip"
+        @click.stop
+      >
+        <template v-if="extraInfoOpen === 'intro'">
+          <p class="secondary-task-popover-text">
+            变量更新（&lt;UpdateVariable&gt;）为第二 API 的默认行为，无需开关；下方仅控制可选附加任务。
+          </p>
+        </template>
+        <template v-else-if="extraInfoOpen === 'split'">
+          <p class="secondary-task-popover-text">
+            主 API 一次 → 第二 API 仅变量一次 → 第二 API 附加任务一次（共三调用）。
+          </p>
+          <p class="secondary-task-popover-text">
+            开启后：首轮第二 API 只生成「纯变量」Patch（不含游戏状态/地图等）；再单独调用第二 API，按下方勾选执行正文美化、NPC生活、世界演化，并把 Patch 与正文合并进本回合结果。关闭时附加任务与变量同轮或并行（与旧版一致）。
+          </p>
+        </template>
+        <template v-else-if="extraInfoOpen === 'beautify'">
+          <p class="secondary-task-popover-text">
+            第二 API 将 HTML 写回 &lt;maintext&gt;；变量仍按美化前正文计算。
+          </p>
+          <p class="secondary-task-popover-text">
+            每回合美化时单独随机：0% 永不出块，100% 每回必出；仅勾选「正文美化」时参与计算。
+          </p>
+        </template>
+        <template v-else-if="extraInfoOpen === 'world'">
+          <p class="secondary-task-popover-text">
+            「NPC生活」含世界大势与居民生活 / NPC 状态相关说明，一并生成。
+          </p>
+        </template>
+        <template v-else-if="extraInfoOpen === 'evolution'">
+          <p class="secondary-task-popover-text">演化地图中的世界。</p>
+          <p class="secondary-task-popover-text">
+            开启后，第二 API 在本回合「变量更新」生成结束后会再跑一路短上下文：综合正文、元信息、游戏状态（含世界大势等）、角色内心与位置、已有区域/建筑/活动，推断是否需新增或调整地图语义；若有，则生成仅针对
+            <strong>区域数据 / 建筑数据 / 活动数据</strong> 的 JSON Patch，并<strong>追加合并</strong>到同一轮
+            <code>&lt;UpdateVariable&gt;</code> 的 Patch 数组中（不单独多一轮用户可见延迟）。
+          </p>
+        </template>
+      </div>
+    </Teleport>
+
     <!-- 保存成功提示：挂到 body，避免被侧栏 transform / overflow 裁切 -->
     <Teleport to="body">
       <div v-if="showSaveSuccess" class="save-success-toast save-success-toast--teleported">
@@ -502,7 +624,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, nextTick, onBeforeUnmount } from 'vue';
 import type { OutputMode, SecondaryApiConfig, InputActionMode } from '../types';
 import {
   DEFAULT_SECONDARY_API_CONFIG,
@@ -565,6 +687,149 @@ const enableShujukuManualUpdateAfterConfirm = ref(true);
 const enableEditStagingCart = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
+
+/** 「第二 API 额外任务」区：说明气泡当前打开的 key（内容 Teleport 到 body + fixed） */
+const extraInfoOpen = ref<string | null>(null);
+const extraInfoPopoverRoot = ref<HTMLElement | null>(null);
+const extraInfoFixedBoxStyle = ref<Record<string, string>>({});
+let extraInfoWindowClickRemove: (() => void) | null = null;
+
+function clearExtraInfoWindowClick() {
+  if (extraInfoWindowClickRemove) {
+    extraInfoWindowClickRemove();
+    extraInfoWindowClickRemove = null;
+  }
+}
+
+/** 按视口钳制：水平往内收，垂直优先向下、不够则向上，仍超高则 maxHeight+滚动 */
+function updateExtraInfoFixedPosition() {
+  const key = extraInfoOpen.value;
+  if (!key) {
+    extraInfoFixedBoxStyle.value = {};
+    return;
+  }
+  const anchor = document.querySelector(`[data-extra-info-key="${key}"]`) as HTMLElement | null;
+  const btn = anchor?.querySelector('.secondary-task-info-btn') as HTMLElement | null;
+  const root = extraInfoPopoverRoot.value;
+  if (!btn || !root) return;
+
+  const pad = 10;
+  const gap = 8;
+  const br = btn.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const maxW = Math.min(360, vw - 2 * pad);
+
+  const rr = root.getBoundingClientRect();
+  let pw = rr.width > 4 ? rr.width : maxW;
+  let ph = Math.max(rr.height, 24);
+
+  let left = br.left;
+  if (left + pw > vw - pad) {
+    left = vw - pad - pw;
+  }
+  if (left < pad) {
+    left = pad;
+  }
+  if (pw > vw - 2 * pad) {
+    left = pad;
+    pw = vw - 2 * pad;
+  }
+
+  const topBelow = br.bottom + gap;
+  const topAbove = br.top - gap - ph;
+  let top: number;
+  if (topBelow + ph <= vh - pad) {
+    top = topBelow;
+  } else if (topAbove >= pad) {
+    top = topAbove;
+  } else {
+    top = pad;
+  }
+
+  if (top + ph > vh - pad) {
+    top = Math.max(pad, vh - pad - ph);
+  }
+  if (top < pad) {
+    top = pad;
+  }
+
+  const maxH = vh - pad - top;
+  const style: Record<string, string> = {
+    position: 'fixed',
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(top)}px`,
+    zIndex: '12050',
+    maxWidth: `${Math.round(maxW)}px`,
+    boxSizing: 'border-box',
+  };
+  if (pw > 0 && pw <= maxW) {
+    style.width = `${Math.round(pw)}px`;
+  }
+  if (ph > maxH - 1) {
+    style.maxHeight = `${Math.max(96, Math.round(maxH))}px`;
+    style.overflowY = 'auto';
+  }
+  extraInfoFixedBoxStyle.value = style;
+}
+
+function scheduleExtraInfoFixedPosition() {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      updateExtraInfoFixedPosition();
+      requestAnimationFrame(() => {
+        updateExtraInfoFixedPosition();
+      });
+    });
+  });
+}
+
+function onExtraInfoResizeOrScroll() {
+  if (extraInfoOpen.value) {
+    updateExtraInfoFixedPosition();
+  }
+}
+
+function closeExtraInfoPopover() {
+  extraInfoOpen.value = null;
+  extraInfoFixedBoxStyle.value = {};
+  clearExtraInfoWindowClick();
+  window.removeEventListener('resize', onExtraInfoResizeOrScroll);
+  window.removeEventListener('scroll', onExtraInfoResizeOrScroll, true);
+}
+
+function toggleExtraInfo(key: string) {
+  if (extraInfoOpen.value === key) {
+    closeExtraInfoPopover();
+    return;
+  }
+  closeExtraInfoPopover();
+  extraInfoOpen.value = key;
+  scheduleExtraInfoFixedPosition();
+  nextTick(() => {
+    setTimeout(() => {
+      const handler = (e: MouseEvent) => {
+        const el = e.target as HTMLElement | null;
+        if (el?.closest?.('.secondary-task-info-anchor') || el?.closest?.('.secondary-task-popover--teleported')) {
+          return;
+        }
+        closeExtraInfoPopover();
+      };
+      window.addEventListener('click', handler);
+      window.addEventListener('resize', onExtraInfoResizeOrScroll);
+      window.addEventListener('scroll', onExtraInfoResizeOrScroll, true);
+      extraInfoWindowClickRemove = () => {
+        window.removeEventListener('click', handler);
+        window.removeEventListener('resize', onExtraInfoResizeOrScroll);
+        window.removeEventListener('scroll', onExtraInfoResizeOrScroll, true);
+      };
+    }, 0);
+  });
+}
+
+onBeforeUnmount(() => {
+  closeExtraInfoPopover();
+});
 
 /** 小前端生成几率 0–100（展示用，与 persist 时 clamp 一致） */
 const clampedBeautifyChance = computed(() => {
@@ -1109,23 +1374,8 @@ async function selectMode(mode: OutputMode) {
   color: #52525b;
 }
 
-.shujuku-inject-hint {
-  margin-top: 14px;
-  font-size: 12px;
-  line-height: 1.55;
-  opacity: 0.88;
-}
-
-.dark .shujuku-inject-hint {
-  color: #a1a1aa;
-}
-
-.light .shujuku-inject-hint {
-  color: #52525b;
-}
-
 .shujuku-inject-actions {
-  margin-top: 10px;
+  margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -1552,7 +1802,7 @@ input:checked + .toggle-slider:before {
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  margin: 0 0 10px;
+  margin: 0 0 14px;
 }
 
 .dark .dual-api-title {
@@ -1561,27 +1811,6 @@ input:checked + .toggle-slider:before {
 
 .light .dual-api-title {
   color: #18181b;
-}
-
-.dual-api-hint {
-  font-size: 12px;
-  line-height: 1.55;
-  margin: 0 0 14px;
-  opacity: 0.9;
-}
-
-.dual-api-hint code {
-  font-size: 11px;
-  padding: 1px 4px;
-  border-radius: 4px;
-}
-
-.dark .dual-api-hint code {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.light .dual-api-hint code {
-  background: rgba(0, 0, 0, 0.06);
 }
 
 .field-label {
@@ -1717,31 +1946,302 @@ input:checked + .toggle-slider:before {
   opacity: 0.9;
 }
 
-.beautify-html-chance-hint {
-  margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.45;
-  opacity: 0.72;
+@keyframes secondary-extra-streamer-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
-.secondary-api-tasks-lead {
-  margin: 0 0 10px;
-  font-size: 12px;
-  line-height: 1.45;
-  opacity: 0.75;
+@keyframes secondary-extra-checkbox-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.85));
+  }
 }
 
-.world-evolution-row .world-evolution-label {
+.secondary-api-extra-head {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 10px 0 8px;
 }
 
-.world-evolution-hint {
-  font-size: 11px;
-  font-weight: 400;
-  opacity: 0.72;
+.secondary-api-extra-head-left,
+.secondary-api-extra-head-right {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.secondary-api-extra-head-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.secondary-api-extra-head-spacer {
+  flex: 1 1 12px;
+  min-width: 8px;
+}
+
+@media (max-width: 640px) {
+  .secondary-api-extra-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .secondary-api-extra-head-spacer {
+    display: none;
+  }
+
+  .secondary-api-extra-head-left {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .secondary-api-extra-head-right {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+.secondary-api-split-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.secondary-split-label {
+  line-height: 1.2;
+}
+
+.secondary-extra-task-row {
+  align-items: center;
+}
+
+.secondary-extra-task-row .secondary-extra-task-main {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.secondary-extra-task-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.secondary-extra-task-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+}
+
+.dual-api-config.dark .secondary-extra-streamer {
+  background-image: linear-gradient(
+    105deg,
+    #a1a1aa 0%,
+    #e4e4e7 20%,
+    #fafafa 38%,
+    #7dd3fc 50%,
+    #fafafa 62%,
+    #e4e4e7 80%,
+    #a1a1aa 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: secondary-extra-streamer-shift 4.2s linear infinite;
+}
+
+.dual-api-config.light .secondary-extra-streamer {
+  background-image: linear-gradient(
+    105deg,
+    #71717a 0%,
+    #27272a 22%,
+    #18181b 40%,
+    #3b82f6 50%,
+    #18181b 60%,
+    #27272a 78%,
+    #71717a 100%
+  );
+  background-size: 240% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: secondary-extra-streamer-shift 4.2s linear infinite;
+}
+
+.secondary-extra-streamer--soft {
+  font-size: 14px;
+  font-weight: 700;
+  animation-duration: 5.8s;
+}
+
+.secondary-extra-task-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  accent-color: #38bdf8;
+  transition:
+    transform 0.2s ease,
+    filter 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.secondary-extra-task-checkbox:hover {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.55));
+}
+
+.secondary-extra-task-checkbox:checked {
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.65));
+  animation: secondary-extra-checkbox-pulse 2.4s ease-in-out infinite;
+}
+
+.field-row.checkbox-row.secondary-extra-task-row input.secondary-extra-task-checkbox {
+  margin-top: 0;
+}
+
+.secondary-task-info-anchor {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.secondary-task-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    box-shadow 0.25s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.light .secondary-task-info-btn {
+  border-color: rgba(24, 24, 27, 0.75);
+  color: #18181b;
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.secondary-task-info-btn:hover {
+  opacity: 1;
+  transform: scale(1.06);
+  box-shadow: 0 0 14px rgba(125, 211, 252, 0.45);
+}
+
+.light .secondary-task-info-btn:hover {
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+}
+
+.secondary-task-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  width: min(320px, calc(100vw - 48px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.secondary-task-popover.secondary-task-popover--teleported {
+  margin: 0;
+  width: auto;
+  min-width: 0;
+}
+
+.teleported-popover--dark {
+  background: #27272a;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.teleported-popover--light {
+  background: #fafafa;
+  color: #18181b;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dual-api-config.dark .secondary-extra-streamer {
+    animation: none;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: #e4e4e7;
+  }
+
+  .dual-api-config.light .secondary-extra-streamer {
+    animation: none;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: #18181b;
+  }
+
+  .secondary-extra-task-checkbox:checked {
+    animation: none;
+  }
+}
+
+.dark .secondary-task-popover {
+  background: #27272a;
+  color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.light .secondary-task-popover {
+  background: #fafafa;
+  color: #18181b;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.secondary-task-popover-text {
+  margin: 0 0 8px;
+}
+
+.secondary-task-popover-text:last-child {
+  margin-bottom: 0;
 }
 
 .api-actions {

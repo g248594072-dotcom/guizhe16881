@@ -40,6 +40,24 @@
               创建活动
             </button>
             <button
+              v-if="!isGlobalEditMode"
+              type="button"
+              class="tm-btn dynamic-border dynamic-text dynamic-accent"
+              @click="openAiGenerate"
+            >
+              <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+              AI 生成区域
+            </button>
+            <button
+              v-if="!isGlobalEditMode"
+              type="button"
+              class="tm-btn dynamic-border dynamic-text dynamic-accent"
+              @click="openAiBuildingsModal"
+            >
+              <i class="fa-solid fa-building" aria-hidden="true"></i>
+              AI 创建建筑
+            </button>
+            <button
               type="button"
               class="tm-btn tm-btn-toggle dynamic-border dynamic-text"
               :class="{ 'tm-btn-toggle--on': isGlobalEditMode }"
@@ -49,10 +67,6 @@
               {{ isGlobalEditMode ? '退出编辑模式' : '进入编辑模式' }}
             </button>
             <template v-if="isGlobalEditMode">
-              <button type="button" class="tm-btn dynamic-border dynamic-text dynamic-accent" @click="openAiGenerate">
-                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                AI 生成区域
-              </button>
               <button type="button" class="tm-btn dynamic-border dynamic-text dynamic-accent" @click="openAddRegion">
                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
                 新建区域
@@ -82,22 +96,6 @@
               aria-label="地图设置"
             >
               <div class="tm-map-settings-field">
-                <label class="tm-map-settings-label dynamic-text-muted" for="tm-world-select-settings">当前世界</label>
-                <select
-                  id="tm-world-select-settings"
-                  :value="currentWorldId"
-                  class="tm-select tm-map-settings-select dynamic-input dynamic-border dynamic-text"
-                  @change="onWorldSelect"
-                >
-                  <option v-for="w in worlds" :key="w.id" :value="w.id">{{ w.name }}</option>
-                  <option value="__new__">+ 自定义新世界…</option>
-                </select>
-                <template v-if="currentWorld.details">
-                  <span class="tm-map-settings-label dynamic-text-muted">世界详情</span>
-                  <p class="tm-map-settings-world-detail dynamic-text-muted">{{ currentWorld.details }}</p>
-                </template>
-              </div>
-              <div class="tm-map-settings-field">
                 <label class="tm-map-settings-label dynamic-text-muted" for="tm-theme-select-settings">皮肤</label>
                 <select
                   id="tm-theme-select-settings"
@@ -107,6 +105,40 @@
                 >
                   <option v-for="(theme, key) in THEMES" :key="key" :value="key">{{ theme.name }}</option>
                 </select>
+              </div>
+              <div class="tm-map-settings-field">
+                <span class="tm-map-settings-label dynamic-text-muted">本地存档</span>
+                <button type="button" class="tm-btn tm-map-settings-save dynamic-border dynamic-text" @click="onSaveMapToBrowser">
+                  <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                  保存地图到浏览器
+                </button>
+                <button
+                  type="button"
+                  class="tm-btn tm-map-settings-save dynamic-border dynamic-text"
+                  :disabled="!tacticalMapDraftDirty"
+                  title="根据当前地图与变量差异生成 JSON Patch 写入酒馆发送框，随后把地图语义写入 MVU，并保存本机地图缓存。"
+                  @click="confirmMapDraft"
+                >
+                  <i class="fa-solid fa-check" aria-hidden="true"></i>
+                  确认应用（变量+发送框）
+                </button>
+                <button
+                  type="button"
+                  class="tm-btn tm-map-settings-save dynamic-border dynamic-text"
+                  :disabled="!tacticalMapDraftDirty"
+                  title="撤销自上次确认以来的所有地图编辑，恢复为上次确认时的地图（不写变量、不写发送框）。"
+                  @click="discardMapDraft"
+                >
+                  <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                  放弃修改
+                </button>
+                <button type="button" class="tm-btn tm-map-settings-save dynamic-border dynamic-text" @click="onPullVariablesToMap">
+                  <i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i>
+                  从变量同步到地图
+                </button>
+                <p class="tm-map-settings-save-hint dynamic-text-muted">
+                  按当前聊天（chatScopeId）分别写入本机 localStorage；布局与视图会随编辑防抖保存为草稿。区域/建筑/活动语义须点「确认应用」才写入 MVU，并生成 JSON Patch 追加到酒馆发送框；切换子标签离开地图前若有未确认修改将提示。变量侧若有新数据未反映到格子，可点「从变量同步到地图」。缩放过小时建筑标记会隐藏，可用左下角放大。
+                </p>
               </div>
             </div>
           </div>
@@ -193,6 +225,37 @@
       />
     </div>
 
+    <!-- 未确认的地图草稿（语义与布局） -->
+    <div
+      v-if="tacticalMapDraftDirty"
+      class="tm-draft-banner dynamic-panel dynamic-border"
+      role="status"
+    >
+      <div class="tm-draft-banner-text dynamic-text">
+        <i class="fa-solid fa-triangle-exclamation dynamic-accent" aria-hidden="true"></i>
+        当前有未提交的地图修改。请点<strong class="dynamic-text">确认应用</strong>写入变量并生成 JSON Patch 到发送框，或<strong class="dynamic-text">放弃修改</strong>还原到上次确认状态。
+      </div>
+      <div class="tm-draft-banner-actions">
+        <button
+          type="button"
+          class="tm-btn tm-btn-primary"
+          title="对比当前地图与变量 → Patch 写入发送框 → 同步变量 → 保存浏览器缓存。"
+          @click="confirmMapDraft"
+        >
+          <i class="fa-solid fa-check" aria-hidden="true"></i>
+          确认应用
+        </button>
+        <button
+          type="button"
+          class="tm-btn dynamic-border dynamic-text"
+          title="恢复为上次确认时的地图，丢弃未提交编辑。"
+          @click="discardMapDraft"
+        >
+          放弃修改
+        </button>
+      </div>
+    </div>
+
     <!-- Zoom：放大 / 缩小，贴左下（桌面与手机一致） -->
     <div class="tm-zoom dynamic-panel dynamic-border">
       <button type="button" class="tm-zoom-btn dynamic-text" title="放大" @click="bumpScale(0.2)">
@@ -201,6 +264,42 @@
       <button type="button" class="tm-zoom-btn dynamic-text" title="缩小" @click="bumpScale(-0.2)">
         <i class="fa-solid fa-minus" aria-hidden="true"></i>
       </button>
+    </div>
+
+    <!-- 第二 API 地图生成：待确认写入酒馆发送框 -->
+    <div
+      v-if="pendingTacticalAiInsert"
+      class="tm-pending-ai-banner dynamic-panel dynamic-border"
+      role="region"
+      aria-live="polite"
+    >
+      <div class="tm-pending-ai-title dynamic-text">
+        <i class="fa-solid fa-clipboard-check dynamic-accent" aria-hidden="true"></i>
+        {{
+          pendingTacticalAiInsert.kind === 'region'
+            ? '区域变量已生成（第二 API）'
+            : '活动变量已生成（第二 API）'
+        }}
+      </div>
+      <textarea
+        readonly
+        class="tm-pending-ai-textarea dynamic-input dynamic-border dynamic-text"
+        :value="pendingTacticalAiInsert.fullSend"
+        rows="10"
+        aria-label="待发送的变量块"
+      />
+      <p class="tm-pending-ai-hint dynamic-text-muted">
+        请确认内容后写入酒馆<strong class="dynamic-text">用户发送框</strong>，自行发送以触发变量合并；地图格子仍由本地存档管理。
+      </p>
+      <div class="tm-pending-ai-actions">
+        <button type="button" class="tm-btn tm-btn-primary" @click="confirmPendingTacticalAiInsert">
+          <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+          确认并写入发送框
+        </button>
+        <button type="button" class="tm-btn dynamic-border dynamic-text" @click="dismissPendingTacticalAiInsert">
+          丢弃
+        </button>
+      </div>
     </div>
 
     <!-- 手机端：悬浮按钮 + 底部抽屉（收纳顶栏全部功能） -->
@@ -243,17 +342,6 @@
                 <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
                 创建活动
               </button>
-              <label class="tm-mobile-label dynamic-text-muted" for="tm-m-world">当前世界</label>
-              <select
-                id="tm-m-world"
-                :value="currentWorldId"
-                class="tm-select tm-mobile-full dynamic-input dynamic-border dynamic-text"
-                @change="onWorldSelectMobile"
-              >
-                <option v-for="w in worlds" :key="w.id" :value="w.id">{{ w.name }}</option>
-                <option value="__new__">+ 自定义新世界…</option>
-              </select>
-              <p v-if="currentWorld.details" class="tm-mobile-world-detail dynamic-text-muted">{{ currentWorld.details }}</p>
               <label class="tm-mobile-label dynamic-text-muted" for="tm-m-theme">皮肤</label>
               <select
                 id="tm-m-theme"
@@ -270,6 +358,34 @@
               >
                 <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
                 进入编辑模式
+              </button>
+              <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-text" @click="onSaveMapToBrowser">
+                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                保存地图到浏览器
+              </button>
+              <button
+                type="button"
+                class="tm-btn tm-mobile-full dynamic-border dynamic-text"
+                :disabled="!tacticalMapDraftDirty"
+                title="对比地图与变量 → Patch 入发送框 → 同步变量 → 存浏览器。"
+                @click="confirmMapDraft"
+              >
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                确认应用（变量+发送框）
+              </button>
+              <button
+                type="button"
+                class="tm-btn tm-mobile-full dynamic-border dynamic-text"
+                :disabled="!tacticalMapDraftDirty"
+                title="恢复上次确认的地图，丢弃草稿。"
+                @click="discardMapDraft"
+              >
+                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                放弃修改
+              </button>
+              <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-text" @click="onPullVariablesToMap">
+                <i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i>
+                从变量同步到地图
               </button>
             </template>
             <template v-else>
@@ -339,9 +455,7 @@
               </div>
               <div>
                 <h2 class="tm-view-name dynamic-text">{{ selectedBuilding.name }}</h2>
-                <p class="tm-view-meta dynamic-text-muted">
-                  {{ typeLabel(selectedBuilding.type) }} | {{ selectedBuilding.width }}×{{ selectedBuilding.height }}
-                </p>
+                <p class="tm-view-meta dynamic-text-muted">{{ selectedBuilding.width }}×{{ selectedBuilding.height }}</p>
               </div>
             </div>
             <p class="tm-view-desc dynamic-text-muted">{{ selectedBuilding.description }}</p>
@@ -419,9 +533,9 @@
           <div class="tm-section">
             <h3 class="tm-section-title dynamic-text">
               <i class="fa-solid fa-users dynamic-accent" aria-hidden="true"></i>
-              居住/驻扎人员
+              在场人员
             </h3>
-            <p v-if="selectedBuilding.people.length === 0" class="dynamic-text-muted italic">建筑内空无一人。</p>
+            <p v-if="selectedBuilding.people.length === 0" class="dynamic-text-muted italic">暂无在场人员。</p>
             <div v-else class="tm-people">
               <div v-for="person in selectedBuilding.people" :key="person.id" class="tm-person dynamic-border">
                 <span class="dynamic-text">{{ person.name }}</span>
@@ -458,9 +572,10 @@
             </div>
             <div class="tm-modal-body">
               <p class="dynamic-text-muted small">
-                将按当前世界的<strong class="dynamic-text">机场风格 · {{ THEMES[worldTheme].name }}</strong>生成；地图配色
-                <strong class="dynamic-text">{{ THEMES[mapUiTheme].name }}</strong>仅影响界面颜色。<br />
-                AI 将在地图的空旷位置生成一个带有边界框的新区域，并在其中自动放置 3-6 个符合设定的建筑。
+                将使用<strong class="dynamic-text">设置中的第二 API</strong>生成 MVU 的
+                <strong class="dynamic-text">区域数据、建筑数据、活动数据</strong>（JSON Patch，不含地图格子）。模型须输出<strong class="dynamic-text">恰好 1 个新区域 + 3 座新建筑</strong>，每座建筑含名称、简介、内部房间布局、活动、在场人员（当前角色）；提示词含 R18 破限，可按虚构需要描写。<br />
+                设定 theme：<strong class="dynamic-text">{{ THEMES[worldTheme].name }}</strong>；界面配色 <strong class="dynamic-text">{{ THEMES[mapUiTheme].name }}</strong> 仅作参考。<br />
+                生成完成后请在本页底部确认条预览，确认后写入酒馆<strong class="dynamic-text">用户发送框</strong>。
               </p>
               <label class="dynamic-text small bold">你想生成什么类型的区域？(可选)</label>
               <textarea
@@ -471,10 +586,95 @@
               />
             </div>
             <div class="tm-modal-foot dynamic-border">
-              <button type="button" class="tm-btn dynamic-text" @click="showGenerateModal = false">取消</button>
-              <button type="button" class="tm-btn tm-btn-primary" @click="onGenerateStub">
-                <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                开始生成
+              <button type="button" class="tm-btn dynamic-text" :disabled="tacticalAiBusy" @click="showGenerateModal = false">
+                取消
+              </button>
+              <button
+                type="button"
+                class="tm-btn tm-btn-primary"
+                :disabled="tacticalAiBusy"
+                @click="onAiGenerateRegionSubmit"
+              >
+                <i
+                  class="fa-solid"
+                  :class="tacticalAiBusy ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"
+                  aria-hidden="true"
+                ></i>
+                {{ tacticalAiBusy ? '生成中…' : '开始生成' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <Teleport to="body">
+      <Transition name="tm-fade">
+        <div
+          v-if="showAiBuildingsModal"
+          class="tm-modal-overlay"
+          :class="isDarkMode ? 'tm-modal-overlay--scheme-dark' : 'tm-modal-overlay--scheme-light'"
+          @click.self="showAiBuildingsModal = false"
+        >
+          <div
+            class="tm-modal tm-modal--solid-bg tm-modal--vivid-controls dynamic-panel dynamic-border"
+            role="dialog"
+            aria-labelledby="tm-ai-buildings-title"
+          >
+            <div class="tm-modal-head dynamic-border">
+              <div class="tm-modal-title-row">
+                <i class="fa-solid fa-building dynamic-accent" aria-hidden="true"></i>
+                <h2 id="tm-ai-buildings-title" class="dynamic-text">AI 创建建筑</h2>
+              </div>
+              <button type="button" class="tm-close dynamic-text-muted" aria-label="关闭" @click="showAiBuildingsModal = false">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="tm-modal-body">
+              <p class="dynamic-text-muted small">
+                使用<strong class="dynamic-text">设置中的第二 API</strong>，按格子生成<strong class="dynamic-text">1～5</strong> 座建筑；每座须含<strong class="dynamic-text">名称、简介、内部房间布局（rooms）、活动（activities）、在场人员（people）</strong>，提示词含 R18 破限。世界观参考：<strong class="dynamic-text">{{ THEMES[worldTheme].name }}</strong>。
+              </p>
+              <label class="dynamic-text small bold" for="tm-ai-buildings-region">目标区域</label>
+              <select
+                id="tm-ai-buildings-region"
+                v-model="aiBuildingsRegionId"
+                class="tm-select tm-modal-select dynamic-input dynamic-border dynamic-text"
+              >
+                <option v-for="r in regions" :key="r.id" :value="r.id">{{ r.name }}</option>
+              </select>
+              <label class="dynamic-text small bold" for="tm-ai-buildings-count">生成数量</label>
+              <select
+                id="tm-ai-buildings-count"
+                v-model.number="aiBuildingsCount"
+                class="tm-select tm-modal-select dynamic-input dynamic-border dynamic-text"
+              >
+                <option v-for="n in 5" :key="n" :value="n">{{ n }} 座</option>
+              </select>
+              <label class="dynamic-text small bold" for="tm-ai-buildings-hint">建筑需求描述（可选）</label>
+              <textarea
+                id="tm-ai-buildings-hint"
+                v-model="aiBuildingsPrompt"
+                rows="3"
+                class="tm-textarea dynamic-input dynamic-border dynamic-text"
+                placeholder="例如：要一座带停机坪的指挥塔、两座仓库、一座医疗站… 留空则由模型结合区域简介发挥。"
+              />
+            </div>
+            <div class="tm-modal-foot dynamic-border">
+              <button type="button" class="tm-btn dynamic-text" :disabled="tacticalAiBusy" @click="showAiBuildingsModal = false">
+                取消
+              </button>
+              <button
+                type="button"
+                class="tm-btn tm-btn-primary"
+                :disabled="tacticalAiBusy || !regions.length"
+                @click="onAiCreateBuildingsSubmit"
+              >
+                <i
+                  class="fa-solid"
+                  :class="tacticalAiBusy ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"
+                  aria-hidden="true"
+                ></i>
+                {{ tacticalAiBusy ? '生成中…' : '开始生成' }}
               </button>
             </div>
           </div>
@@ -496,7 +696,6 @@
         @close="showPickRegionForBuilding = false"
         @confirm="onConfirmPickRegionForNewBuilding"
       />
-      <TacticalMapCreateWorldModal v-if="showCreateWorldModal" @close="showCreateWorldModal = false" @create="onCreateWorld" />
       <TacticalMapEventNavModal
         v-if="showEventNavModal"
         :regions="regions"
@@ -504,7 +703,12 @@
         @close="showEventNavModal = false"
         @navigate="onEventNavNavigate"
       />
-      <TacticalMapCreateEventModal v-if="showCreateEventModal" :regions="regions" @close="showCreateEventModal = false" />
+      <TacticalMapCreateEventModal
+        v-if="showCreateEventModal"
+        :regions="regions"
+        @close="showCreateEventModal = false"
+        @request-ai="onCreateEventAiRequest"
+      />
       <TacticalMapNewBuildingWarningModal
         v-if="pendingAction && selectedBuilding"
         :building="selectedBuilding"
@@ -518,18 +722,62 @@
 
 <script setup lang="ts">
 import { gsap } from 'gsap';
+import { klona } from 'klona';
+import { isEqual } from 'lodash';
 import { onClickOutside, useMediaQuery } from '@vueuse/core';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { Activity, ActivityPhase, Building, BuildingType, MapStyle, Region, World } from './tacticalMap/types';
-import { normalizeWorlds } from './tacticalMap/migrate';
-import { CELL_SIZE, INITIAL_WORLDS, THEMES, TYPE_CONFIG, ZOOM_THRESHOLD } from './tacticalMap/themePresets';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import type {
+  Activity,
+  ActivityPhase,
+  Building,
+  BuildingType,
+  MapStyle,
+  Person,
+  Region,
+  Room,
+  World,
+} from './tacticalMap/types';
+import { normalizeWorld } from './tacticalMap/migrate';
+import {
+  getChatScopeId,
+  loadPersisted,
+  savePersisted,
+  type TacticalMapPersisted,
+} from '../utils/tacticalMapBrowserStorage';
+import {
+  buildTacticalMvuMapRecordsFromWorld,
+  buildWorldFromMvuStat,
+  exportTacticalWorldToMvu,
+  syncWorldFromMvu,
+} from '../utils/tacticalMapMvuBridge';
+import {
+  buildTacticalMapJsonPatchesForMvuCommit,
+  formatTacticalMapCommitForSendBox,
+  type TacticalMvuMapRecordsSnapshot,
+} from '../utils/tacticalMapCommitSendBox';
+import {
+  buildTacticalActivityUserPrompt,
+  buildTacticalMapBuildingsUserPrompt,
+  buildTacticalRegionUserPrompt,
+  TACTICAL_AI_ACTIVITY_SYSTEM,
+  TACTICAL_AI_MAP_BUILDINGS_SYSTEM,
+  TACTICAL_AI_REGION_SYSTEM,
+} from '../utils/tacticalMapAiGeneratePrompts';
+import {
+  formatTacticalMapAiOutputForSendBox,
+  isProbablyTruncatedJsonArray,
+  runTacticalMapSecondaryGenerate,
+} from '../utils/tacticalMapSecondaryGenerate';
+import { appendTavernUserSendText } from '../utils/tavernSendTextarea';
+import { getSecondaryApiConfig, isSecondaryApiConfigured } from '../utils/apiSettings';
+import { tryRulesMvuWritable, useDataStore } from '../store';
+import { CELL_SIZE, THEMES, TYPE_CONFIG, ZOOM_THRESHOLD } from './tacticalMap/themePresets';
 import { ICON_MAP } from './tacticalMap/iconMap';
 import TacticalMapEditForm from './TacticalMapEditForm.vue';
 import TacticalMapRegionBlock from './TacticalMapRegionBlock.vue';
 import TacticalMapBuildingMarker from './TacticalMapBuildingMarker.vue';
 import TacticalMapRegionIndicator from './tacticalMap/TacticalMapRegionIndicator.vue';
 import TacticalMapRegionEditModal from './tacticalMap/TacticalMapRegionEditModal.vue';
-import TacticalMapCreateWorldModal from './tacticalMap/TacticalMapCreateWorldModal.vue';
 import TacticalMapEventNavModal from './tacticalMap/TacticalMapEventNavModal.vue';
 import TacticalMapCreateEventModal from './tacticalMap/TacticalMapCreateEventModal.vue';
 import TacticalMapNewBuildingWarningModal from './tacticalMap/TacticalMapNewBuildingWarningModal.vue';
@@ -542,7 +790,11 @@ function resolveActivityPhase(a: Activity): ActivityPhase {
 }
 
 function activityPhaseLabel(a: Activity): string {
-  return resolveActivityPhase(a) === 'upcoming' ? '即将举办' : '进行中';
+  const p = resolveActivityPhase(a);
+  if (p === 'upcoming') return '即将举办';
+  if (p === 'ended') return '已结束';
+  if (p === 'cancelled') return '已取消';
+  return '进行中';
 }
 
 function activityScopeLabel(a: Activity): string {
@@ -554,29 +806,71 @@ function activityScopeLabel(a: Activity): string {
 const MAP_SIZE = 4000;
 const MAP_HALF = MAP_SIZE / 2;
 
-const worlds = ref<World[]>(normalizeWorlds(JSON.parse(JSON.stringify(INITIAL_WORLDS)) as World[]));
-const currentWorldId = ref(worlds.value[0]?.id ?? 'w_default');
+/** 无浏览器档：空白图 + 当前 MVU 语义（与 buildWorldFromMvuStat 一致） */
+function tacticalPersistedWhenNoBrowser(): TacticalMapPersisted {
+  const store = useDataStore();
+  const world = buildWorldFromMvuStat(store.data);
+  return {
+    schemaVersion: 2,
+    world: klona(world) as World,
+    mapUiTheme: world.theme,
+    panX: 0,
+    panY: 0,
+    scale: 1,
+  };
+}
 
-const currentWorld = computed(() => worlds.value.find(w => w.id === currentWorldId.value) ?? worlds.value[0]);
-const buildings = computed(() => currentWorld.value?.buildings ?? []);
-const regions = computed(() => currentWorld.value?.regions ?? []);
+/** 当前聊天文件 id，用于 localStorage 分档；切换聊天时在 CHAT_CHANGED 内更新 */
+const chatScopeTracked = ref(getChatScopeId());
+const initLoaded = loadPersisted(chatScopeTracked.value);
+const dataStore = useDataStore();
+const initialWorld: World = initLoaded
+  ? syncWorldFromMvu(normalizeWorld(klona(initLoaded.world)), dataStore.data)
+  : buildWorldFromMvuStat(dataStore.data);
+const initialPersisted: TacticalMapPersisted = initLoaded
+  ? { ...initLoaded, world: initialWorld }
+  : {
+      schemaVersion: 2,
+      world: initialWorld,
+      mapUiTheme: initialWorld.theme,
+      panX: 0,
+      panY: 0,
+      scale: 1,
+    };
+
+const mapWorld = ref<World>(normalizeWorld(klona(initialPersisted.world)));
+/** 上次「确认应用」后的地图快照；与 mapWorld 比较得到是否有未提交草稿 */
+const committedMapWorld = ref<World>(normalizeWorld(klona(mapWorld.value)));
+const tacticalMapDraftDirty = computed(
+  () => !isEqual(normalizeWorld(klona(mapWorld.value)), normalizeWorld(klona(committedMapWorld.value))),
+);
+const buildings = computed(() => mapWorld.value.buildings ?? []);
+const regions = computed(() => mapWorld.value.regions ?? []);
+
 /** 世界数据上的「机场风格」，与界面配色 mapUiTheme 独立 */
-const worldTheme = computed<MapStyle>(() => currentWorld.value?.theme ?? 'modern');
-/** 仅控制战术地图界面配色，不修改当前世界数据 */
-const mapUiTheme = ref<MapStyle>('sci_fi');
+const worldTheme = computed<MapStyle>(() => mapWorld.value.theme ?? 'modern');
+/** 仅控制地图界面配色，不修改当前世界数据 */
+const mapUiTheme = ref<MapStyle>(initLoaded ? initLoaded.mapUiTheme : initialWorld.theme);
 
 const orphanBuildings = computed(() => buildings.value.filter(b => !b.regionId));
 
 const selectedId = ref<string | null>(null);
 const isEditingPanel = ref(false);
 const isGlobalEditMode = ref(false);
-const scale = ref(1);
+const scale = ref(initialPersisted.scale);
 const showGenerateModal = ref(false);
 const generatePrompt = ref('');
+const showAiBuildingsModal = ref(false);
+const aiBuildingsRegionId = ref('');
+const aiBuildingsCount = ref(1);
+const aiBuildingsPrompt = ref('');
 const editingRegionId = ref<string | null>(null);
-const showCreateWorldModal = ref(false);
 const showEventNavModal = ref(false);
 const showCreateEventModal = ref(false);
+/** 第二 API：地图专用生成进行中 */
+const tacticalAiBusy = ref(false);
+/** 生成完成、待用户确认写入酒馆发送框 */
+const pendingTacticalAiInsert = ref<{ kind: 'region' | 'activity'; fullSend: string } | null>(null);
 const pendingAction = ref<'toggle_mode' | 'close_panel' | null>(null);
 const pendingNextSelectedId = ref<string | null>(null);
 
@@ -593,8 +887,8 @@ onClickOutside(mapSettingsWrapRef, () => {
 const containerRef = ref<HTMLElement | null>(null);
 const mapSurfaceRef = ref<HTMLElement | null>(null);
 
-const panX = ref(0);
-const panY = ref(0);
+const panX = ref(initialPersisted.panX);
+const panY = ref(initialPersisted.panY);
 const mapPan = ref({
   active: false,
   startClientX: 0,
@@ -607,6 +901,7 @@ const mapPan = ref({
 const mapClickCandidate = ref<{ x: number; y: number } | null>(null);
 
 let panTween: gsap.core.Tween | null = null;
+let stopTacticalMapChatListener: (() => void) | null = null;
 
 const selectedBuilding = computed(() => buildings.value.find(b => b.id === selectedId.value) ?? null);
 const editingRegion = computed(() => regions.value.find(r => r.id === editingRegionId.value) ?? null);
@@ -621,17 +916,15 @@ const mapSurfaceStyle = computed(() => ({
 }));
 
 function setBuildings(updater: Building[] | ((prev: Building[]) => Building[])) {
-  const cw = currentWorld.value;
-  if (!cw) return;
-  const next = typeof updater === 'function' ? updater([...cw.buildings]) : updater;
-  worlds.value = worlds.value.map(w => (w.id === cw.id ? { ...w, buildings: next } : w));
+  const w = mapWorld.value;
+  const next = typeof updater === 'function' ? updater([...w.buildings]) : updater;
+  mapWorld.value = { ...w, buildings: next };
 }
 
 function setRegions(updater: Region[] | ((prev: Region[]) => Region[])) {
-  const cw = currentWorld.value;
-  if (!cw) return;
-  const next = typeof updater === 'function' ? updater([...cw.regions]) : updater;
-  worlds.value = worlds.value.map(w => (w.id === cw.id ? { ...w, regions: next } : w));
+  const w = mapWorld.value;
+  const next = typeof updater === 'function' ? updater([...w.regions]) : updater;
+  mapWorld.value = { ...w, regions: next };
 }
 
 function buildingsInRegion(regionId: string) {
@@ -661,18 +954,227 @@ function orphanRegionColor(b: Building) {
   return regionColorForBuilding(b);
 }
 
-function typeIcon(t: BuildingType) {
-  return TYPE_CONFIG[t].iconClass;
-}
-
-function typeLabel(t: BuildingType) {
-  return TYPE_CONFIG[t].label;
-}
-
 function clampPan() {
   const lim = 2000;
   panX.value = Math.min(lim, Math.max(-lim, panX.value));
   panY.value = Math.min(lim, Math.max(-lim, panY.value));
+}
+
+clampPan();
+
+function resetTransientMapUiState() {
+  selectedId.value = null;
+  isEditingPanel.value = false;
+  isGlobalEditMode.value = false;
+  mobileFabOpen.value = false;
+  mapSettingsOpen.value = false;
+  editingRegionId.value = null;
+  showGenerateModal.value = false;
+  showEventNavModal.value = false;
+  showCreateEventModal.value = false;
+  showPickRegionForBuilding.value = false;
+  pendingAction.value = null;
+  pendingNextSelectedId.value = null;
+  generatePrompt.value = '';
+}
+
+function collectTacticalMapSnapshot(): TacticalMapPersisted {
+  return {
+    schemaVersion: 2,
+    world: klona(mapWorld.value) as World,
+    mapUiTheme: mapUiTheme.value,
+    panX: panX.value,
+    panY: panY.value,
+    scale: scale.value,
+  };
+}
+
+function persistCurrentScopeToBrowser() {
+  savePersisted(chatScopeTracked.value, collectTacticalMapSnapshot());
+}
+
+/** 防抖：拖动/编辑时减少写入次数，仍保证最终写入当前 chatScopeId 对应键 */
+let tacticalMapPersistTimer: ReturnType<typeof setTimeout> | null = null;
+const TACTICAL_MAP_PERSIST_DEBOUNCE_MS = 400;
+
+/** MVU 变量 → 地图（有未确认草稿时不自动覆盖地图） */
+const applyingMvuToMap = ref(false);
+let mvuToMapTimer: ReturnType<typeof setTimeout> | null = null;
+const MVU_TO_MAP_DEBOUNCE_MS = 120;
+
+function cancelTacticalMvuMapSyncTimers() {
+  if (mvuToMapTimer != null) {
+    clearTimeout(mvuToMapTimer);
+    mvuToMapTimer = null;
+  }
+}
+
+function scheduleApplyMvuToMap() {
+  if (tacticalMapDraftDirty.value) return;
+  if (mvuToMapTimer != null) clearTimeout(mvuToMapTimer);
+  mvuToMapTimer = setTimeout(() => {
+    mvuToMapTimer = null;
+    applyingMvuToMap.value = true;
+    mapWorld.value = normalizeWorld(
+      syncWorldFromMvu(normalizeWorld(klona(mapWorld.value)), dataStore.data),
+    );
+    committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+    void nextTick(() => {
+      applyingMvuToMap.value = false;
+    });
+  }, MVU_TO_MAP_DEBOUNCE_MS);
+}
+
+function schedulePersistCurrentScopeToBrowser() {
+  if (tacticalMapPersistTimer != null) clearTimeout(tacticalMapPersistTimer);
+  tacticalMapPersistTimer = setTimeout(() => {
+    tacticalMapPersistTimer = null;
+    persistCurrentScopeToBrowser();
+  }, TACTICAL_MAP_PERSIST_DEBOUNCE_MS);
+}
+
+/** 立即写入（切换聊天、隐藏标签、卸载前调用，避免未 flush 的防抖丢改） */
+function flushPersistCurrentScopeToBrowser() {
+  if (tacticalMapPersistTimer != null) {
+    clearTimeout(tacticalMapPersistTimer);
+    tacticalMapPersistTimer = null;
+  }
+  persistCurrentScopeToBrowser();
+}
+
+function onTacticalMapPageHide() {
+  flushPersistCurrentScopeToBrowser();
+}
+
+function onTacticalMapVisibilityChange() {
+  if (typeof document === 'undefined') return;
+  if (document.visibilityState === 'hidden') {
+    flushPersistCurrentScopeToBrowser();
+  }
+}
+
+function applyPersistedPayload(data: TacticalMapPersisted | null) {
+  cancelTacticalMvuMapSyncTimers();
+  panTween?.kill();
+  panTween = null;
+  if (data) {
+    mapWorld.value = normalizeWorld(syncWorldFromMvu(normalizeWorld(klona(data.world)), dataStore.data));
+    mapUiTheme.value = data.mapUiTheme;
+    panX.value = data.panX;
+    panY.value = data.panY;
+    scale.value = data.scale;
+  } else {
+    const boot = tacticalPersistedWhenNoBrowser();
+    mapWorld.value = normalizeWorld(klona(boot.world));
+    mapUiTheme.value = boot.mapUiTheme;
+    panX.value = boot.panX;
+    panY.value = boot.panY;
+    scale.value = boot.scale;
+  }
+  clampPan();
+  committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+  resetTransientMapUiState();
+}
+
+function onSaveMapToBrowser() {
+  flushPersistCurrentScopeToBrowser();
+  toastr.success('地图已保存到本机浏览器');
+}
+
+function snapshotMvuMapTriple() {
+  return {
+    区域数据: klona(dataStore.data.区域数据 ?? {}),
+    建筑数据: klona(dataStore.data.建筑数据 ?? {}),
+    活动数据: klona(dataStore.data.活动数据 ?? {}),
+  };
+}
+
+/**
+ * 将草稿提交：先算「当前变量 vs 当前地图将写入的语义」差分 → 标准格式写入酒馆发送框 → 再 export 到 MVU → 固化提交快照并保存浏览器缓存。
+ * 仅改布局、变量语义未变时：不写发送框、不写 MVU，只固化本地。
+ */
+function confirmMapDraft(): boolean {
+  if (!tacticalMapDraftDirty.value) {
+    toastr.info('无待提交的地图修改');
+    return false;
+  }
+  const before = snapshotMvuMapTriple();
+  const preview = buildTacticalMvuMapRecordsFromWorld(
+    mapWorld.value,
+    before.区域数据,
+    before.建筑数据,
+    before.活动数据,
+  );
+  const desired: TacticalMvuMapRecordsSnapshot = {
+    区域数据: preview.区域数据,
+    建筑数据: preview.建筑数据,
+    活动数据: preview.活动数据,
+  };
+  const semanticsWouldChange =
+    !isEqual(preview.区域数据, before.区域数据) ||
+    !isEqual(preview.建筑数据, before.建筑数据) ||
+    !isEqual(preview.活动数据, before.活动数据);
+
+  const patches = buildTacticalMapJsonPatchesForMvuCommit(before, desired);
+
+  if (semanticsWouldChange) {
+    if (!tryRulesMvuWritable()) {
+      toastr.error('当前楼层变量不可写，无法将地图语义写入变量');
+      return false;
+    }
+  }
+
+  if (patches.length > 0) {
+    const text = formatTacticalMapCommitForSendBox(patches);
+    if (appendTavernUserSendText(text)) {
+      toastr.success('已将地图与变量的差异（JSON Patch）追加到酒馆发送框');
+    } else {
+      toastr.warning('未找到酒馆发送框，请自行从日志或别处粘贴 Patch；仍将尝试写入本界面变量');
+    }
+  }
+
+  if (semanticsWouldChange) {
+    if (!exportTacticalWorldToMvu(mapWorld.value)) {
+      toastr.error('写入 MVU 变量失败（地图未标记为已确认）。若发送框已追加 Patch，请勿重复发送直至问题解决');
+      return false;
+    }
+    toastr.success('已将当前地图语义同步到变量');
+  } else {
+    toastr.success('已确认本地地图布局与视图（与变量语义一致，无需 Patch）');
+  }
+
+  committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+  flushPersistCurrentScopeToBrowser();
+  return true;
+}
+
+function discardMapDraft() {
+  mapWorld.value = normalizeWorld(klona(committedMapWorld.value));
+  resetTransientMapUiState();
+  toastr.info('已放弃未提交的地图修改');
+}
+
+/** 立即用当前 MVU 变量重算地图（不依赖防抖）；新建建筑格落在所属区域内，避免落在区域外看不见 */
+function onPullVariablesToMap() {
+  cancelTacticalMvuMapSyncTimers();
+  applyingMvuToMap.value = true;
+  try {
+    mapWorld.value = normalizeWorld(
+      syncWorldFromMvu(normalizeWorld(klona(mapWorld.value)), dataStore.data, {
+        repositionAssignedBuildingsIntoRegion: true,
+      }),
+    );
+    if (scale.value < ZOOM_THRESHOLD) {
+      zoomTo(ZOOM_THRESHOLD);
+    }
+    flushPersistCurrentScopeToBrowser();
+    committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+    toastr.success('已从变量合并区域与建筑到地图');
+  } finally {
+    void nextTick(() => {
+      applyingMvuToMap.value = false;
+    });
+  }
 }
 
 function zoomTo(newScale: number) {
@@ -726,37 +1228,8 @@ function onRegionNavSelect(e: Event) {
   el.selectedIndex = 0;
 }
 
-function onWorldSelect(e: Event) {
-  const el = e.target as HTMLSelectElement;
-  const v = el.value;
-  if (v === '__new__') {
-    el.value = currentWorldId.value;
-    showCreateWorldModal.value = true;
-    return;
-  }
-  currentWorldId.value = v;
-  selectedId.value = null;
-  isEditingPanel.value = false;
-}
-
 function onMapUiThemeSelect(e: Event) {
   mapUiTheme.value = (e.target as HTMLSelectElement).value as MapStyle;
-}
-
-function onCreateWorld(name: string, theme: MapStyle, details: string) {
-  const newWorld: World = {
-    id: `w_${Date.now()}`,
-    name,
-    theme,
-    details,
-    buildings: [],
-    regions: [],
-  };
-  worlds.value = [...worlds.value, newWorld];
-  currentWorldId.value = newWorld.id;
-  selectedId.value = null;
-  isEditingPanel.value = false;
-  showCreateWorldModal.value = false;
 }
 
 function onEventNavNavigate(b: Building, region: Region) {
@@ -1005,14 +1478,362 @@ function onEditSave(updates: Partial<Building>) {
   isEditingPanel.value = false;
 }
 
-function onGenerateStub() {
-  toastr.info('AI 生成区域功能待接入');
+async function onAiGenerateRegionSubmit() {
+  const cfg = getSecondaryApiConfig();
+  if (!isSecondaryApiConfigured(cfg)) {
+    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
+    return;
+  }
+  const hint = generatePrompt.value.trim();
   showGenerateModal.value = false;
   generatePrompt.value = '';
+  tacticalAiBusy.value = true;
+  toastr.info('第二 API 正在后台生成区域变量…');
+  try {
+    const userPrompt = buildTacticalRegionUserPrompt({
+      world: mapWorld.value,
+      mapUiTheme: mapUiTheme.value,
+      userHint: hint,
+    });
+    const raw = await runTacticalMapSecondaryGenerate(TACTICAL_AI_REGION_SYSTEM, userPrompt, cfg, {
+      bannerMessage: 'AI 正在生成区域变量…',
+    });
+    const fullSend = formatTacticalMapAiOutputForSendBox(raw);
+    pendingTacticalAiInsert.value = { kind: 'region', fullSend };
+    toastr.success('区域变量已生成。请回到地图，在底部确认条预览并写入发送框。');
+  } catch (e) {
+    console.error('[TacticalMapPanel] AI 生成区域失败:', e);
+    toastr.error(`区域生成失败：${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    tacticalAiBusy.value = false;
+  }
+}
+
+async function onCreateEventAiRequest(payload: { selectedRegionId: string; activityTypeHint: string }) {
+  const cfg = getSecondaryApiConfig();
+  if (!isSecondaryApiConfigured(cfg)) {
+    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
+    return;
+  }
+  tacticalAiBusy.value = true;
+  toastr.info('第二 API 正在后台生成活动变量…');
+  try {
+    const userPrompt = buildTacticalActivityUserPrompt({
+      world: mapWorld.value,
+      mapUiTheme: mapUiTheme.value,
+      selectedRegionId: payload.selectedRegionId,
+      activityTypeHint: payload.activityTypeHint,
+    });
+    const raw = await runTacticalMapSecondaryGenerate(TACTICAL_AI_ACTIVITY_SYSTEM, userPrompt, cfg, {
+      bannerMessage: 'AI 正在生成活动变量…',
+    });
+    const fullSend = formatTacticalMapAiOutputForSendBox(raw);
+    pendingTacticalAiInsert.value = { kind: 'activity', fullSend };
+    toastr.success('活动变量已生成。请回到地图，在底部确认条预览并写入发送框。');
+  } catch (e) {
+    console.error('[TacticalMapPanel] 创建活动生成失败:', e);
+    toastr.error(`活动生成失败：${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    tacticalAiBusy.value = false;
+  }
+}
+
+const VALID_AI_BUILDING_TYPES: BuildingType[] = ['core', 'military', 'commercial', 'research', 'industrial'];
+
+function cellKeyTactical(gx: number, gy: number) {
+  return `${gx},${gy}`;
+}
+
+function collectOccupiedCellsGlobal(regionId: string): Set<string> {
+  const set = new Set<string>();
+  for (const b of buildings.value) {
+    if ((b.regionId ?? '') !== regionId) continue;
+    for (let dx = 0; dx < b.width; dx++) {
+      for (let dy = 0; dy < b.height; dy++) {
+        set.add(cellKeyTactical(b.x + dx, b.y + dy));
+      }
+    }
+  }
+  return set;
+}
+
+function findPlacementInRegion(
+  region: Region,
+  occ: Set<string>,
+  preferW: number,
+  preferH: number,
+  preferLx: number,
+  preferLy: number,
+): { gx: number; gy: number; w: number; h: number } | null {
+  const candidates: Array<{ w: number; h: number }> = [{ w: preferW, h: preferH }];
+  if (preferW > 1 || preferH > 1) {
+    candidates.push({ w: 1, h: 1 });
+  }
+  for (const { w, h } of candidates) {
+    if (w > region.width || h > region.height) continue;
+    const tryOne = (lx: number, ly: number) => {
+      if (lx < 0 || ly < 0 || lx + w > region.width || ly + h > region.height) return null;
+      for (let dx = 0; dx < w; dx++) {
+        for (let dy = 0; dy < h; dy++) {
+          const gx = region.x + lx + dx;
+          const gy = region.y + ly + dy;
+          if (occ.has(cellKeyTactical(gx, gy))) return null;
+        }
+      }
+      return { gx: region.x + lx, gy: region.y + ly, w, h };
+    };
+    const p0 = tryOne(preferLx, preferLy);
+    if (p0) return p0;
+    for (let ly = 0; ly <= region.height - h; ly++) {
+      for (let lx = 0; lx <= region.width - w; lx++) {
+        const t = tryOne(lx, ly);
+        if (t) return t;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeAiBuildingType(t: unknown): BuildingType {
+  const s = String(t ?? '').toLowerCase();
+  if (VALID_AI_BUILDING_TYPES.includes(s as BuildingType)) return s as BuildingType;
+  return 'core';
+}
+
+function parseAiRoomsFromRow(o: Record<string, unknown>, seed: string): Room[] {
+  const raw = o.rooms ?? o.room_layout;
+  if (!Array.isArray(raw)) return [];
+  const out: Room[] = [];
+  for (let j = 0; j < raw.length; j++) {
+    const item = raw[j];
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const name = String(r.name ?? '').trim();
+    if (!name) continue;
+    out.push({
+      id: String(r.id ?? '').trim() || `room_${seed}_${j}`,
+      name,
+      type: String(r.type ?? '').trim() || '未分类',
+    });
+  }
+  return out;
+}
+
+function normalizeAiActivityPhase(p: unknown): ActivityPhase {
+  const s = String(p ?? '').trim().toLowerCase();
+  if (s === 'upcoming' || s === '即将举办' || s === '筹备') return 'upcoming';
+  if (s === 'ongoing' || s === '进行中') return 'ongoing';
+  if (s === 'ended' || s === '已结束') return 'ended';
+  if (s === 'cancelled' || s === '已取消') return 'cancelled';
+  return 'upcoming';
+}
+
+function parseAiActivitiesFromRow(o: Record<string, unknown>, seed: string): Activity[] {
+  const raw = o.activities ?? o.activity_list;
+  if (!Array.isArray(raw)) return [];
+  const out: Activity[] = [];
+  for (let j = 0; j < raw.length; j++) {
+    const item = raw[j];
+    if (!item || typeof item !== 'object') continue;
+    const a = item as Record<string, unknown>;
+    const name = String(a.name ?? '').trim();
+    if (!name) continue;
+    const progress = Math.min(100, Math.max(0, Math.round(Number(a.progress) || 0)));
+    const scopeRaw = String(a.scope ?? '').trim().toLowerCase();
+    const scope =
+      scopeRaw === 'personal' || scopeRaw === '个人'
+        ? 'personal'
+        : scopeRaw === 'collective' || scopeRaw === '集体'
+          ? 'collective'
+          : undefined;
+    out.push({
+      id: String(a.id ?? '').trim() || `a_${seed}_${j}`,
+      name,
+      progress,
+      phase: normalizeAiActivityPhase(a.phase ?? a.status),
+      scope,
+    });
+  }
+  return out;
+}
+
+function parseAiPeopleFromRow(o: Record<string, unknown>, seed: string): Person[] {
+  const raw = o.people ?? o.在场人员;
+  if (!Array.isArray(raw)) return [];
+  const out: Person[] = [];
+  for (let j = 0; j < raw.length; j++) {
+    const item = raw[j];
+    if (!item || typeof item !== 'object') continue;
+    const p = item as Record<string, unknown>;
+    const name = String(p.name ?? p.姓名 ?? '').trim();
+    if (!name) continue;
+    out.push({
+      id: String(p.id ?? '').trim() || `p_${seed}_${j}`,
+      name,
+      role: String(p.role ?? p.身份 ?? '').trim() || '在场',
+    });
+  }
+  return out;
+}
+
+/** 模型若漏字段，补最小占位避免侧栏空白（仍建议检查并手改） */
+function ensureAiBuildingContentDefaults(b: Building): Building {
+  const rooms =
+    b.rooms.length > 0
+      ? b.rooms
+      : [{ id: `${b.id}_room0`, name: '主空间', type: '（模型未输出房间，占位）' }];
+  const activities =
+    b.activities.length > 0
+      ? b.activities
+      : [{ id: `a_${b.id}_stub`, name: '待定活动', progress: 0, phase: 'upcoming' as ActivityPhase }];
+  const people =
+    b.people.length > 0
+      ? b.people
+      : [{ id: `p_${b.id}_stub`, name: '无名在场者', role: '占位' }];
+  return { ...b, rooms, activities, people };
+}
+
+function parseAiBuildingsPayload(raw: string): unknown[] | null {
+  let t = String(raw ?? '').trim();
+  const m = t.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
+  if (m) t = m[1].trim();
+  try {
+    const v = JSON.parse(t) as unknown;
+    return Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyParsedAiBuildings(region: Region, rows: unknown[], limit: number): Building[] {
+  const occ = collectOccupiedCellsGlobal(region.id);
+  const created: Building[] = [];
+  for (let i = 0; i < rows.length && created.length < limit; i++) {
+    const row = rows[i];
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const name = String(o.name ?? '').trim() || `AI建筑 ${created.length + 1}`;
+    const description = String(o.description ?? '').trim() || '由 AI 生成。';
+    const type = normalizeAiBuildingType(o.type);
+    const w = Math.min(2, Math.max(1, Math.round(Number(o.width) || 1)));
+    const h = Math.min(2, Math.max(1, Math.round(Number(o.height) || 1)));
+    const preferLx = Math.round(Number(o.lx) || 0);
+    const preferLy = Math.round(Number(o.ly) || 0);
+    const pos = findPlacementInRegion(region, occ, w, h, preferLx, preferLy);
+    if (!pos) break;
+    const bid = `b_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
+    const b = ensureAiBuildingContentDefaults({
+      id: bid,
+      x: pos.gx,
+      y: pos.gy,
+      width: pos.w,
+      height: pos.h,
+      name,
+      type,
+      description,
+      people: parseAiPeopleFromRow(o, bid),
+      activities: parseAiActivitiesFromRow(o, bid),
+      rooms: parseAiRoomsFromRow(o, bid),
+      customProperties: [],
+      isNew: false,
+      regionId: region.id,
+    });
+    for (let dx = 0; dx < b.width; dx++) {
+      for (let dy = 0; dy < b.height; dy++) {
+        occ.add(cellKeyTactical(b.x + dx, b.y + dy));
+      }
+    }
+    created.push(b);
+  }
+  return created;
+}
+
+async function onAiCreateBuildingsSubmit() {
+  const region = regions.value.find(r => r.id === aiBuildingsRegionId.value);
+  if (!region) {
+    toastr.warning('请选择有效区域');
+    return;
+  }
+  const cfg = getSecondaryApiConfig();
+  if (!isSecondaryApiConfigured(cfg)) {
+    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
+    return;
+  }
+  const count = Math.min(5, Math.max(1, Math.round(Number(aiBuildingsCount.value)) || 1));
+  tacticalAiBusy.value = true;
+  try {
+    const userPrompt = buildTacticalMapBuildingsUserPrompt({
+      world: mapWorld.value,
+      mapUiTheme: mapUiTheme.value,
+      region,
+      count,
+      userHint: aiBuildingsPrompt.value,
+    });
+    const raw = await runTacticalMapSecondaryGenerate(TACTICAL_AI_MAP_BUILDINGS_SYSTEM, userPrompt, cfg, {
+      bannerMessage: 'AI 正在生成建筑…',
+    });
+    const arr = parseAiBuildingsPayload(raw);
+    if (!arr || arr.length === 0) {
+      if (isProbablyTruncatedJsonArray(raw)) {
+        toastr.error(
+          '模型回复被截断，JSON 未写完（酒馆日志里常见 finish_reason: length）。本界面已为地图请求单独提高 max_tokens；若仍截断请在聊天/代理预设里再调高「最大回复 tokens」后重试。',
+        );
+      } else {
+        toastr.warning('模型未返回可解析的 JSON 建筑数组，请重试或缩短描述');
+      }
+      console.warn('[TacticalMapPanel] AI 建筑原始输出（节选）:', String(raw).slice(0, 800));
+      return;
+    }
+    const created = applyParsedAiBuildings(region, arr, count);
+    if (!created.length) {
+      toastr.warning('解析到了建筑数据，但区域内没有足够空格放置，请缩小已有占地或删建筑后重试');
+      return;
+    }
+    isGlobalEditMode.value = true;
+    setBuildings(prev => [...prev, ...created]);
+    if (scale.value < ZOOM_THRESHOLD) {
+      zoomTo(ZOOM_THRESHOLD);
+    }
+    navigateToRegion(region);
+    showAiBuildingsModal.value = false;
+    toastr.success(`已在「${region.name}」生成 ${created.length} 座建筑`);
+    flushPersistCurrentScopeToBrowser();
+  } catch (e) {
+    console.error('[TacticalMapPanel] AI 创建建筑失败:', e);
+    toastr.error(`生成失败：${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    tacticalAiBusy.value = false;
+  }
+}
+
+function dismissPendingTacticalAiInsert() {
+  pendingTacticalAiInsert.value = null;
+}
+
+function confirmPendingTacticalAiInsert() {
+  const p = pendingTacticalAiInsert.value;
+  if (!p) return;
+  if (appendTavernUserSendText(p.fullSend)) {
+    toastr.success('已写入酒馆发送框；发送消息后即可合并变量');
+  } else {
+    toastr.warning('未找到酒馆发送框，请手动复制底部预览中的文本');
+  }
+  pendingTacticalAiInsert.value = null;
 }
 
 function openAiGenerate() {
   showGenerateModal.value = true;
+}
+
+function openAiBuildingsModal() {
+  if (!regions.value.length) {
+    toastr.warning('请先创建至少一个区域');
+    return;
+  }
+  if (!aiBuildingsRegionId.value || !regions.value.some(r => r.id === aiBuildingsRegionId.value)) {
+    aiBuildingsRegionId.value = regions.value[0]?.id ?? '';
+  }
+  showAiBuildingsModal.value = true;
 }
 
 function openAddRegion() {
@@ -1036,10 +1857,6 @@ function openEventNavMobile() {
 function openCreateEventMobile() {
   showCreateEventModal.value = true;
   mobileFabOpen.value = false;
-}
-
-function onWorldSelectMobile(e: Event) {
-  onWorldSelect(e);
 }
 
 function onMapUiThemeSelectMobile(e: Event) {
@@ -1078,13 +1895,85 @@ function openAddBuildingMobile() {
   showPickRegionForBuilding.value = true;
 }
 
+watch(showAiBuildingsModal, v => {
+  if (v && regions.value.length) {
+    if (!aiBuildingsRegionId.value || !regions.value.some(r => r.id === aiBuildingsRegionId.value)) {
+      aiBuildingsRegionId.value = regions.value[0]!.id;
+    }
+  }
+});
+
+watch(
+  [mapWorld, mapUiTheme, panX, panY, scale],
+  () => {
+    schedulePersistCurrentScopeToBrowser();
+  },
+  { deep: true },
+);
+
+watch(
+  () => ({
+    区域数据: dataStore.data.区域数据,
+    建筑数据: dataStore.data.建筑数据,
+    活动数据: dataStore.data.活动数据,
+    世界类型: dataStore.data.元信息?.世界类型,
+    世界简介: dataStore.data.元信息?.世界简介,
+  }),
+  () => {
+    scheduleApplyMvuToMap();
+  },
+  { deep: true },
+);
+
 onMounted(() => {
   containerRef.value?.addEventListener('wheel', onWheel, { passive: false });
+  document.addEventListener('visibilitychange', onTacticalMapVisibilityChange);
+  try {
+    if (typeof eventOn === 'function' && typeof tavern_events !== 'undefined') {
+      const ret = eventOn(tavern_events.CHAT_CHANGED, (newChatFileName: string) => {
+        cancelTacticalMvuMapSyncTimers();
+        flushPersistCurrentScopeToBrowser();
+        const fromEvent =
+          typeof newChatFileName === 'string' && newChatFileName.trim() !== ''
+            ? newChatFileName.trim()
+            : '';
+        const next = fromEvent || getChatScopeId();
+        chatScopeTracked.value = next;
+        applyPersistedPayload(loadPersisted(next));
+        // 若酒馆在回调之后才更新 getCurrentChatId，下一帧对齐，避免串档
+        nextTick(() => {
+          const live = getChatScopeId();
+          if (live !== next) {
+            chatScopeTracked.value = live;
+            applyPersistedPayload(loadPersisted(live));
+          }
+        });
+      });
+      stopTacticalMapChatListener = () => {
+        ret.stop?.();
+      };
+    }
+  } catch (e) {
+    console.warn('[TacticalMapPanel] 无法监听 CHAT_CHANGED:', e);
+  }
+  window.addEventListener('pagehide', onTacticalMapPageHide);
 });
 
 onUnmounted(() => {
+  cancelTacticalMvuMapSyncTimers();
+  flushPersistCurrentScopeToBrowser();
   panTween?.kill();
+  stopTacticalMapChatListener?.();
+  stopTacticalMapChatListener = null;
+  window.removeEventListener('pagehide', onTacticalMapPageHide);
+  document.removeEventListener('visibilitychange', onTacticalMapVisibilityChange);
   containerRef.value?.removeEventListener('wheel', onWheel);
+});
+
+defineExpose({
+  checkMapDraftDirty: () => tacticalMapDraftDirty.value,
+  discardMapDraft,
+  confirmMapDraft,
 });
 
 watch(isGlobalEditMode, v => {
@@ -1347,17 +2236,22 @@ watch(isMobileLayout, m => {
   letter-spacing: 0.04em;
 }
 
-.tm-map-settings-world-detail {
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  max-height: 4.5rem;
-  overflow-y: auto;
-}
-
 .tm-map-settings-select {
   width: 100%;
   max-width: 100%;
+}
+
+.tm-map-settings-save {
+  margin-top: 0.15rem;
+  width: 100%;
+  justify-content: center;
+}
+
+.tm-map-settings-save-hint {
+  margin: 0;
+  font-size: 0.65rem;
+  line-height: 1.45;
+  opacity: 0.9;
 }
 
 .tm-region-jump {
@@ -1651,6 +2545,35 @@ watch(isMobileLayout, m => {
   pointer-events: none;
 }
 
+.tm-draft-banner {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  right: 0.45rem;
+  z-index: 24;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+
+.tm-draft-banner-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.tm-draft-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 .tm-zoom {
   position: absolute;
   bottom: env(safe-area-inset-bottom, 0px);
@@ -1676,6 +2599,53 @@ watch(isMobileLayout, m => {
   .tm-zoom-btn + .tm-zoom-btn {
     margin-top: -1px;
   }
+}
+
+.tm-pending-ai-banner {
+  position: fixed;
+  left: 50%;
+  bottom: max(4.75rem, env(safe-area-inset-bottom, 0px) + 3.5rem);
+  transform: translateX(-50%);
+  z-index: 55;
+  width: min(96vw, 44rem);
+  max-height: min(48vh, 22rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.tm-pending-ai-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.tm-pending-ai-textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 5.5rem;
+  max-height: 14rem;
+  resize: vertical;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-family: ui-monospace, monospace;
+}
+
+.tm-pending-ai-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.tm-pending-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
 }
 
 .tm-topbar--mobile {
@@ -1728,7 +2698,7 @@ watch(isMobileLayout, m => {
   right: 0;
   bottom: 0;
   z-index: 16;
-  /* 100%：不超过战术地图根节点高度，避免父级 overflow:hidden 裁掉抽屉上半截；85vh 在嵌套 iframe 里可能远大于可视区 */
+  /* 100%：不超过地图根节点高度，避免父级 overflow:hidden 裁掉抽屉上半截；85vh 在嵌套 iframe 里可能远大于可视区 */
   max-height: min(85vh, 600px, 100%);
   display: flex;
   flex-direction: column;
@@ -1784,14 +2754,6 @@ watch(isMobileLayout, m => {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-}
-
-.tm-mobile-world-detail {
-  margin: -0.15rem 0 0.1rem;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  max-height: 4rem;
-  overflow-y: auto;
 }
 
 .tm-mobile-full {
@@ -2117,7 +3079,8 @@ watch(isMobileLayout, m => {
 .tm-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  /* 高于 App 顶栏第二 API 黄条 (10050)，避免地图弹窗被压在条下 */
+  z-index: 10060;
   display: flex;
   align-items: center;
   justify-content: center;

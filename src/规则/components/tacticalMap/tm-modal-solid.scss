@@ -1,4 +1,4 @@
-/* Teleport 到 body 时仍尽量贴合战术地图主题；无变量时用近似实色 */
+/* Teleport 到 body 时仍尽量贴合地图主题；无变量时用近似实色 */
 @mixin tm-modal-solid-surface {
   $panel-fb: rgba(15, 23, 42, 0.98);
   $bg-fb: #020617;

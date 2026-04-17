@@ -5,6 +5,7 @@
 
 import type { OpeningFormData, WorldType } from '../types';
 import { resolveWorldType } from '../types';
+import { getCharBoundWorldbookName } from './charBoundWorldbookName';
 import {
   buildInitialGameTimeRecord,
   formatNarrativeGameDate,
@@ -13,6 +14,7 @@ import {
   type GameTimeInitRecord,
 } from './gameTimeCalendar';
 import { parseGregorianYmdFromOpeningForm } from './openingUserDateParse';
+import { VARIABLE_JSON_PATCH_RUNTIME_RULES } from './variableUpdatePromptExtras';
 
 /** 若 0 层已写入（initialize 先于本函数），提示词与变量共用同一时间 */
 function tryReadZeroLayerGameTimeFull(): GameTimeInitRecord | null {
@@ -68,7 +70,7 @@ function resolveOpeningGameTimeRecord(formData: OpeningFormData): GameTimeInitRe
   return buildInitialGameTimeRecord(cal, wt, override);
 }
 
-function getDefaultRegionNameByWorldType(wt: WorldType): string {
+export function getDefaultRegionNameByWorldType(wt: WorldType): string {
   switch (wt) {
     case '现代':
     case '自定义':
@@ -88,7 +90,7 @@ function getDefaultRegionNameByWorldType(wt: WorldType): string {
   }
 }
 
-function getDefaultRegionDescByWorldType(wt: WorldType): string {
+export function getDefaultRegionDescByWorldType(wt: WorldType): string {
   switch (wt) {
     case '现代':
     case '自定义':
@@ -190,7 +192,7 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
         if (!vars) vars = {};
         if (!vars.stat_data) vars.stat_data = {};
 
-        // 初始化游戏状态
+        // 初始化游戏状态（英文键兼容旧逻辑 + 中文「游戏状态」与 schema 对齐）
         if (!vars.stat_data.gameStatus) {
           vars.stat_data.gameStatus = {
             phase: 'opening',
@@ -198,16 +200,25 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
             lastUpdated: new Date().toISOString(),
           };
         }
+        const gs0 = vars.stat_data.gameStatus as { phase?: string; turn?: number; lastUpdated?: string };
+        if (!vars.stat_data['游戏状态'] || typeof vars.stat_data['游戏状态'] !== 'object') {
+          vars.stat_data['游戏状态'] = {
+            phase: gs0.phase ?? 'opening',
+            turn: gs0.turn ?? 0,
+            lastUpdated: gs0.lastUpdated ?? new Date().toISOString(),
+          };
+        }
 
         // 初始化玩家信息
+        const openingPlayerSettings = {
+          difficulty: formData.gameDifficulty,
+          enableWorldRules: formData.enableWorldRules,
+          enableRegionalRules: formData.enableRegionalRules,
+          enablePersonalRules: formData.enablePersonalRules,
+        };
         vars.stat_data.player = {
           name: formData.playerName || '玩家',
-          settings: {
-            difficulty: formData.gameDifficulty,
-            enableWorldRules: formData.enableWorldRules,
-            enableRegionalRules: formData.enableRegionalRules,
-            enablePersonalRules: formData.enablePersonalRules,
-          },
+          settings: openingPlayerSettings,
         };
 
         // 规则与角色仅使用中文「世界规则」「角色档案」等结构，不在此写入英文数组，避免与 MVU / 第二 API 混淆
@@ -226,10 +237,10 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
           console.info('[gameInitializer] 「现代」纪历：0 层游戏时间采用开局文案日期', modernOpeningOverride);
         }
 
-        // MVU 中文元信息（与 schema 一致）
+        // MVU 中文元信息（与 schema 一致；玩家设置与开局表单同步）
         vars.stat_data.元信息 = {
           玩家名称: formData.playerName || '玩家',
-          玩家设置: {},
+          玩家设置: { ...openingPlayerSettings },
           当前阶段: '开局',
           世界类型: wt,
           世界简介: String(formData.worldIntro ?? '').slice(0, 2000),
@@ -275,6 +286,8 @@ export async function initializeGameVariables(formData: OpeningFormData): Promis
             效果描述: defaultRegionDesc,
             状态: '生效中',
             细分规则: {},
+            适用对象: '',
+            标记: '',
           },
         };
         console.log(`✅ [gameInitializer] 默认区域已创建：${defaultRegionName}`);
@@ -427,6 +440,12 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
       状态: '出场中',
       描写: String(c.desc).replace(/\s+/g, ' ').trim(),
       当前内心想法: '',
+      当前位置: {
+        区域ID: '',
+        建筑ID: '',
+        活动ID: '',
+        当前行为描述: '待命',
+      },
       性格: {} as Record<string, string>,
       性癖: {} as Record<string, string>,
       敏感点开发: {} as Record<string, string>,
@@ -442,6 +461,7 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
         上装: { 名称: '', 状态: '正常', 描述: '' },
         下装: { 名称: '', 状态: '正常', 描述: '' },
         内衣: { 名称: '', 状态: '正常', 描述: '' },
+        腿部: { 名称: '', 状态: '正常', 描述: '' },
         足部: { 名称: '', 状态: '正常', 描述: '' },
         饰品: {} as Record<string, { 部位: string; 描述: string; 状态?: string }>,
       },
@@ -449,6 +469,7 @@ function buildOpeningPromptContent(formData: OpeningFormData): string {
       数值: { 好感度: 30, 发情值: 20, 性癖开发值: 10 },
       身份标签: {} as Record<string, string>,
       当前综合生理描述: '',
+      参与活动记录: {} as Record<string, { 开始时间: string; 结束时间: string; 参与程度: string }>,
     };
     jsonPatchLines.push(
       `  { "op": "replace", "path": "/角色档案/CHR-${String(i + 1).padStart(3, '0')}", "value": ${JSON.stringify(chrValue)} }`,
@@ -479,19 +500,32 @@ ${OPENING_MAINTEXT_REQUEST}
 - **路径（中文根，均相对 stat_data）**：世界规则 **/世界规则/<规则名>**；区域子规则 **/区域规则/<区域名>/细分规则/<子规则名>**（**禁止** **/区域规则/<子规则名>** 把规则名误当区域名）；个人规则 **/个人规则/<键名>**；角色 **/角色档案/CHR-xxx**（顺序与开局一致）。**禁止**用 **/characters**、**world_rules** 等英文平行根。角色数值仅 **/角色档案/<id>/数值/发情值** 等，**禁止** **/角色档案/<id>/发情值**。
 - **开局特判（重要）**：同一聊天里 **user 消息可能已含同名路径的初始化**。对 **/世界规则/…**、**/角色档案/CHR-001** 等 **已存在** 的路径：**一律使用 \`"op": "replace"\` 写入完整 value**，**禁止**对已有对象路径使用 **insert**（易导致 Patch 失败且不更新角色）。
 - **世界规则 value**：须含 **名称、效果描述、状态、细分规则、适用对象、标记**（**细分规则** 可为 \`{}\`）；**状态** 常用「生效中」；**标记** 为单个字符串。
-- **角色档案 value（类型硬约束，违反则变量无法写入）**：顶层键须齐全：**姓名、状态、描写、当前内心想法、性格、性癖、敏感点开发、隐藏性癖、身体信息、服装状态、身体部位物理状态、数值、身份标签、当前综合生理描述**（**兼容**旧存档仅含 **敏感部位** 键时，界面会合并读取；新写入请用 **敏感点开发**）。
+- **角色档案 value（类型硬约束，违反则变量无法写入）**：顶层键须齐全：**姓名、状态、描写、当前内心想法、当前位置、性格、性癖、敏感点开发、隐藏性癖、身体信息、服装状态、身体部位物理状态、数值、身份标签、当前综合生理描述、参与活动记录**（**兼容**旧存档仅含 **敏感部位** 键时，界面会合并读取；新写入请用 **敏感点开发**）。
+  - **当前位置**：\`{ "区域ID": "…", "建筑ID": "…", "活动ID": "", "当前行为描述": "…" }\`，id 须与 **区域数据 / 建筑数据 / 活动数据** 键一致；无活动则 **活动ID** 空串。
+  - **参与活动记录**：\`{ "<活动ID>": { "开始时间": "…", "结束时间": "…", "参与程度": "主要参与者"|"次要参与者"|"旁观者" } }\`；无记录则 \`{}\`；**禁止**把整条经历写成单个字符串挂在活动 ID 下。
   - **性格**：**必须为 JSON 对象** \`{ "名称": "描述" }\`（如 \`{"傲娇": "口是心非"}\`），无条目则 \`{}\`；**兼容**旧版字符串数组。
   - **性癖**：\`{ "名称": { "等级": 数字, "细节描述": "…", "自我合理化": "…" } }\`；**兼容**旧版 \`{ "名称": "描述字符串" }\`。
   - **敏感点开发**：\`{ "名称": { "敏感等级": 数字, "生理反应": "…", "开发细节": "…" } }\`；**兼容**旧版键名 **敏感部位** 与同形嵌套；**兼容**旧版 \`{ "名称": "描述字符串" }\`。
   - **隐藏性癖**：**必须是字符串**（无则写 \`""\`）。**禁止**写成 \`{}\` 或对象。
   - **身体信息**：年龄/身高/体重为数字；**三围**为**字符串**（如 \`"B86 W58 H88"\`）或对象 \`{"B":86,"W":58,"H":88}\`；**体质特征**为字符串。
-  - **服装状态**：含 **上装、下装、内衣、足部**（各 **名称、状态、描述**）与 **饰品**（\`{ "饰品名": { "部位": "必填非空", "描述": "…", "状态"?: "…" } }\`；**部位** 为必填；兼容旧键 **状态** 视作部位），可为空字符串/空对象。
+  - **服装状态**：含 **上装、下装、内衣、腿部、足部**（各 **名称、状态、描述**）与 **饰品**（\`{ "饰品名": { "部位": "必填非空", "描述": "…", "状态"?: "…" } }\`；**部位** 为必填；兼容旧键 **状态** 视作部位），可为空字符串/空对象。
   - **身体部位物理状态**：\`{ "部位名": { "外观描述": "…", "当前状态": "…" } }\`，可为 \`{}\`。
   - **身份标签**：\`{ "分类": "短文本" }\`，可为 \`{}\`。
   - **数值**：**好感度、发情值、性癖开发值** 为数字；**禁止**用「性癖开发度」键名。
   - **状态**：仅 **「出场中」** 或 **「暂时退场」**；勿把长剧情写入「状态」。
 - **正文与变量一致**：正文若已写生理/情绪/好感等，须在「数值」「当前综合生理描述」（必要时「当前内心想法」）中反映。
 - **格式**：勿在 \`<JSONPatch>\` 数组外夹带假 JSON；\`<Analysis>\` 语言与篇幅若角色卡另有规定，从其规定。
+
+### 与本界面合并器一致的 JSON Patch 约定（第二 API / 单独重 roll 变量 同规）
+${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+
+### stat_data 顶层与地图 / 时间（开局 Patch 须与正文一致，勿只改角色）
+- **顶层键**（除角色与世界规则外，剧情涉及则须用 Patch 维护）：**区域规则**、**个人规则**、**区域数据**、**建筑数据**、**活动数据**、**游戏时间**、**元信息**、**游戏状态**；界面可能已写入 **gameStatus**、**player**、**meta**、**openingConfig** 等扩展键，可按剧情用 **replace** 更新（优先 **\`/游戏状态/turn\`**、**\`/元信息/进度\`** 等与 schema 一致的路径），**禁止**自造与 schema 冲突的英文根（如 \`/characters\`）。
+- **区域数据** \`/区域数据/<区域ID>\`：须含 **名称、描述**；可选 **包含建筑** \`{ "<建筑ID>": true|false }\`；角色 **当前位置.区域ID** 必须对应 **区域数据** 中已有或本回合新增的键。
+- **建筑数据** \`/建筑数据/<建筑ID>\`：**所属区域ID** 必须指向 **区域数据** 的键；**当前活动** / **当前角色** 为 id→标记的对象（**当前角色** 的值可为 boolean、短文字或数字）。
+- **活动数据** \`/活动数据/<活动ID>\`：**所在建筑ID**、**活动名称**、**活动内容**、**开始时间**、**状态**；**参与者** 须为 **对象** \`{ "CHR-001": true, … }\`，**禁止**数组；无活动时 **当前位置.活动ID** 保持 \`""\`。
+- **区域规则**：默认已有 **初始区域**（或变量中已有区域名）；新增 **细分规则** 须用路径 \`/区域规则/<区域名>/细分规则/<子规则名>\`，**禁止**写成 \`/区域规则/<子规则名>\`。
+- **游戏时间**：若正文明确推进了钟点/日期，须用 **replace** 更新 \`/游戏时间/年\`、\`/游戏时间/月\`、\`/游戏时间/日\`、\`/游戏时间/时\`、\`/游戏时间/分\` 等（写绝对值）；未叙事推进则不必改。
 
 ## 五、玩家行动后的强制变量更新要求（**重要**）
 玩家已发送第一条行动消息。AI 在回复本次玩家输入时，**必须在回复末尾输出完整的变量更新块**。
@@ -501,6 +535,7 @@ ${OPENING_MAINTEXT_REQUEST}
 - **状态**：「出场中」或「暂时退场」
 - **描写**：角色的外貌、衣着、当前姿态等描写
 - **当前内心想法**：角色当前的心理活动
+- **当前位置**：区域/建筑/活动 id 与 **区域数据、建筑数据、活动数据** 一致；**当前行为描述**写具体动作
 - **性格**：至少一条性格特征，如 \`{"害羞": "容易脸红，不敢直视他人"}\`
 - **性癖**：至少一条；推荐嵌套如 \`{"被注视": {"等级":1,"细节描述":"…","自我合理化":"…"}}\`，或旧版 \`{"被注视": "被人注视时会感到紧张"}\`
 - **敏感点开发**：至少一处；推荐嵌套如 \`{"耳朵": {"敏感等级":2,"生理反应":"…","开发细节":"…"}}\`，或旧版 \`{"耳朵": "被轻触时会颤抖"}\`（**勿**再写旧键 **敏感部位**，除非兼容旧档）
@@ -508,6 +543,7 @@ ${OPENING_MAINTEXT_REQUEST}
 - **身体信息**：年龄、身高、体重、三围、体质特征
 - **数值**：好感度、发情值、性癖开发值（均须为数字）
 - **当前综合生理描述**：角色当前的身体状态描述
+- **参与活动记录**：对象；每个活动 ID 对应 **开始时间**、**结束时间**、**参与程度** 三键
 
 **强制要求**：
 1. 每个角色上述字段**必须全部存在**，不能为空对象或缺失
@@ -547,7 +583,19 @@ ${jsonPatchInner}
  */
 export async function createOpeningStoryMessage(formData: OpeningFormData): Promise<{success: boolean; promptContent?: string}> {
   try {
-    const promptContent = buildOpeningPromptContent(formData);
+    let promptContent = buildOpeningPromptContent(formData);
+
+    try {
+      const worldbookName = getCharBoundWorldbookName();
+      const entries: WorldbookEntry[] = await getWorldbook(worldbookName);
+      const { joinAllMvUPrefixedEntryBlocks } = await import('./apiSettings');
+      const mvuBlock = joinAllMvUPrefixedEntryBlocks(entries);
+      if (mvuBlock.trim()) {
+        promptContent = `${promptContent}\n\n## 六、世界书：以 [mvu] / [mvu_update] 开头的条目（变量初始化与 Patch 须完整遵守，与上文「四」互补；若有冲突以本条全文为准）\n\n${mvuBlock.trim()}`;
+      }
+    } catch (e) {
+      console.warn('⚠️ [gameInitializer] 未能将 MVU 世界书条目附加到开局提示词:', e);
+    }
 
     try {
       const existingMessages = getChatMessages(1);
