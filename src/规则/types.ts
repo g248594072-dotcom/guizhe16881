@@ -452,6 +452,8 @@ export interface OtherSettings {
    * 编辑暂存（购物车）：规则/角色等先入队，统一检视后再写入 MVU。
    */
   enableEditStagingCart: boolean;
+  /** 主界面正文区顶部是否显示游戏时间条 */
+  showGameTimeHud: boolean;
 }
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
@@ -459,4 +461,5 @@ export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
   enableEditStagingCart: true,
+  showGameTimeHud: true,
 };

@@ -997,7 +997,7 @@ function persistCurrentScopeToBrowser() {
 let tacticalMapPersistTimer: ReturnType<typeof setTimeout> | null = null;
 const TACTICAL_MAP_PERSIST_DEBOUNCE_MS = 400;
 
-/** MVU 变量 → 地图（有未确认草稿时不自动覆盖地图） */
+/** MVU 变量 → 地图：浏览模式始终跟变量；编辑模式且本地有未提交改动时不自动覆盖 */
 const applyingMvuToMap = ref(false);
 let mvuToMapTimer: ReturnType<typeof setTimeout> | null = null;
 const MVU_TO_MAP_DEBOUNCE_MS = 120;
@@ -1010,7 +1010,7 @@ function cancelTacticalMvuMapSyncTimers() {
 }
 
 function scheduleApplyMvuToMap() {
-  if (tacticalMapDraftDirty.value) return;
+  if (isGlobalEditMode.value && tacticalMapDraftDirty.value) return;
   if (mvuToMapTimer != null) clearTimeout(mvuToMapTimer);
   mvuToMapTimer = setTimeout(() => {
     mvuToMapTimer = null;

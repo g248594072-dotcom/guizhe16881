@@ -155,6 +155,7 @@ const DEFAULT_OTHER_LOCAL: OtherSettings = {
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
   enableEditStagingCart: true,
+  showGameTimeHud: true,
 };
 
 export function loadOtherSettings(): OtherSettings {
@@ -179,6 +180,10 @@ export function loadOtherSettings(): OtherSettings {
           typeof parsed.enableEditStagingCart === 'boolean'
             ? parsed.enableEditStagingCart
             : DEFAULT_OTHER_LOCAL.enableEditStagingCart,
+        showGameTimeHud:
+          typeof parsed.showGameTimeHud === 'boolean'
+            ? parsed.showGameTimeHud
+            : DEFAULT_OTHER_LOCAL.showGameTimeHud,
       };
     }
   } catch (error) {

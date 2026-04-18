@@ -51,6 +51,12 @@ export function getOtherSettings(): OtherSettings {
           : typeof local?.enableEditStagingCart === 'boolean'
             ? local.enableEditStagingCart
             : DEFAULT_OTHER_SETTINGS.enableEditStagingCart,
+      showGameTimeHud:
+        typeof settings?.showGameTimeHud === 'boolean'
+          ? settings.showGameTimeHud
+          : typeof local?.showGameTimeHud === 'boolean'
+            ? local.showGameTimeHud
+            : DEFAULT_OTHER_SETTINGS.showGameTimeHud,
     };
   } catch (error) {
     console.warn('⚠️ [otherSettings] 获取其他设置失败，使用默认值:', error);

@@ -506,6 +506,24 @@
         调整<strong>整体字号与控件比例</strong>（缩放）、主界面<strong>最大宽度</strong>与<strong>最大高度</strong>。开局表单与进入游戏后的主 UI 会读取同一套设置。
       </p>
 
+      <div class="layout-field-block layout-game-time-toggle-block">
+        <div class="layout-field-head">
+          <label class="field-label layout-field-label" for="show-game-time-hud">显示游戏时间</label>
+          <label class="toggle-switch">
+            <input
+              id="show-game-time-hud"
+              v-model="showGameTimeHud"
+              type="checkbox"
+              @change="persistShowGameTimeHud"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p class="layout-field-note">
+          主界面正文区顶部的时间条；默认显示。关闭后不占位。与下方缩放、宽高一样<strong>变更后立即生效</strong>（写入杂项设置，无需点底部保存）。
+        </p>
+      </div>
+
       <div class="layout-field-block">
         <div class="layout-field-head">
           <label class="field-label layout-field-label" for="ui-scale-range">界面缩放</label>
@@ -685,6 +703,9 @@ const enableShujukuManualUpdateAfterConfirm = ref(true);
 
 /** 编辑暂存（购物车）：先入队再统一提交（默认开启，与 OtherSettings 一致） */
 const enableEditStagingCart = ref(true);
+
+/** 主界面顶部游戏时间条（默认显示） */
+const showGameTimeHud = ref(true);
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
@@ -948,6 +969,7 @@ function loadSettings() {
     enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
     enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
     enableEditStagingCart.value = other.enableEditStagingCart;
+    showGameTimeHud.value = other.showGameTimeHud;
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
     console.log('✅ [SettingsPanel] 设置从 localStorage 加载成功:', {
@@ -1040,6 +1062,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
       enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
       enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
       enableEditStagingCart: enableEditStagingCart.value,
+      showGameTimeHud: showGameTimeHud.value,
     });
     showSaveSuccess.value = true;
     setTimeout(() => {
@@ -1077,6 +1100,15 @@ function persistShujukuManualUpdateOption() {
       ? '已开启：自动填表（确认标签后 manualUpdate）'
       : '已关闭：自动填表',
   );
+}
+
+function persistShowGameTimeHud() {
+  saveOtherSettings({ showGameTimeHud: showGameTimeHud.value });
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+  toastr.success(showGameTimeHud.value ? '已开启：主界面游戏时间条' : '已关闭：主界面游戏时间条');
 }
 
 function persistEnableEditStagingCart() {
@@ -2398,5 +2430,9 @@ input:checked + .toggle-slider:before {
 
 .settings-tab-panel--layout .field-label:first-of-type {
   margin-top: 0;
+}
+
+.layout-game-time-toggle-block .layout-field-head {
+  align-items: center;
 }
 </style>
