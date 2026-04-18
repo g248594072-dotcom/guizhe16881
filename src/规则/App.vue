@@ -2208,8 +2208,13 @@ function onLayoutChange(layout: UiLayoutSettings) {
 async function onUpdateWorldbook(mode: OutputMode) {
   try {
     console.log(`🔄 [App] 更新世界书条目为 ${mode} 模式`);
-    await updateWorldbookEntriesByMode(mode);
-    console.log('✅ [App] 世界书条目更新完成');
+    const ok = await updateWorldbookEntriesByMode(mode);
+    if (ok) {
+      console.log('✅ [App] 世界书条目更新完成');
+    } else {
+      console.warn('⚠️ [App] 世界书条目未更新（可能未绑定世界书或世界书名为空）');
+      toastr.warning('未能同步世界书：请为当前角色卡绑定主世界书，或检查世界书是否存在');
+    }
   } catch (error) {
     console.error('❌ [App] 更新世界书条目失败:', error);
     toastr.error('切换失败');

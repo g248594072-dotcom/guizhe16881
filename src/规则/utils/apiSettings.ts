@@ -59,6 +59,27 @@ export function isMvUVariableWorldbookEntryName(entryName: string): boolean {
   return MVU_WORLDBOOK_ENTRY_PREFIXES.some(p => n.startsWith(p));
 }
 
+/**
+ * 切换单/双 API 时由 {@link updateWorldbookEntriesByMode} 同步开关的「变量相关」条目标题。
+ * 仅 `[mvu_update]`、`[mvu]`；**不含** `[initvar]`（由用户自行开关，不参与模式同步）。
+ * 须先判 `[mvu_update]` 再判 `[mvu]`，避免 `'[mvu_update]'.startsWith('[mvu]')` 误判。
+ */
+export function isModeSyncVariableRelatedEntryName(entryName: string): boolean {
+  const n = String(entryName || '').trim();
+  if (n.startsWith('[mvu_update]')) return true;
+  if (n.startsWith('[mvu]')) return true;
+  return false;
+}
+
+function matchesLegacySingleApiVariableEntryName(entryName: string): boolean {
+  return (
+    entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
+    entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
+    entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
+    entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat)
+  );
+}
+
 function joinWorldbookEntryBlocks(entries: WorldbookEntry[]): string {
   return entries
     .map(e => `## ${(e.name || '').trim()}\n${(e.content || '').trim()}`)
@@ -117,7 +138,9 @@ export function collectVariableWorldbookContentsFromEntries(entries: WorldbookEn
 }
 
 /**
- * 根据输出模式更新世界书条目启用状态
+ * 根据输出模式更新世界书条目启用状态。
+ * 单 API：启用 `[mvu]` / `[mvu_update]` 及旧标题子串的变量规则；关闭「多API正文格式」。`[initvar]` 不改动。
+ * 双 API：关闭上述同步条目；启用「多API正文格式」。`[initvar]` 不改动。第二 API 仍可通过 `getWorldbook` 读取已禁用条目的正文。
  * @param mode 输出模式
  * @returns 是否成功
  */
@@ -139,37 +162,28 @@ export async function updateWorldbookEntriesByMode(mode: OutputMode): Promise<bo
       return false;
     }
 
+    const shouldEnableForSingleApi = (entryName: string) =>
+      isModeSyncVariableRelatedEntryName(entryName) || matchesLegacySingleApiVariableEntryName(entryName);
+
     // 根据模式更新条目启用状态
     const updatedEntries = entries.map(entry => {
       const entryName = entry.name || '';
 
       if (mode === 'dual') {
-        // 双API模式：关闭单API相关条目，启用双API格式条目
-        // 不自动关闭 [mvu] / [mvu_update] 前缀条目（供 MVU / 第二 API 读取，由用户自行开关）
-        if (
-          !isMvUVariableWorldbookEntryName(entryName) &&
-          (entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
-            entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
-            entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
-            entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat))
-        ) {
-          return { ...entry, enabled: false };
-        }
+        // 双API：启用「多API正文格式」；关闭 mvu 前缀及旧标题的变量规则（[initvar] 不碰；第二 API 仍可读禁用条目 content）
         if (entryName.includes(WORLDBOOK_ENTRIES.dualApiMainFormat)) {
           return { ...entry, enabled: true };
+        }
+        if (shouldEnableForSingleApi(entryName)) {
+          return { ...entry, enabled: false };
         }
       } else {
-        // 单API模式：启用单API相关条目，关闭双API格式条目
-        if (
-          entryName.includes(WORLDBOOK_ENTRIES.variableUpdateRule) ||
-          entryName.includes(WORLDBOOK_ENTRIES.variableList) ||
-          entryName.includes(WORLDBOOK_ENTRIES.variableOutputFormat) ||
-          entryName.includes(WORLDBOOK_ENTRIES.singleApiMainFormat)
-        ) {
-          return { ...entry, enabled: true };
-        }
+        // 单API：先关「多API正文格式」，再打开 mvu 及旧标题变量条目（[initvar] 不碰）
         if (entryName.includes(WORLDBOOK_ENTRIES.dualApiMainFormat)) {
           return { ...entry, enabled: false };
+        }
+        if (shouldEnableForSingleApi(entryName)) {
+          return { ...entry, enabled: true };
         }
       }
 
