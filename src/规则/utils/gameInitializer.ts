@@ -5,7 +5,6 @@
 
 import type { OpeningFormData, WorldType } from '../types';
 import { resolveWorldType } from '../types';
-import { getCharBoundWorldbookName } from './charBoundWorldbookName';
 import {
   buildInitialGameTimeRecord,
   formatNarrativeGameDate,
@@ -583,19 +582,7 @@ ${jsonPatchInner}
  */
 export async function createOpeningStoryMessage(formData: OpeningFormData): Promise<{success: boolean; promptContent?: string}> {
   try {
-    let promptContent = buildOpeningPromptContent(formData);
-
-    try {
-      const worldbookName = getCharBoundWorldbookName();
-      const entries: WorldbookEntry[] = await getWorldbook(worldbookName);
-      const { joinAllMvUPrefixedEntryBlocks } = await import('./apiSettings');
-      const mvuBlock = joinAllMvUPrefixedEntryBlocks(entries);
-      if (mvuBlock.trim()) {
-        promptContent = `${promptContent}\n\n## 六、世界书：以 [mvu] / [mvu_update] 开头的条目（变量初始化与 Patch 须完整遵守，与上文「四」互补；若有冲突以本条全文为准）\n\n${mvuBlock.trim()}`;
-      }
-    } catch (e) {
-      console.warn('⚠️ [gameInitializer] 未能将 MVU 世界书条目附加到开局提示词:', e);
-    }
+    const promptContent = buildOpeningPromptContent(formData);
 
     try {
       const existingMessages = getChatMessages(1);

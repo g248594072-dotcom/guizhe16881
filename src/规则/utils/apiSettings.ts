@@ -265,6 +265,53 @@ export function isSecondaryApiConfigured(config: SecondaryApiConfig | null | und
 const SECONDARY_SYSTEM_PROMPT =
   '你是一个专业的游戏变量更新助手。必须严格遵守用户消息中的变量更新规则、世界书中以 [mvu] / [mvu_update] 开头的条目全文，以及 JSON Patch 约定：path 相对 stat_data 根，仅使用 replace/add/remove/move，禁止使用 delta；路径与字段名须与当前变量 JSON 的 schema 一致。';
 
+/** 第二 API：详规已在 [mvu]/[mvu_update] 世界书节内时，「变量输出格式」块仅用短示例，避免与上文重复 */
+const SECONDARY_OUTPUT_FORMAT_SNIPPET = `[
+  { "op": "replace", "path": "/示例路径", "value": "示例值" },
+  { "op": "add", "path": "/示例数组/-", "value": {} }
+]`;
+
+const SECONDARY_STAT_JSON_MAX_CHARS = 14000;
+const SECONDARY_WB_OUTPUT_FORMAT_MAX_CHARS = 4500;
+
+/** 为第二 API 压缩 stat 快照：去掉开局大块与 UI 杂项，并限制总长 */
+function shrinkStatDataForSecondaryPrompt(stat: Record<string, unknown>): string {
+  let raw: Record<string, unknown>;
+  try {
+    raw = JSON.parse(JSON.stringify(stat)) as Record<string, unknown>;
+  } catch {
+    raw = { ...stat };
+  }
+  delete raw.openingConfig;
+  if (raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player)) {
+    const p = { ...(raw.player as Record<string, unknown>) };
+    if (p.settings && typeof p.settings === 'object' && !Array.isArray(p.settings)) {
+      const s = { ...(p.settings as Record<string, unknown>) };
+      delete s.other;
+      p.settings = s;
+    }
+    raw.player = p;
+  }
+  let text = JSON.stringify(raw, null, 2);
+  if (text.length > SECONDARY_STAT_JSON_MAX_CHARS) {
+    text = `${text.slice(0, SECONDARY_STAT_JSON_MAX_CHARS)}\n…（stat JSON 已截断；path 仍相对 stat_data 根）`;
+  }
+  return text;
+}
+
+function pickSecondaryOutputFormatSnippet(
+  worldbookFormat: string,
+  hasMvuFullBlock: boolean,
+): string {
+  if (hasMvuFullBlock) {
+    return SECONDARY_OUTPUT_FORMAT_SNIPPET;
+  }
+  const t = String(worldbookFormat || '').trim();
+  if (!t) return SECONDARY_OUTPUT_FORMAT_SNIPPET;
+  if (t.length <= SECONDARY_WB_OUTPUT_FORMAT_MAX_CHARS) return t;
+  return `${t.slice(0, SECONDARY_WB_OUTPUT_FORMAT_MAX_CHARS)}\n…（世界书「变量输出格式」节录已截断）`;
+}
+
 /**
  * 自定义 OpenAI 兼容端点：第二路一律走 `generateRaw` + `custom_api`（短上下文，不附带完整预设/聊天记录）。
  */
@@ -830,16 +877,12 @@ function buildSecondaryApiPrompt(
       '- 分析正文对 NPC 生活（世界大势与居民生活 / NPC 状态）的影响，更新相关数据（若规则或变量结构要求）\n';
   }
 
-  // 准备变量数据JSON（限制大小避免提示词过长）
-  const variablesJson = JSON.stringify(currentVariables, null, 2);
-
-  // 使用世界书中的格式要求，如果没有则使用默认格式
-  const outputFormat =
-    worldbookContents.variableOutputFormat ||
-    `[
-  { "op": "replace", "path": "/路径", "value": 值 },
-  { "op": "add", "path": "/路径", "value": 值 }
-]`;
+  const hasMvuFullBlock = (worldbookContents.mvuPrefixedEntriesFull || '').trim().length > 0;
+  const variablesJson = shrinkStatDataForSecondaryPrompt(currentVariables as Record<string, unknown>);
+  const outputFormat = pickSecondaryOutputFormatSnippet(
+    worldbookContents.variableOutputFormat,
+    hasMvuFullBlock,
+  );
 
   // 分析现有角色的空缺字段
   const characterArchives = currentVariables?.角色档案 || {};
@@ -893,73 +936,48 @@ function buildSecondaryApiPrompt(
   const statSourceLabel =
     statDataMessageId === 'latest' ? 'latest（当前聊天最近一层消息的 stat_data）' : `消息楼层 #${statDataMessageId} 的 stat_data`;
 
-  const mvuFullSection =
-    (worldbookContents.mvuPrefixedEntriesFull || '').trim().length > 0
-      ? `## 世界书：以 [mvu] / [mvu_update] 开头的全部条目（变量工作时必读，勿遗漏；与下文「变量列表 / 更新规则」分段互补，若有冲突以条目全文为准）\n${worldbookContents.mvuPrefixedEntriesFull.trim()}\n\n`
+  const mvuFullSection = hasMvuFullBlock
+    ? `## 世界书 [mvu] / [mvu_update] 全文\n（本节已含变量列表、更新规则与输出格式约定；**勿**与下文重复对照；若有冲突以本节全文为准）\n${worldbookContents.mvuPrefixedEntriesFull.trim()}\n\n`
+    : '';
+
+  const wlListSection =
+    !hasMvuFullBlock && (worldbookContents.variableList || '').trim().length > 0
+      ? `## 变量列表\n${(worldbookContents.variableList || '').trim()}\n\n`
+      : '';
+  const wlRuleSection =
+    !hasMvuFullBlock && (worldbookContents.variableUpdateRule || '').trim().length > 0
+      ? `## 变量更新规则\n${(worldbookContents.variableUpdateRule || '').trim()}\n\n`
       : '';
 
-  return `你是一位专门负责游戏变量更新的AI助手。你的任务是根据提供的游戏正文和当前变量数据，生成变量更新指令。
-
-## 当前变量数据（JSON格式）
+  return `## 当前变量数据（JSON）
 \`\`\`json
 ${variablesJson}
 \`\`\`
 
 ## 变量快照来源
-以下 JSON 取自：**${statSourceLabel}**。请在该快照基础上输出 JSON Patch（path 仍相对于 stat_data 根），使更新后与正文及世界书要求一致。
+以下 JSON 取自：**${statSourceLabel}**。请在此基础上输出 JSON Patch（path 相对 stat_data 根），与正文及世界书规则一致。
 
-${variablesOnlyScopeSection}${mvuFullSection}${formatPersonalRuleKeysSection(currentVariables)}${
-  worldbookContents.variableList
-    ? `## 变量列表
-${worldbookContents.variableList}
-
-`
-    : ''
-}${
-    worldbookContents.variableUpdateRule
-      ? `## 变量更新规则
-${worldbookContents.variableUpdateRule}
-
-`
-      : ''
-  }${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
-## 变量输出格式
-请严格按照以下JSON Patch格式输出变量更新：
+${variablesOnlyScopeSection}${mvuFullSection}${formatPersonalRuleKeysSection(currentVariables)}${wlListSection}${wlRuleSection}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+## Patch 输出形式（示例）
 \`\`\`json
 ${outputFormat}
 \`\`\`
 
-## 正文内容（请据此分析变量变化）
+## 正文
 <maintext>
 ${maintext}
 </maintext>
 
-## 第二 API 本轮职责清单
-${tasksDescription}
-## 核心任务（优先级从高到低）
-1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、**当前位置**、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
-2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
-3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
-4. **更新世界规则**：如有新规则生效或规则状态变化
+## 任务与输出约定
+${tasksDescription}- **仅输出** \`<UpdateVariable>…</UpdateVariable>\`（内为 JSON Patch 数组或带 Analysis 的结构须与世界书要求一致）；不要复述正文。
+- 补足上文「空缺检测」中的角色字段；按正文更新数值；新角色须建档；规则有变再改规则路径。
+- **优先 replace**；性格/性癖/敏感点开发不得留空对象；隐藏性癖、当前内心想法不得留空串；op 仅 replace / add / remove / move。
 
-## 重要原则
-- **优先使用 replace 操作更新现有角色**，而非 insert 创建新条目
-- **绝对禁止**：让性格、性癖、敏感点开发保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
-- **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
-
-## 输出要求
-1. 只输出 <UpdateVariable> 标签及其内容
-2. 不要输出正文、解释或任何其他内容
-3. 使用标准的 JSON Patch 格式（op: 仅 replace / add / remove / move；**禁止 delta**）
-4. 确保 JSON 格式正确无误
-5. 检查确认：所有现有角色的空缺字段都已被填充
-
-## 输出示例
+**示例：**
 <UpdateVariable>
 [
   { "op": "replace", "path": "/元信息/进度", "value": 5 },
-  { "op": "replace", "path": "/角色档案/CHR-001/数值/发情值", "value": 12 },
-  { "op": "replace", "path": "/区域规则/警局/细分规则/执法/描述", "value": "……" }
+  { "op": "replace", "path": "/角色档案/CHR-001/数值/发情值", "value": 12 }
 ]
 </UpdateVariable>`;
 }
@@ -1088,9 +1106,13 @@ export function getCurrentCharWorldbookName(): string {
 // 导出常量供外部使用
 export { WORLDBOOK_ENTRIES };
 
+/** 去掉 assistant 中所有成对的 UpdateVariable 块（双 API 下由第二路统一写回一条） */
+const ALL_UPDATE_VARIABLE_BLOCKS_RE = /<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi;
+
 /**
  * 对单条 assistant 全文：按需并行第二路「变量 + 正文美化」，写回 maintext 内层并追加 UpdateVariable。
  * 变量与美化均基于**原始** parseMaintext 内层（美化前正文）。
+ * 双 API 且第二路返回变量块时：先移除主模型（及重复）输出的所有变量块，再只追加第二路结果，避免错误 Patch 残留。
  */
 export async function mergeSecondaryPipelineIntoAssistantText(
   assistantRaw: string,
@@ -1118,8 +1140,10 @@ export async function mergeSecondaryPipelineIntoAssistantText(
     out = replaceLastMaintextInnerContent(out, String(beautifiedInner).trim());
   }
 
-  if (variableUpdate && !out.includes('<UpdateVariable>')) {
-    out = `${out.trim()}\n\n<UpdateVariable>${variableUpdate}</UpdateVariable>`;
+  const variableInner = variableUpdate != null ? String(variableUpdate).trim() : '';
+  if (variableInner.length > 0) {
+    out = out.replace(ALL_UPDATE_VARIABLE_BLOCKS_RE, '');
+    out = `${out.trim().replace(/\n{3,}/g, '\n\n')}\n\n<UpdateVariable>${variableInner}</UpdateVariable>`;
   }
 
   return out;
