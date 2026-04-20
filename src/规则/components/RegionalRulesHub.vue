@@ -35,7 +35,12 @@
         :is-dark-mode="isDarkMode"
         @open-modal="onOpenModal"
       />
-      <TacticalMapPanel v-show="subTab === 'map'" ref="tacticalMapPanelRef" :is-dark-mode="isDarkMode" />
+      <TacticalMapPanel
+        v-show="subTab === 'map'"
+        ref="tacticalMapPanelRef"
+        :is-dark-mode="isDarkMode"
+        @copy-to-input="(t: string) => emit('copyToInput', t)"
+      />
     </div>
 
     <Teleport to="body">
@@ -85,6 +90,7 @@ defineProps<{ isDarkMode: boolean }>();
 const emit = defineEmits<{
   openModal: [type: string, payload?: Record<string, unknown>];
   subTabChange: [tab: 'rules' | 'map'];
+  copyToInput: [text: string];
 }>();
 
 function onOpenModal(type: string, payload?: Record<string, unknown>) {

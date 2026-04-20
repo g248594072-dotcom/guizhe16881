@@ -33,12 +33,28 @@
                 </div>
                 <div class="tm-act-list">
                   <div v-for="act in building.activities" :key="act.id" class="tm-act-box">
-                    <div class="tm-act-line">
-                      <span class="dynamic-text">{{ act.name }}</span>
-                      <span class="dynamic-accent mono small">{{ act.progress }}%</span>
-                    </div>
-                    <div class="tm-bar dynamic-border">
-                      <div class="tm-bar-fill dynamic-accent" :style="{ width: `${act.progress}%` }" />
+                    <div class="tm-act-box-row">
+                      <div class="tm-act-box-main">
+                        <div class="tm-act-line tm-act-line--name">
+                          <span class="dynamic-text tm-act-name-wrap">{{ act.name }}</span>
+                        </div>
+                        <div class="tm-bar dynamic-border">
+                          <div class="tm-bar-fill dynamic-accent" :style="{ width: `${act.progress}%` }" />
+                        </div>
+                      </div>
+                      <div class="tm-act-box-side">
+                        <span class="dynamic-accent mono small tm-act-box-pct">{{ act.progress }}%</span>
+                        <button
+                          type="button"
+                          class="tm-act-quick-join dynamic-border dynamic-text"
+                          title="快速参加"
+                          aria-label="快速参加"
+                          @click.stop="onQuickJoin(region, building, act)"
+                        >
+                          <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                          <span class="tm-act-quick-join__text">参加</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -56,17 +72,23 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Building, Region } from './types';
+import type { Activity, Building, Region } from './types';
+import { formatQuickJoinActivityLine } from '../../utils/tacticalMapQuickJoin';
 
 const props = defineProps<{
   regions: Region[];
   buildings: Building[];
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   close: [];
   navigate: [building: Building, region: Region];
+  copyToInput: [text: string];
 }>();
+
+function onQuickJoin(region: Region, building: Building, act: Activity) {
+  emit('copyToInput', formatQuickJoinActivityLine(region.name, building.name, act.name));
+}
 
 function buildingsForRegion(region: Region) {
   return props.buildings.filter(
@@ -225,11 +247,48 @@ const hasAnyActivities = computed(() => props.buildings.some(b => b.activities.l
   padding: 0.45rem 0.5rem;
 }
 
+.tm-act-box-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.tm-act-box-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.tm-act-box-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.28rem;
+  padding-top: 0.04rem;
+}
+
 .tm-act-line {
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
-  margin-bottom: 0.25rem;
+}
+
+.tm-act-line--name {
+  margin-bottom: 0;
+}
+
+.tm-act-name-wrap {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.tm-act-box-pct {
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .tm-bar {
@@ -256,5 +315,24 @@ const hasAnyActivities = computed(() => props.buildings.some(b => b.activities.l
 
 .mono {
   font-family: ui-monospace, monospace;
+}
+
+.tm-act-quick-join {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 0.28rem;
+  cursor: pointer;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--accent-color, #2dd4bf) 12%, transparent);
+  border-width: 1px;
+}
+
+.tm-act-quick-join:hover {
+  background: color-mix(in srgb, var(--accent-color, #2dd4bf) 22%, transparent);
 }
 </style>

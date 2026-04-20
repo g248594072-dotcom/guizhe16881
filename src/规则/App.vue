@@ -265,6 +265,7 @@
                 :is-dark-mode="isDarkMode"
                 @open-modal="openModal"
                 @sub-tab-change="onRegionalHubSubTabChange"
+                @copy-to-input="copyToInput"
               />
               <PersonalRulesPanel
                 v-else-if="activeTab === 'personal_rules'"

@@ -598,21 +598,35 @@
             </template>
             <div v-else class="tm-activities">
               <div v-for="act in selectedBuilding.activities" :key="act.id" class="tm-act">
-                <div class="tm-act-head">
-                  <div class="tm-act-title-block">
-                    <span class="dynamic-text tm-act-name">{{ act.name }}</span>
-                    <div class="tm-act-tags">
-                      <span class="tm-tag tm-tag--phase dynamic-border">{{ activityPhaseLabel(act) }}</span>
-                      <span
-                        v-if="activityScopeLabel(act)"
-                        class="tm-tag tm-tag--scope dynamic-border dynamic-text-muted"
-                      >{{ activityScopeLabel(act) }}</span>
+                <div class="tm-act-row">
+                  <div class="tm-act-body">
+                    <div class="tm-act-title-block">
+                      <span class="dynamic-text tm-act-name">{{ act.name }}</span>
+                      <div class="tm-act-tags">
+                        <span class="tm-tag tm-tag--phase dynamic-border">{{ activityPhaseLabel(act) }}</span>
+                        <span
+                          v-if="activityScopeLabel(act)"
+                          class="tm-tag tm-tag--scope dynamic-border dynamic-text-muted"
+                        >{{ activityScopeLabel(act) }}</span>
+                      </div>
+                    </div>
+                    <div class="tm-progress dynamic-border">
+                      <div class="tm-progress-bar dynamic-accent" :style="{ width: `${act.progress}%` }" />
                     </div>
                   </div>
-                  <span class="dynamic-accent mono tm-act-pct">{{ act.progress }}%</span>
-                </div>
-                <div class="tm-progress dynamic-border">
-                  <div class="tm-progress-bar dynamic-accent" :style="{ width: `${act.progress}%` }" />
+                  <div class="tm-act-side">
+                    <span class="dynamic-accent mono tm-act-pct">{{ act.progress }}%</span>
+                    <button
+                      type="button"
+                      class="tm-act-quick-join dynamic-border dynamic-text"
+                      title="快速参加"
+                      aria-label="快速参加"
+                      @click="quickJoinSelectedBuildingActivity(act)"
+                    >
+                      <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                      <span class="tm-act-quick-join__text">参加</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -838,6 +852,7 @@
         :buildings="buildings"
         @close="showEventNavModal = false"
         @navigate="onEventNavNavigate"
+        @copy-to-input="(t: string) => emit('copyToInput', t)"
       />
       <TacticalMapCreateEventModal
         v-if="showCreateEventModal"
@@ -927,8 +942,12 @@ import TacticalMapEventNavModal from './tacticalMap/TacticalMapEventNavModal.vue
 import TacticalMapCreateEventModal from './tacticalMap/TacticalMapCreateEventModal.vue';
 import TacticalMapNewBuildingWarningModal from './tacticalMap/TacticalMapNewBuildingWarningModal.vue';
 import TacticalMapPickRegionForBuildingModal from './tacticalMap/TacticalMapPickRegionForBuildingModal.vue';
+import { formatQuickJoinActivityLine } from '../utils/tacticalMapQuickJoin';
 
 defineProps<{ isDarkMode: boolean }>();
+const emit = defineEmits<{
+  copyToInput: [text: string];
+}>();
 
 function resolveActivityPhase(a: Activity): ActivityPhase {
   return a.phase ?? 'ongoing';
@@ -1090,6 +1109,29 @@ let panTween: gsap.core.Tween | null = null;
 let stopTacticalMapChatListener: (() => void) | null = null;
 
 const selectedBuilding = computed(() => buildings.value.find(b => b.id === selectedId.value) ?? null);
+
+/** 侧栏 / 快速参加：解析建筑所属区域名称 */
+function regionNameForBuilding(b: Building): string {
+  const rid = (b.regionId ?? '').trim();
+  if (rid) {
+    const r = regions.value.find(x => x.id === rid);
+    if (r?.name) return r.name;
+  }
+  const cx = b.x + (b.width ?? 1) / 2;
+  const cy = b.y + (b.height ?? 1) / 2;
+  for (const r of regions.value) {
+    if (cx >= r.x && cx < r.x + r.width && cy >= r.y && cy < r.y + r.height) {
+      return r.name;
+    }
+  }
+  return '未知区域';
+}
+
+function quickJoinSelectedBuildingActivity(act: Activity) {
+  const b = selectedBuilding.value;
+  if (!b) return;
+  emit('copyToInput', formatQuickJoinActivityLine(regionNameForBuilding(b), b.name, act.name));
+}
 const editingRegion = computed(() => regions.value.find(r => r.id === editingRegionId.value) ?? null);
 const showBuildings = computed(() => scale.value >= ZOOM_THRESHOLD);
 
@@ -3526,12 +3568,28 @@ watch(isMobileLayout, m => {
   gap: 0.75rem;
 }
 
-.tm-act-head {
+.tm-act-row {
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  gap: 0.35rem;
+  gap: 0.5rem;
   font-size: 0.8125rem;
+}
+
+.tm-act-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.tm-act-side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  padding-top: 0.06rem;
 }
 
 .tm-act-title-block {
@@ -3539,11 +3597,14 @@ watch(isMobileLayout, m => {
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
-  flex: 1;
+  width: 100%;
 }
 
 .tm-act-name {
   font-weight: 600;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
 .tm-act-tags {
@@ -3575,20 +3636,43 @@ watch(isMobileLayout, m => {
 }
 
 .tm-act-pct {
-  flex-shrink: 0;
   font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tm-progress {
   height: 5px;
   border-radius: 999px;
   overflow: hidden;
-  margin-top: 0.2rem;
 }
 
 .tm-progress-bar {
   height: 100%;
   background: currentcolor;
+}
+
+.tm-act-quick-join {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 0.28rem;
+  cursor: pointer;
+  background: transparent;
+  border-width: 1px;
+  white-space: nowrap;
+}
+
+.tm-act-quick-join:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.tactical-map--host-light .tm-act-quick-join:hover {
+  background: rgba(15, 23, 42, 0.06);
 }
 
 .tm-people {
