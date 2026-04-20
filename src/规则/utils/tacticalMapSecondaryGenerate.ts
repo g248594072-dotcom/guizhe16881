@@ -3,7 +3,11 @@
  */
 
 import type { SecondaryApiConfig } from '../types';
-import { generateSecondaryRawOrderedPrompts } from './apiSettings';
+import {
+  generatePrimaryRawOrderedPrompts,
+  generateSecondaryRawOrderedPrompts,
+  isSecondaryApiConfigured,
+} from './apiSettings';
 
 /**
  * 地图 generateRaw 专用：避免沿用聊天预设里过小的 max_tokens（如 300），导致 JSON Patch / 建筑数组被截断无解析结果。
@@ -60,8 +64,27 @@ export async function runTacticalMapSecondaryGenerate(
   options?: TacticalMapSecondaryGenerateOptions,
 ): Promise<string> {
   const cap = Math.min(65536, Math.max(256, Math.floor(Number(options?.maxTokens) || TACTICAL_MAP_GENERATE_RAW_DEFAULT_MAX_TOKENS)));
-  return generateSecondaryRawOrderedPrompts(systemPrompt, userPrompt, config, {
-    maxTokens: cap,
-    bannerMessage: options?.bannerMessage?.trim() || 'AI 正在处理地图请求…',
-  });
+  const banner = options?.bannerMessage?.trim() || 'AI 正在处理地图请求…';
+  const common = { maxTokens: cap, bannerMessage: banner };
+
+  if (!isSecondaryApiConfigured(config)) {
+    console.info('[TacticalMap] 第二 API 未配置，改用主连接（第一 API）');
+    toastr.info('第二 API 未配置，已改用主连接生成');
+    return generatePrimaryRawOrderedPrompts(systemPrompt, userPrompt, {
+      ...common,
+      bannerMessage: 'AI 正在使用主连接生成地图…',
+    });
+  }
+
+  try {
+    return await generateSecondaryRawOrderedPrompts(systemPrompt, userPrompt, config, common);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[TacticalMap] 第二 API 失败，改用主连接:', e);
+    toastr.warning(`第二 API 失败（${msg}），已改用主连接重试`);
+    return generatePrimaryRawOrderedPrompts(systemPrompt, userPrompt, {
+      ...common,
+      bannerMessage: 'AI 正在使用主连接生成地图…',
+    });
+  }
 }

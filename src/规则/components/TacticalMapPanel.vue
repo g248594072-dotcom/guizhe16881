@@ -37,12 +37,12 @@
               @click="showCreateEventModal = true"
             >
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-              创建活动
+              AI 创建活动
             </button>
             <button
               v-if="!isGlobalEditMode"
               type="button"
-              class="tm-btn dynamic-border dynamic-text dynamic-accent"
+              class="tm-btn tm-btn-primary"
               @click="openAiGenerate"
             >
               <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
@@ -51,7 +51,7 @@
             <button
               v-if="!isGlobalEditMode"
               type="button"
-              class="tm-btn dynamic-border dynamic-text dynamic-accent"
+              class="tm-btn tm-btn-primary"
               @click="openAiBuildingsModal"
             >
               <i class="fa-solid fa-building" aria-hidden="true"></i>
@@ -59,8 +59,8 @@
             </button>
             <button
               type="button"
-              class="tm-btn tm-btn-toggle dynamic-border dynamic-text"
-              :class="{ 'tm-btn-toggle--on': isGlobalEditMode }"
+              class="tm-btn dynamic-border dynamic-text"
+              :class="{ 'tm-btn-exit-edit': isGlobalEditMode, 'tm-btn-toggle': !isGlobalEditMode }"
               @click="toggleEditMode"
             >
               <i :class="isGlobalEditMode ? 'fa-solid fa-eye' : 'fa-solid fa-pen-to-square'" aria-hidden="true"></i>
@@ -273,34 +273,109 @@
       role="region"
       aria-live="polite"
     >
-      <div class="tm-pending-ai-title dynamic-text">
-        <i class="fa-solid fa-clipboard-check dynamic-accent" aria-hidden="true"></i>
-        {{
-          pendingTacticalAiInsert.kind === 'region'
-            ? '区域变量已生成（第二 API）'
-            : '活动变量已生成（第二 API）'
-        }}
+      <div class="tm-pending-ai-title-row">
+        <div class="tm-pending-ai-title dynamic-text">
+          <i class="fa-solid fa-clipboard-check dynamic-accent" aria-hidden="true"></i>
+          地图变量待确认（第二 API）
+        </div>
+        <span v-if="pendingAiPreview" class="tm-pending-ai-badge dynamic-text-muted"
+          >{{ pendingAiPreview.patchCount }} 条 Patch</span
+        >
       </div>
-      <textarea
-        readonly
-        class="tm-pending-ai-textarea dynamic-input dynamic-border dynamic-text"
-        :value="pendingTacticalAiInsert.fullSend"
-        rows="10"
-        aria-label="待发送的变量块"
-      />
+
+      <div v-if="pendingAiPreview && pendingAiPreview.items.length > 0" class="tm-pending-ai-scroll">
+        <p class="tm-pending-ai-intro dynamic-text-muted">
+          本次将写入以下内容；点击条目查看完整字段。建筑下列出内部房间，活动下列出参与者（建筑内为当前角色）。
+        </p>
+        <ul class="tm-pending-ai-list" role="list">
+          <li v-for="it in pendingAiPreview.items" :key="`${it.kind}-${it.id}`" class="tm-pending-ai-li">
+            <button
+              type="button"
+              class="tm-pending-ai-row"
+              :aria-label="`查看 ${tacticalAiPreviewKindLabel(it.kind)} ${it.title} 详情`"
+              @click="pendingAiDetailItem = it"
+            >
+              <span class="tm-pending-ai-row-top">
+                <span class="tm-pending-ai-kind">{{ tacticalAiPreviewKindLabel(it.kind) }}</span>
+                <span class="tm-pending-ai-name">{{ it.title }}</span>
+                <code class="tm-pending-ai-id">{{ it.id }}</code>
+              </span>
+              <span v-if="it.subtitle" class="tm-pending-ai-sub dynamic-text-muted">{{ it.subtitle }}</span>
+              <span v-if="it.rooms.length" class="tm-pending-ai-meta"
+                >内部房间：{{ it.rooms.join('、') }}</span
+              >
+              <span v-if="it.people.length" class="tm-pending-ai-meta"
+                >{{
+                  it.kind === 'activity' ? '参与者' : it.kind === 'building' ? '当前角色' : '人员'
+                }}：{{ it.people.join('、') }}</span
+              >
+            </button>
+          </li>
+        </ul>
+      </div>
+      <p v-else-if="pendingAiPreview" class="tm-pending-ai-fallback dynamic-text-muted">
+        本批 Patch 未命中区域/建筑/活动路径，请展开底部「原始变量」核对是否含其它字段修改。
+      </p>
+      <p v-else class="tm-pending-ai-fallback dynamic-text-muted">
+        无法从原文解析 Patch 结构，请展开底部「原始变量」核对；若格式明显错误可点「丢弃」后重试生成。
+      </p>
+
+      <details class="tm-pending-ai-raw">
+        <summary class="tm-pending-ai-raw-summary dynamic-text">查看原始变量（JSON Patch）</summary>
+        <textarea
+          readonly
+          class="tm-pending-ai-textarea tm-pending-ai-textarea--raw dynamic-input dynamic-border dynamic-text"
+          :value="pendingTacticalAiInsert.fullSend"
+          rows="8"
+          aria-label="待发送的完整变量块"
+        />
+      </details>
+
       <p class="tm-pending-ai-hint dynamic-text-muted">
-        请确认内容后写入酒馆<strong class="dynamic-text">用户发送框</strong>，自行发送以触发变量合并；地图格子仍由本地存档管理。
+        确认后将写入<strong class="dynamic-text">MVU 变量</strong>并<strong class="dynamic-text">刷新地图</strong>；同一批
+        JSON Patch 会暂存，在你下次于本界面发送对话时自动附在消息末尾（与地图「确认应用」共用待发队列）。
       </p>
       <div class="tm-pending-ai-actions">
         <button type="button" class="tm-btn tm-btn-primary" @click="confirmPendingTacticalAiInsert">
-          <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-          确认并写入发送框
+          <i class="fa-solid fa-check" aria-hidden="true"></i>
+          确认并应用
         </button>
         <button type="button" class="tm-btn dynamic-border dynamic-text" @click="dismissPendingTacticalAiInsert">
           丢弃
         </button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="pendingAiDetailItem"
+        class="tm-pending-ai-detail-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tm-pending-ai-detail-title"
+        @click.self="pendingAiDetailItem = null"
+      >
+        <div class="tm-pending-ai-detail-card dynamic-panel dynamic-border" @click.stop>
+          <div class="tm-pending-ai-detail-head">
+            <h2 id="tm-pending-ai-detail-title" class="tm-pending-ai-detail-title dynamic-text">
+              {{ tacticalAiPreviewKindLabel(pendingAiDetailItem.kind) }} · {{ pendingAiDetailItem.title }}
+            </h2>
+            <button
+              type="button"
+              class="tm-pending-ai-detail-close dynamic-text-muted"
+              aria-label="关闭"
+              @click="pendingAiDetailItem = null"
+            >
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+          <p class="tm-pending-ai-detail-id"><code>{{ pendingAiDetailItem.id }}</code></p>
+          <pre class="tm-pending-ai-detail-pre dynamic-text">{{
+            JSON.stringify(pendingAiDetailItem.detail, null, 2)
+          }}</pre>
+        </div>
+      </div>
+    </Teleport>
 
     <!-- 手机端：悬浮按钮 + 底部抽屉（收纳顶栏全部功能） -->
     <div v-if="isMobileLayout" class="tm-mobile-fab-layer">
@@ -338,9 +413,13 @@
                 <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>
                 活动导航
               </button>
-              <button type="button" class="tm-btn tm-btn-primary tm-mobile-full" @click="openCreateEventMobile">
+              <button type="button" class="tm-btn tm-btn-primary tm-mobile-full" @click="openAiGenerateMobile">
                 <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                创建活动
+                AI 生成区域
+              </button>
+              <button type="button" class="tm-btn tm-btn-primary tm-mobile-full" @click="openAiBuildingsModalMobile">
+                <i class="fa-solid fa-building" aria-hidden="true"></i>
+                AI 创建建筑
               </button>
               <label class="tm-mobile-label dynamic-text-muted" for="tm-m-theme">皮肤</label>
               <select
@@ -363,35 +442,43 @@
                 <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
                 保存地图到浏览器
               </button>
-              <button
-                type="button"
-                class="tm-btn tm-mobile-full dynamic-border dynamic-text"
-                :disabled="!tacticalMapDraftDirty"
-                title="对比地图与变量 → Patch 入发送框 → 同步变量 → 存浏览器。"
-                @click="confirmMapDraft"
-              >
-                <i class="fa-solid fa-check" aria-hidden="true"></i>
-                确认应用（变量+发送框）
-              </button>
-              <button
-                type="button"
-                class="tm-btn tm-mobile-full dynamic-border dynamic-text"
-                :disabled="!tacticalMapDraftDirty"
-                title="恢复上次确认的地图，丢弃草稿。"
-                @click="discardMapDraft"
-              >
-                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
-                放弃修改
-              </button>
-              <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-text" @click="onPullVariablesToMap">
-                <i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i>
-                从变量同步到地图
-              </button>
+              <details class="tm-mobile-more dynamic-border">
+                <summary class="tm-mobile-more-summary dynamic-text">
+                  <span>更多：草稿与变量</span>
+                  <i class="fa-solid fa-chevron-down tm-mobile-more-chevron" aria-hidden="true"></i>
+                </summary>
+                <div class="tm-mobile-more-body">
+                  <button
+                    type="button"
+                    class="tm-btn tm-mobile-full dynamic-border dynamic-text"
+                    :disabled="!tacticalMapDraftDirty"
+                    title="对比地图与变量 → Patch 入发送框 → 同步变量 → 存浏览器。"
+                    @click="confirmMapDraftMobile"
+                  >
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    确认应用（变量+发送框）
+                  </button>
+                  <button
+                    type="button"
+                    class="tm-btn tm-mobile-full dynamic-border dynamic-text"
+                    :disabled="!tacticalMapDraftDirty"
+                    title="恢复上次确认的地图，丢弃草稿。"
+                    @click="discardMapDraftMobile"
+                  >
+                    <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                    放弃修改
+                  </button>
+                  <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-text" @click="onPullVariablesToMapMobile">
+                    <i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i>
+                    从变量同步到地图
+                  </button>
+                </div>
+              </details>
             </template>
             <template v-else>
-              <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-accent" @click="openAiGenerateMobile">
+              <button type="button" class="tm-btn tm-btn-primary tm-mobile-full" @click="openCreateEventMobile">
                 <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
-                AI 生成区域
+                AI 创建活动
               </button>
               <button type="button" class="tm-btn tm-mobile-full dynamic-border dynamic-accent" @click="openAddRegionMobile">
                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -570,20 +657,69 @@
                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
               </button>
             </div>
-            <div class="tm-modal-body">
+            <div class="tm-modal-body tm-modal-body--region-ai">
               <p class="dynamic-text-muted small">
-                将使用<strong class="dynamic-text">设置中的第二 API</strong>生成 MVU 的
-                <strong class="dynamic-text">区域数据、建筑数据、活动数据</strong>（JSON Patch，不含地图格子）。模型须输出<strong class="dynamic-text">恰好 1 个新区域 + 3 座新建筑</strong>，每座建筑含名称、简介、内部房间布局、活动、在场人员（当前角色）；提示词含 R18 破限，可按虚构需要描写。<br />
-                设定 theme：<strong class="dynamic-text">{{ THEMES[worldTheme].name }}</strong>；界面配色 <strong class="dynamic-text">{{ THEMES[mapUiTheme].name }}</strong> 仅作参考。<br />
-                生成完成后请在本页底部确认条预览，确认后写入酒馆<strong class="dynamic-text">用户发送框</strong>。
+                将使用<strong class="dynamic-text">第二 API</strong>发起生成；若未配置或调用失败，会自动改用与主对话相同的<strong class="dynamic-text">主连接（第一 API）</strong>。
               </p>
-              <label class="dynamic-text small bold">你想生成什么类型的区域？(可选)</label>
-              <textarea
-                v-model="generatePrompt"
-                rows="3"
-                class="tm-textarea dynamic-input dynamic-border dynamic-text"
-                placeholder="例如：贫民窟、皇家法师塔、星际黑市、废弃的生化实验室... 留空则完全随机生成。"
-              />
+              <div class="tm-region-ai-row">
+                <label class="dynamic-text small bold" for="tm-ai-region-count">一次生成区域数</label>
+                <select
+                  id="tm-ai-region-count"
+                  v-model.number="aiRegionCount"
+                  class="tm-select tm-modal-select dynamic-input dynamic-border dynamic-text"
+                >
+                  <option v-for="n in 5" :key="n" :value="n">{{ n }} 个</option>
+                </select>
+              </div>
+              <div class="tm-region-ai-row">
+                <label class="dynamic-text small bold" for="tm-ai-bpr">每区域新建筑数</label>
+                <select
+                  id="tm-ai-bpr"
+                  v-model.number="aiBuildingsPerRegion"
+                  class="tm-select tm-modal-select dynamic-input dynamic-border dynamic-text"
+                >
+                  <option v-for="m in 4" :key="m + 1" :value="m + 1">{{ m + 1 }} 座</option>
+                </select>
+              </div>
+              <div class="tm-region-theme-block dynamic-border">
+                <div class="tm-region-theme-toolbar">
+                  <span class="dynamic-text small bold">区域主题（可选）</span>
+                  <button
+                    type="button"
+                    class="tm-btn tm-btn--compact dynamic-border dynamic-text"
+                    :disabled="tacticalAiBusy"
+                    @click="addRegionThemeRow"
+                  >
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    添加一条
+                  </button>
+                </div>
+                <p class="dynamic-text-muted tm-region-theme-hint small">
+                  自上而下对应<strong class="dynamic-text">第一个、第二个</strong>…新区域。留空或条数少于「区域数」时，未写的区域按世界观随机；多于区域数时只取最前面几条。
+                </p>
+                <ul v-if="regionThemeRows.length > 0" class="tm-region-theme-list" role="list">
+                  <li v-for="(_row, idx) in regionThemeRows" :key="idx" class="tm-region-theme-item dynamic-border">
+                    <span class="tm-region-theme-badge dynamic-text-muted">{{ cnOrdinalNthOneBased(idx + 1) }}</span>
+                    <input
+                      v-model="regionThemeRows[idx]"
+                      type="text"
+                      class="tm-region-theme-input dynamic-input dynamic-border dynamic-text"
+                      :placeholder="'例如：商业街、废弃教堂…（可留空表示本区随机）'"
+                      :aria-label="`${cnOrdinalNthOneBased(idx + 1)}新区域的主题`"
+                    />
+                    <button
+                      type="button"
+                      class="tm-btn-icon dynamic-text-muted"
+                      :aria-label="`删除${cnOrdinalNthOneBased(idx + 1)}主题`"
+                      :disabled="tacticalAiBusy"
+                      @click="removeRegionThemeRow(idx)"
+                    >
+                      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="dynamic-text-muted small tm-region-theme-empty">暂无主题条目，将<strong class="dynamic-text">全部</strong>按世界观随机生成。</p>
+              </div>
             </div>
             <div class="tm-modal-foot dynamic-border">
               <button type="button" class="tm-btn dynamic-text" :disabled="tacticalAiBusy" @click="showGenerateModal = false">
@@ -738,6 +874,7 @@ import type {
   World,
 } from './tacticalMap/types';
 import { normalizeWorld } from './tacticalMap/migrate';
+import { buildTacticalMapDraftChangeLines } from '../utils/tacticalMapDraftChangeSummary';
 import {
   getChatScopeId,
   loadPersisted,
@@ -752,25 +889,33 @@ import {
 } from '../utils/tacticalMapMvuBridge';
 import {
   buildTacticalMapJsonPatchesForMvuCommit,
-  formatTacticalMapCommitForSendBox,
+  type TacticalMapCommitPatchOp,
   type TacticalMvuMapRecordsSnapshot,
 } from '../utils/tacticalMapCommitSendBox';
+import { parseTacticalMvuMapTripleSnapshot } from '../schema';
 import {
   buildTacticalActivityUserPrompt,
+  buildTacticalAiRegionSystemPrompt,
   buildTacticalMapBuildingsUserPrompt,
   buildTacticalRegionUserPrompt,
+  buildPerRegionThemeHintsFromList,
   TACTICAL_AI_ACTIVITY_SYSTEM,
   TACTICAL_AI_MAP_BUILDINGS_SYSTEM,
-  TACTICAL_AI_REGION_SYSTEM,
 } from '../utils/tacticalMapAiGeneratePrompts';
 import {
   formatTacticalMapAiOutputForSendBox,
   isProbablyTruncatedJsonArray,
   runTacticalMapSecondaryGenerate,
 } from '../utils/tacticalMapSecondaryGenerate';
-import { appendTavernUserSendText } from '../utils/tavernSendTextarea';
-import { getSecondaryApiConfig, isSecondaryApiConfigured } from '../utils/apiSettings';
-import { tryRulesMvuWritable, useDataStore } from '../store';
+import { appendPendingTacticalMapPatches } from '../utils/pendingTacticalMapUpdateVariable';
+import { applyJsonPatch, extractJsonPatchFromTacticalAiBlock } from '../utils/jsonPatchStat';
+import {
+  parseTacticalAiPatchPreview,
+  type TacticalAiPreviewItem,
+  type TacticalAiPreviewKind,
+} from '../utils/tacticalAiPatchPreview';
+import { getSecondaryApiConfig } from '../utils/apiSettings';
+import { bumpUpdateTime, tryRulesMvuWritable, useDataStore } from '../store';
 import { CELL_SIZE, THEMES, TYPE_CONFIG, ZOOM_THRESHOLD } from './tacticalMap/themePresets';
 import { ICON_MAP } from './tacticalMap/iconMap';
 import TacticalMapEditForm from './TacticalMapEditForm.vue';
@@ -859,7 +1004,30 @@ const isEditingPanel = ref(false);
 const isGlobalEditMode = ref(false);
 const scale = ref(initialPersisted.scale);
 const showGenerateModal = ref(false);
-const generatePrompt = ref('');
+/** 按顺序：第 i 条对应第 i 个新区域主题；可少于「一次生成区域数」，缺的按世界观随机 */
+const regionThemeRows = ref<string[]>([]);
+const aiRegionCount = ref(1);
+const aiBuildingsPerRegion = ref(3);
+
+function addRegionThemeRow() {
+  regionThemeRows.value = [...regionThemeRows.value, ''];
+}
+
+function removeRegionThemeRow(index: number) {
+  regionThemeRows.value = regionThemeRows.value.filter((_, i) => i !== index);
+}
+
+/** 行标签：1 → 第一个，2 → 第二个 … */
+function cnOrdinalNthOneBased(n: number): string {
+  const x = Math.floor(Math.max(1, n));
+  const d = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  if (x <= 10) {
+    if (x === 10) return '第十个';
+    return `第${d[x]}个`;
+  }
+  if (x < 20) return `第十${d[x - 10]}个`;
+  return `第${x}个`;
+}
 const showAiBuildingsModal = ref(false);
 const aiBuildingsRegionId = ref('');
 const aiBuildingsCount = ref(1);
@@ -871,6 +1039,24 @@ const showCreateEventModal = ref(false);
 const tacticalAiBusy = ref(false);
 /** 生成完成、待用户确认写入酒馆发送框 */
 const pendingTacticalAiInsert = ref<{ kind: 'region' | 'activity'; fullSend: string } | null>(null);
+
+const pendingAiPreview = computed(() => {
+  const p = pendingTacticalAiInsert.value;
+  if (!p?.fullSend) return null;
+  return parseTacticalAiPatchPreview(p.fullSend);
+});
+
+const pendingAiDetailItem = ref<TacticalAiPreviewItem | null>(null);
+
+watch(pendingTacticalAiInsert, () => {
+  pendingAiDetailItem.value = null;
+});
+
+function tacticalAiPreviewKindLabel(kind: TacticalAiPreviewKind): string {
+  if (kind === 'region') return '区域';
+  if (kind === 'building') return '建筑';
+  return '活动';
+}
 const pendingAction = ref<'toggle_mode' | 'close_panel' | null>(null);
 const pendingNextSelectedId = ref<string | null>(null);
 
@@ -975,7 +1161,7 @@ function resetTransientMapUiState() {
   showPickRegionForBuilding.value = false;
   pendingAction.value = null;
   pendingNextSelectedId.value = null;
-  generatePrompt.value = '';
+  regionThemeRows.value = [];
 }
 
 function collectTacticalMapSnapshot(): TacticalMapPersisted {
@@ -1090,26 +1276,29 @@ function snapshotMvuMapTriple() {
 }
 
 /**
- * 将草稿提交：先算「当前变量 vs 当前地图将写入的语义」差分 → 标准格式写入酒馆发送框 → 再 export 到 MVU → 固化提交快照并保存浏览器缓存。
- * 仅改布局、变量语义未变时：不写发送框、不写 MVU，只固化本地。
+ * 将草稿提交：先算「当前变量 vs 当前地图将写入的语义」差分 → 暂存为待发送的 &lt;UpdateVariable&gt;（于本界面下次发消息时附在 user_input）→ 再 export 到 MVU → 固化提交快照并保存浏览器缓存。
+ * 仅改布局、变量语义未变时：不暂存 Patch、不写 MVU，只固化本地。
  */
 function confirmMapDraft(): boolean {
   if (!tacticalMapDraftDirty.value) {
     toastr.info('无待提交的地图修改');
     return false;
   }
-  const before = snapshotMvuMapTriple();
+  let before: TacticalMvuMapRecordsSnapshot;
+  try {
+    before = parseTacticalMvuMapTripleSnapshot(snapshotMvuMapTriple());
+  } catch (e) {
+    console.error('[TacticalMapPanel] MVU 地图三块校验失败:', e);
+    toastr.error('当前变量中区域/建筑/活动数据无法通过 Schema 校验，请先「从变量同步到地图」或检查变量');
+    return false;
+  }
   const preview = buildTacticalMvuMapRecordsFromWorld(
     mapWorld.value,
     before.区域数据,
     before.建筑数据,
     before.活动数据,
   );
-  const desired: TacticalMvuMapRecordsSnapshot = {
-    区域数据: preview.区域数据,
-    建筑数据: preview.建筑数据,
-    活动数据: preview.活动数据,
-  };
+  const desired: TacticalMvuMapRecordsSnapshot = preview;
   const semanticsWouldChange =
     !isEqual(preview.区域数据, before.区域数据) ||
     !isEqual(preview.建筑数据, before.建筑数据) ||
@@ -1125,17 +1314,15 @@ function confirmMapDraft(): boolean {
   }
 
   if (patches.length > 0) {
-    const text = formatTacticalMapCommitForSendBox(patches);
-    if (appendTavernUserSendText(text)) {
-      toastr.success('已将地图与变量的差异（JSON Patch）追加到酒馆发送框');
-    } else {
-      toastr.warning('未找到酒馆发送框，请自行从日志或别处粘贴 Patch；仍将尝试写入本界面变量');
-    }
+    appendPendingTacticalMapPatches(patches);
+    toastr.success(
+      '变量补丁已暂存，将在你下次于本规则界面发送对话时自动附在消息末尾（多次确认会合并为一组标签）',
+    );
   }
 
   if (semanticsWouldChange) {
     if (!exportTacticalWorldToMvu(mapWorld.value)) {
-      toastr.error('写入 MVU 变量失败（地图未标记为已确认）。若发送框已追加 Patch，请勿重复发送直至问题解决');
+      toastr.error('写入 MVU 变量失败（地图未标记为已确认）。若已暂存 Patch，请勿重复发送直至问题解决');
       return false;
     }
     toastr.success('已将当前地图语义同步到变量');
@@ -1480,27 +1667,34 @@ function onEditSave(updates: Partial<Building>) {
 
 async function onAiGenerateRegionSubmit() {
   const cfg = getSecondaryApiConfig();
-  if (!isSecondaryApiConfigured(cfg)) {
-    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
-    return;
-  }
-  const hint = generatePrompt.value.trim();
+  const themeSnapshot = [...regionThemeRows.value];
+  const regionCount = Math.max(1, Math.min(5, Math.floor(Number(aiRegionCount.value) || 1)));
+  const buildingsPerRegion = Math.max(2, Math.min(5, Math.floor(Number(aiBuildingsPerRegion.value) || 3)));
   showGenerateModal.value = false;
-  generatePrompt.value = '';
+  regionThemeRows.value = [];
   tacticalAiBusy.value = true;
-  toastr.info('第二 API 正在后台生成区域变量…');
   try {
+    const resolved = buildPerRegionThemeHintsFromList(themeSnapshot, regionCount);
+    const systemPrompt = buildTacticalAiRegionSystemPrompt({ regionCount, buildingsPerRegion });
     const userPrompt = buildTacticalRegionUserPrompt({
       world: mapWorld.value,
       mapUiTheme: mapUiTheme.value,
-      userHint: hint,
+      userHint: resolved.userHint,
+      regionCount,
+      buildingsPerRegion,
+      perRegionHints: resolved.perRegionHints,
     });
-    const raw = await runTacticalMapSecondaryGenerate(TACTICAL_AI_REGION_SYSTEM, userPrompt, cfg, {
+    const maxTokens = Math.min(
+      65536,
+      Math.max(4096, 2200 + regionCount * buildingsPerRegion * 420 + regionCount * 520),
+    );
+    const raw = await runTacticalMapSecondaryGenerate(systemPrompt, userPrompt, cfg, {
       bannerMessage: 'AI 正在生成区域变量…',
+      maxTokens,
     });
     const fullSend = formatTacticalMapAiOutputForSendBox(raw);
     pendingTacticalAiInsert.value = { kind: 'region', fullSend };
-    toastr.success('区域变量已生成。请回到地图，在底部确认条预览并写入发送框。');
+    toastr.success('区域变量已生成。请在地图底部预览，确认后将写入变量并刷新地图。');
   } catch (e) {
     console.error('[TacticalMapPanel] AI 生成区域失败:', e);
     toastr.error(`区域生成失败：${e instanceof Error ? e.message : String(e)}`);
@@ -1511,12 +1705,7 @@ async function onAiGenerateRegionSubmit() {
 
 async function onCreateEventAiRequest(payload: { selectedRegionId: string; activityTypeHint: string }) {
   const cfg = getSecondaryApiConfig();
-  if (!isSecondaryApiConfigured(cfg)) {
-    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
-    return;
-  }
   tacticalAiBusy.value = true;
-  toastr.info('第二 API 正在后台生成活动变量…');
   try {
     const userPrompt = buildTacticalActivityUserPrompt({
       world: mapWorld.value,
@@ -1529,9 +1718,9 @@ async function onCreateEventAiRequest(payload: { selectedRegionId: string; activ
     });
     const fullSend = formatTacticalMapAiOutputForSendBox(raw);
     pendingTacticalAiInsert.value = { kind: 'activity', fullSend };
-    toastr.success('活动变量已生成。请回到地图，在底部确认条预览并写入发送框。');
+    toastr.success('活动变量已生成。请在地图底部预览，确认后将写入变量并刷新地图。');
   } catch (e) {
-    console.error('[TacticalMapPanel] 创建活动生成失败:', e);
+    console.error('[TacticalMapPanel] AI 创建活动生成失败:', e);
     toastr.error(`活动生成失败：${e instanceof Error ? e.message : String(e)}`);
   } finally {
     tacticalAiBusy.value = false;
@@ -1755,10 +1944,6 @@ async function onAiCreateBuildingsSubmit() {
     return;
   }
   const cfg = getSecondaryApiConfig();
-  if (!isSecondaryApiConfigured(cfg)) {
-    toastr.warning('请先在「设置」中配置第二 API（自定义 URL + Key，或勾选「使用酒馆相同连接」）');
-    return;
-  }
   const count = Math.min(5, Math.max(1, Math.round(Number(aiBuildingsCount.value)) || 1));
   tacticalAiBusy.value = true;
   try {
@@ -1813,12 +1998,64 @@ function dismissPendingTacticalAiInsert() {
 function confirmPendingTacticalAiInsert() {
   const p = pendingTacticalAiInsert.value;
   if (!p) return;
-  if (appendTavernUserSendText(p.fullSend)) {
-    toastr.success('已写入酒馆发送框；发送消息后即可合并变量');
-  } else {
-    toastr.warning('未找到酒馆发送框，请手动复制底部预览中的文本');
+  const ops = extractJsonPatchFromTacticalAiBlock(p.fullSend);
+  if (!ops?.length) {
+    toastr.error('未能从生成结果中解析 JSON Patch，请检查模型输出格式');
+    return;
   }
+  if (!tryRulesMvuWritable()) return;
+
+  const store = useDataStore();
+  const prev = klona(store.data);
+  const next = klona(store.data);
+  applyJsonPatch(next as Record<string, unknown>, ops);
+
+  let beforeTriple: TacticalMvuMapRecordsSnapshot;
+  let afterTriple: TacticalMvuMapRecordsSnapshot;
+  try {
+    beforeTriple = parseTacticalMvuMapTripleSnapshot({
+      区域数据: prev.区域数据,
+      建筑数据: prev.建筑数据,
+      活动数据: prev.活动数据,
+    });
+    afterTriple = parseTacticalMvuMapTripleSnapshot({
+      区域数据: next.区域数据,
+      建筑数据: next.建筑数据,
+      活动数据: next.活动数据,
+    });
+  } catch (e) {
+    console.error('[TacticalMapPanel] AI Patch 应用后 MVU 地图三块校验失败:', e);
+    toastr.error('补丁应用后无法通过地图变量 Schema，请检查模型输出的区域/建筑/活动形状');
+    return;
+  }
+
+  store.data.区域数据 = afterTriple.区域数据;
+  store.data.建筑数据 = afterTriple.建筑数据;
+  store.data.活动数据 = afterTriple.活动数据;
+  bumpUpdateTime();
+
+  mapWorld.value = normalizeWorld(
+    syncWorldFromMvu(normalizeWorld(klona(mapWorld.value)), store.data, {
+      repositionAssignedBuildingsIntoRegion: true,
+    }),
+  );
+  committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+
+  const patchOps = buildTacticalMapJsonPatchesForMvuCommit(beforeTriple, afterTriple);
+  if (patchOps.length > 0) {
+    appendPendingTacticalMapPatches(patchOps);
+  }
+
+  void import('../utils/worldLifeFromPatch').then(({ scheduleWorldLifeTriggersFromJsonPatches }) => {
+    scheduleWorldLifeTriggersFromJsonPatches(patchOps, store.data as Record<string, unknown>);
+  });
+  void import('../utils/residentLifePending').then(({ tryFlushPendingResidentLife }) => {
+    void tryFlushPendingResidentLife(store.data as Record<string, unknown>);
+  });
+
   pendingTacticalAiInsert.value = null;
+  flushPersistCurrentScopeToBrowser();
+  toastr.success('已写入变量并刷新地图；变量补丁已暂存，将在下次于本界面发送对话时附在消息末尾');
 }
 
 function openAiGenerate() {
@@ -1877,6 +2114,28 @@ function quitEditModeFromMobileFab() {
 
 function openAiGenerateMobile() {
   showGenerateModal.value = true;
+  mobileFabOpen.value = false;
+}
+
+function openAiBuildingsModalMobile() {
+  openAiBuildingsModal();
+  if (regions.value.length) {
+    mobileFabOpen.value = false;
+  }
+}
+
+function confirmMapDraftMobile() {
+  confirmMapDraft();
+  mobileFabOpen.value = false;
+}
+
+function discardMapDraftMobile() {
+  discardMapDraft();
+  mobileFabOpen.value = false;
+}
+
+function onPullVariablesToMapMobile() {
+  onPullVariablesToMap();
   mobileFabOpen.value = false;
 }
 
@@ -1970,10 +2229,15 @@ onUnmounted(() => {
   containerRef.value?.removeEventListener('wheel', onWheel);
 });
 
+function getMapDraftChangeLines(): string[] {
+  return buildTacticalMapDraftChangeLines(mapWorld.value, committedMapWorld.value);
+}
+
 defineExpose({
   checkMapDraftDirty: () => tacticalMapDraftDirty.value,
   discardMapDraft,
   confirmMapDraft,
+  getMapDraftChangeLines,
 });
 
 watch(isGlobalEditMode, v => {
@@ -2325,15 +2589,15 @@ watch(isMobileLayout, m => {
 }
 
 /* 描边按钮：浅色叠底，避免黑叠底在深色顶栏上发灰发闷 */
-.tm-btn:hover:not(.tm-btn-primary):not(.tm-btn-toggle--on) {
+.tm-btn:hover:not(.tm-btn-primary):not(.tm-btn-toggle--on):not(.tm-btn-exit-edit) {
   background: rgba(255, 255, 255, 0.09);
 }
 
-.tactical-map--host-light .tm-btn:hover:not(.tm-btn-primary):not(.tm-btn-toggle--on) {
+.tactical-map--host-light .tm-btn:hover:not(.tm-btn-primary):not(.tm-btn-toggle--on):not(.tm-btn-exit-edit) {
   background: rgba(15, 23, 42, 0.07);
 }
 
-/* 主色 / 编辑开启：不再叠黑半透明，悬停整体提亮 */
+/* 主色：悬停整体提亮 */
 .tm-btn-primary:hover,
 .tm-btn-toggle--on:hover {
   filter: brightness(1.14);
@@ -2343,6 +2607,17 @@ watch(isMobileLayout, m => {
   color: var(--bg-color);
   background: var(--accent-color);
   border-color: transparent;
+}
+
+/** 桌面：退出编辑模式（返回浏览）——醒目红色，与主色「进入编辑」区分 */
+.tm-btn-exit-edit {
+  color: #fef2f2;
+  background: #dc2626;
+  border-color: transparent;
+}
+
+.tm-btn-exit-edit:hover {
+  filter: brightness(1.08);
 }
 
 .tm-btn-primary {
@@ -2537,9 +2812,9 @@ watch(isMobileLayout, m => {
 
 .tm-building-label {
   position: absolute;
-  bottom: -1.35rem;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.65rem;
+  bottom: -1.85rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.975rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
   pointer-events: none;
@@ -2608,12 +2883,20 @@ watch(isMobileLayout, m => {
   transform: translateX(-50%);
   z-index: 55;
   width: min(96vw, 44rem);
-  max-height: min(48vh, 22rem);
+  max-height: min(72vh, 36rem);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
   padding: 0.65rem 0.85rem;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.tm-pending-ai-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .tm-pending-ai-title {
@@ -2622,6 +2905,140 @@ watch(isMobileLayout, m => {
   gap: 0.45rem;
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.tm-pending-ai-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.tm-pending-ai-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: min(38vh, 18rem);
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.tm-pending-ai-intro {
+  margin: 0 0 0.45rem;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.tm-pending-ai-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tm-pending-ai-li {
+  margin: 0;
+}
+
+.tm-pending-ai-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--accent-color, #3b82f6);
+    background: rgba(59, 130, 246, 0.06);
+  }
+}
+
+.tm-pending-ai-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+
+.tm-pending-ai-kind {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.25rem;
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-color, #2563eb);
+}
+
+.tm-pending-ai-name {
+  flex: 1 1 auto;
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.tm-pending-ai-id {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
+.tm-pending-ai-sub {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.tm-pending-ai-meta {
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted, #64748b);
+}
+
+.tm-pending-ai-fallback {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.tm-pending-ai-raw {
+  margin: 0;
+  border-radius: 0.35rem;
+  border: 1px dashed var(--border-color);
+  overflow: hidden;
+}
+
+.tm-pending-ai-raw-summary {
+  cursor: pointer;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform 0.15s ease;
+  }
+}
+
+.tm-pending-ai-raw[open] .tm-pending-ai-raw-summary::before {
+  transform: rotate(90deg);
 }
 
 .tm-pending-ai-textarea {
@@ -2633,6 +3050,81 @@ watch(isMobileLayout, m => {
   font-size: 0.72rem;
   line-height: 1.35;
   font-family: ui-monospace, monospace;
+}
+
+.tm-pending-ai-textarea--raw {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  border-top: 1px solid var(--border-color);
+  max-height: 12rem;
+}
+
+.tm-pending-ai-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.tm-pending-ai-detail-card {
+  width: min(96vw, 26rem);
+  max-height: min(85vh, 28rem);
+  display: flex;
+  flex-direction: column;
+  padding: 0.65rem 0.75rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.tm-pending-ai-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tm-pending-ai-detail-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+.tm-pending-ai-detail-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.tm-pending-ai-detail-id {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.tm-pending-ai-detail-pre {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  font-family: ui-monospace, monospace;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .tm-pending-ai-hint {
@@ -2759,6 +3251,50 @@ watch(isMobileLayout, m => {
 .tm-mobile-full {
   width: 100%;
   justify-content: center;
+}
+
+.tm-mobile-more {
+  border-radius: 0.375rem;
+  border-width: 1px;
+  padding: 0.1rem 0.3rem 0.4rem;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.tactical-map--host-light .tm-mobile-more {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.tm-mobile-more-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  list-style: none;
+  cursor: pointer;
+  padding: 0.45rem 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tm-mobile-more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tm-mobile-more-chevron {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+}
+
+.tm-mobile-more[open] .tm-mobile-more-chevron {
+  transform: rotate(180deg);
+}
+
+.tm-mobile-more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.1rem 0 0;
 }
 
 .tm-mobile-divider {
@@ -3129,6 +3665,91 @@ watch(isMobileLayout, m => {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.tm-modal-body--region-ai .tm-region-ai-row {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, auto) 1fr;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+
+.tm-region-theme-block {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.375rem;
+  border-width: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tm-region-theme-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tm-btn--compact {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  border-radius: 0.35rem;
+}
+
+.tm-region-theme-hint {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.tm-region-theme-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tm-region-theme-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.35rem;
+  border-width: 1px;
+}
+
+.tm-region-theme-badge {
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.tm-region-theme-input {
+  min-width: 0;
+  width: 100%;
+  border-radius: 0.3rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8125rem;
+  outline: none;
+}
+
+.tm-btn-icon {
+  padding: 0.35rem 0.45rem;
+  border: none;
+  background: transparent;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.tm-btn-icon:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tm-region-theme-empty {
+  margin: 0;
 }
 
 .tm-textarea {

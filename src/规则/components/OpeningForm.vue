@@ -863,8 +863,8 @@
           @keydown.enter.prevent="confirmSavePreset"
         />
         <div class="chronicle-dialog-actions">
-          <button type="button" class="chronicle-dialog-btn cancel" @click="savePresetDialogOpen = false">取消</button>
           <button type="button" class="chronicle-dialog-btn" @click="confirmSavePreset">保存</button>
+          <button type="button" class="chronicle-dialog-btn cancel" @click="savePresetDialogOpen = false">取消</button>
         </div>
       </div>
     </div>

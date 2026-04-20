@@ -4,7 +4,7 @@
  */
 
 import type { OtherSettings, InputActionMode } from '../types';
-import { DEFAULT_OTHER_SETTINGS } from '../types';
+import { DEFAULT_OTHER_SETTINGS, parseSpeechIntentWorldbookMode } from '../types';
 import { tryRulesMvuWritable, useDataStore } from '../store';
 import { loadOtherSettings, saveOtherSettingsLocal } from './localSettings';
 
@@ -57,6 +57,9 @@ export function getOtherSettings(): OtherSettings {
           : typeof local?.showGameTimeHud === 'boolean'
             ? local.showGameTimeHud
             : DEFAULT_OTHER_SETTINGS.showGameTimeHud,
+      speechIntentWorldbookMode: parseSpeechIntentWorldbookMode(
+        settings?.speechIntentWorldbookMode ?? local?.speechIntentWorldbookMode,
+      ),
     };
   } catch (error) {
     console.warn('⚠️ [otherSettings] 获取其他设置失败，使用默认值:', error);

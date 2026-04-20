@@ -4,6 +4,7 @@
  */
 
 import type { OutputMode, SecondaryApiConfig, InputActionMode, OtherSettings } from '../types';
+import { parseSpeechIntentWorldbookMode } from '../types';
 import type { UiLayoutSettings } from './uiLayoutLimits';
 import { DEFAULT_SECONDARY_API_CONFIG, normalizeSecondaryApiTasks } from './secondaryApiDefaults';
 
@@ -156,6 +157,7 @@ const DEFAULT_OTHER_LOCAL: OtherSettings = {
   enableShujukuManualUpdateAfterConfirm: true,
   enableEditStagingCart: true,
   showGameTimeHud: true,
+  speechIntentWorldbookMode: 'anti_soft',
 };
 
 export function loadOtherSettings(): OtherSettings {
@@ -184,6 +186,7 @@ export function loadOtherSettings(): OtherSettings {
           typeof parsed.showGameTimeHud === 'boolean'
             ? parsed.showGameTimeHud
             : DEFAULT_OTHER_LOCAL.showGameTimeHud,
+        speechIntentWorldbookMode: parseSpeechIntentWorldbookMode(parsed.speechIntentWorldbookMode),
       };
     }
   } catch (error) {

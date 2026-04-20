@@ -1006,6 +1006,56 @@ async function callSecondaryApiViaGenerateRaw(prompt: string, _config: Secondary
 }
 
 /**
+ * 与当前聊天同一插头的 `generateRaw`（主连接 / 第一 API），短上下文仅含 `ordered_prompts`。
+ * 用于战术地图等在第二 API 未配置或失败时的回退（与 {@link generateSecondaryRawOrderedPrompts} 在 `useTavernMainConnection` 时的行为一致）。
+ */
+export async function generatePrimaryRawOrderedPrompts(
+  systemPrompt: string,
+  userPrompt: string,
+  options?: {
+    maxTokens?: number;
+    bannerMessage?: string;
+    bannerAttempt?: number;
+    skipBanner?: boolean;
+  },
+): Promise<string> {
+  if (typeof generateRaw !== 'function') {
+    throw new Error('generateRaw 不可用');
+  }
+  const maxTokens = Math.min(65536, Math.max(256, Math.floor(Number(options?.maxTokens) || 4096)));
+  const msg = options?.bannerMessage?.trim() || 'AI 正在使用主连接处理地图请求…';
+  const skipBanner = options?.skipBanner === true;
+  if (!skipBanner) {
+    notifySecondaryApiStart({
+      attempt: options?.bannerAttempt ?? 1,
+      scope: 'tactical_map',
+      message: msg,
+    });
+  }
+  try {
+    const genConfig: Parameters<typeof generateRaw>[0] = {
+      user_input: '',
+      should_stream: false,
+      should_silence: true,
+      max_chat_history: 0,
+      automatic_trigger: true,
+      ordered_prompts: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      custom_api: {
+        max_tokens: maxTokens,
+      },
+    };
+    return String((await generateRaw(genConfig)) ?? '');
+  } finally {
+    if (!skipBanner) {
+      notifySecondaryApiEnd({ scope: 'tactical_map' });
+    }
+  }
+}
+
+/**
  * 短上下文第二 API：`ordered_prompts` 使用调用方自定义 system + user（地图、世界演化等）。
  * 与变量更新路不同，不注入 {@link SECONDARY_SYSTEM_PROMPT}。
  */

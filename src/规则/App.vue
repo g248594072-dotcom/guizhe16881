@@ -126,7 +126,7 @@
       </header>
       <div class="panel-content">
         <SettingsPanel
-          :is-dark-mode="isDarkMode"
+          v-model:is-dark-mode="isDarkMode"
           :ui-layout="uiLayout"
           @mode-change="onOutputModeChange"
           @update-worldbook="onUpdateWorldbook"
@@ -212,10 +212,6 @@
               <i class="fa-solid fa-cart-shopping"></i>
               <span class="nav-label">暂存</span>
             </button>
-            <button type="button" class="nav-btn nav-btn-theme" @click="isDarkMode = !isDarkMode">
-              <i :class="isDarkMode ? 'fa-solid fa-sun' : 'fa-solid fa-moon'"></i>
-              <span class="nav-label">{{ isDarkMode ? '浅色模式' : '深色模式' }}</span>
-            </button>
             <button
               id="nav-settings"
               type="button"
@@ -279,7 +275,7 @@
               />
               <SettingsPanel
                 v-else-if="activeTab === 'settings'"
-                :is-dark-mode="isDarkMode"
+                v-model:is-dark-mode="isDarkMode"
                 :ui-layout="uiLayout"
                 @mode-change="onOutputModeChange"
                 @update-worldbook="onUpdateWorldbook"
@@ -1567,6 +1563,8 @@ import {
   type TagCheckResult
 } from './utils/messageParser';
 import { applyMaintextInlineBeautify } from './utils/maintextInlineBeautify';
+import { applyJsonPatch, extractJsonPatchFromUpdateVariable } from './utils/jsonPatchStat';
+import { takePendingTacticalMapUpdateVariableBlock } from './utils/pendingTacticalMapUpdateVariable';
 import {
   GamePhase,
   CLOTHING_BODY_SLOT_KEYS,
@@ -1730,7 +1728,28 @@ const modalType = ref('');
 const modalPayload = ref<Record<string, any> | null>(null);
 /** 编辑头像弹窗内隐藏的 file input */
 const avatarFileInputRef = ref<HTMLInputElement | null>(null);
-const isDarkMode = ref(true);
+const UI_DARK_STORAGE_KEY = 'rule_modifier_ui_dark';
+
+function readStoredDarkMode(): boolean {
+  try {
+    const v = localStorage.getItem(UI_DARK_STORAGE_KEY);
+    if (v === '0') return false;
+    if (v === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+const isDarkMode = ref(readStoredDarkMode());
+
+watch(isDarkMode, (v) => {
+  try {
+    localStorage.setItem(UI_DARK_STORAGE_KEY, v ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+});
 
 // MVU 缺失提示弹窗
 const showMvuMissingModal = ref(false);
@@ -3177,26 +3196,6 @@ async function onRecoverLastUserMessage() {
   }
 }
 
-/**
- * 从 UpdateVariable 块中提取 JSON Patch 内容
- */
-function extractJsonPatchFromUpdateVariable(message: string): Array<{op: string; path: string; value?: any; from?: string}> | null {
-  const match = message.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/i);
-  if (!match) return null;
-
-  try {
-    const jsonStr = match[1].trim();
-    const parsed = JSON.parse(jsonStr);
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    return null;
-  } catch (e) {
-    console.warn('⚠️ [App] JSON Patch 解析失败:', e);
-    return null;
-  }
-}
-
 /** JSON Patch 成功写入 stat_data 后：异步生成「世界大势」；个人规则变更仅打标，居民生活在下方统一刷新 */
 function scheduleWorldLifeAfterJsonPatchIfNeeded(
   patches: ReturnType<typeof extractJsonPatchFromUpdateVariable>,
@@ -3214,84 +3213,6 @@ function scheduleResidentLifeFlushAfterStatCommit(statData: unknown): void {
   void import('./utils/residentLifePending').then(({ tryFlushPendingResidentLife }) => {
     void tryFlushPendingResidentLife(statData as Record<string, unknown>);
   });
-}
-
-/** 模型偶发把对象/数组二次编码成 JSON 字符串，写入前尝试解析 */
-function coerceJsonPatchValue(v: unknown): unknown {
-  if (typeof v !== 'string') return v;
-  const s = v.trim();
-  if (
-    (s.startsWith('{') && s.endsWith('}')) ||
-    (s.startsWith('[') && s.endsWith(']'))
-  ) {
-    try {
-      return JSON.parse(s);
-    } catch {
-      return v;
-    }
-  }
-  return v;
-}
-
-/**
- * 应用 JSON Patch 到对象（支持 replace, add, remove, move, copy）
- */
-function applyJsonPatch(target: any, patches: Array<{op: string; path: string; value?: any; from?: string}>): void {
-  for (const patch of patches) {
-    const pathParts = patch.path.replace(/^\//, '').split('/');
-
-    switch (patch.op) {
-      case 'replace':
-      case 'add': {
-        let current = target;
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          const part = pathParts[i];
-          if (!(part in current)) {
-            current[part] = {};
-          }
-          current = current[part];
-        }
-        const lastPart = pathParts[pathParts.length - 1];
-        current[lastPart] = coerceJsonPatchValue(patch.value);
-        break;
-      }
-      case 'remove': {
-        let current = target;
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          const part = pathParts[i];
-          if (!(part in current)) break;
-          current = current[part];
-        }
-        const lastPart = pathParts[pathParts.length - 1];
-        delete current[lastPart];
-        break;
-      }
-      case 'move': {
-        if (!patch.from) break;
-        const fromParts = patch.from.replace(/^\//, '').split('/');
-        let source = target;
-        for (let i = 0; i < fromParts.length - 1; i++) {
-          const part = fromParts[i];
-          if (!(part in source)) break;
-          source = source[part];
-        }
-        const value = source[fromParts[fromParts.length - 1]];
-        // 设置目标路径
-        let current = target;
-        for (let i = 0; i < pathParts.length - 1; i++) {
-          const part = pathParts[i];
-          if (!(part in current)) {
-            current[part] = {};
-          }
-          current = current[part];
-        }
-        current[pathParts[pathParts.length - 1]] = value;
-        // 删除源
-        delete source[fromParts[fromParts.length - 1]];
-        break;
-      }
-    }
-  }
 }
 
 /**
@@ -3353,10 +3274,13 @@ async function applyMvuParseToMessageFloor(
 
 // 发送消息（同层前端界面核心功能）
 async function sendMessage() {
-  const content = userInput.value.trim();
+  const typed = userInput.value.trim();
+  const pendingMapUv = takePendingTacticalMapUpdateVariableBlock();
+  const content =
+    pendingMapUv ? (typed ? `${typed}\n\n${pendingMapUv}` : pendingMapUv) : typed;
   if (!content || isGenerating.value || isVariablePersistInProgress.value) return;
 
-  console.log('🎮 [App] 发送消息:', content.substring(0, 50) + '...');
+  console.log('🎮 [App] 发送消息:', content.substring(0, 80) + '...');
 
   // 保存状态快照（用于错误回退）
   saveGameSnapshot(content);
@@ -4086,14 +4010,14 @@ ${maintext}
 4. **更新世界规则**：如有新规则生效或规则状态变化
 
 ## 重要原则
-- **优先使用 replace 操作更新现有角色**，而非 insert 创建新条目
+- **优先使用 replace 更新现有角色**；新建路径可用 **add**；**insert** 与本界面合并器中与 **add** 等价（勿与「delta」混淆）
 - **绝对禁止**：让性格、性癖、敏感点开发保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
 - **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
 
 ## 输出要求
 1. 只输出 <UpdateVariable> 标签及其内容
 2. 不要输出正文、解释或任何其他内容
-3. 使用标准的 JSON Patch 格式（op: 仅 replace / add / remove / move；**禁止 delta**）
+3. 使用标准的 JSON Patch 格式（op: replace / add / remove / move；**insert 视为 add**；**禁止 delta**）
 4. 确保 JSON 格式正确无误
 5. 检查确认：所有现有角色的空缺字段都已被填充
 

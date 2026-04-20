@@ -1,6 +1,9 @@
 /**
- * ZOD Schema 定义
- * 与角色卡变量结构保持一致
+ * ZOD Schema 定义（MVU / `registerMvuSchema` 对齐）
+ *
+ * - 角色卡里通过 `registerMvuSchema(Schema)` 注册的 Zod **应与下方 `核心结构` 同构**，尤其是「区域数据 / 建筑数据 / 活动数据」键名与嵌套形状；战术地图 AI 契约见 `utils/tacticalMapAiGeneratePrompts.ts` 中 `MVU_PATCH_VALUE_SHAPE_CONTRACT_ZH`。
+ * - **根对象必须在 `z.object({…}).prefault({})` 之后再接 `.passthrough()`**（即本文件的 `核心结构`）。若不使用 passthrough，MVU 合并到的 `meta`、`player`、`openingConfig`、脚本扩展键等可能在解析时被剥掉，表现为「变量写入了但下游/模型读不到」。
+ * - `pnpm exec tsx dump_schema.ts` 可生成供 initvar `# yaml-language-server $schema=` 使用的 JSON Schema。
  */
 
 import {
@@ -223,6 +226,16 @@ const 核心结构 = z.object({
                 }
                 return o;
               }
+              if (typeof raw === 'string') {
+                const s = raw.trim();
+                if (!s) return {};
+                const o: Record<string, boolean> = {};
+                for (const k of s.split(/[,，、]/)) {
+                  const t = k.trim();
+                  if (t) o[t] = true;
+                }
+                return o;
+              }
               return raw;
             },
             z
@@ -432,3 +445,28 @@ const 核心结构 = z.object({
 export const Schema = 核心结构;
 
 export type Schema = z.output<typeof Schema>;
+
+const _mvuRootUnprefaulted = Schema.unwrap();
+
+/**
+ * 仅「区域数据 / 建筑数据 / 活动数据」，与 `registerMvuSchema(Schema)` 中同名字段共用同一套解析（preprocess、prefault、passthrough）。
+ * 地图确认生成 JSON Patch、写回 MVU 前应通过 {@link parseTacticalMvuMapTripleSnapshot}，保证待发 `<UpdateVariable><JSONPatch>` 内 value 可被变量框架识别。
+ */
+export const tacticalMvuMapTripleSchema = z.object({
+  区域数据: _mvuRootUnprefaulted.shape.区域数据,
+  建筑数据: _mvuRootUnprefaulted.shape.建筑数据,
+  活动数据: _mvuRootUnprefaulted.shape.活动数据,
+});
+
+export type TacticalMvuMapTriple = z.output<typeof tacticalMvuMapTripleSchema>;
+
+/** 将地图三块快照规范为与 MVU Schema 一致的输出（手动新建区域/建筑/活动后经此再进入 Patch / 消息体） */
+export function parseTacticalMvuMapTripleSnapshot(
+  triple: Partial<Pick<Schema, '区域数据' | '建筑数据' | '活动数据'>>,
+): TacticalMvuMapTriple {
+  return tacticalMvuMapTripleSchema.parse({
+    区域数据: triple.区域数据 ?? {},
+    建筑数据: triple.建筑数据 ?? {},
+    活动数据: triple.活动数据 ?? {},
+  });
+}

@@ -433,6 +433,37 @@
         </div>
       </div>
 
+      <!-- 抢话 / 防抢话：世界书四选一互斥 -->
+      <div
+        class="edit-staging-cart-toggle speech-intent-wb-card"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="shujuku-master-section-head">
+          <div class="shujuku-master-icon">
+            <i class="fa-solid fa-comments"></i>
+          </div>
+          <div class="shujuku-master-section-titles">
+            <span class="shujuku-master-section-title">抢话与防抢话（世界书）</span>
+            <p class="shujuku-master-section-lead">
+              下拉选择当前<strong>唯一启用</strong>的意向条目；其余三条会在当前角色卡绑定的<strong>主世界书</strong>中自动关闭。条目名称须与世界书中一致。
+            </p>
+          </div>
+        </div>
+        <div class="speech-intent-select-row">
+          <label class="speech-intent-select-label" for="speech-intent-wb-select">当前意向</label>
+          <select
+            id="speech-intent-wb-select"
+            v-model="speechIntentWorldbookMode"
+            :class="['speech-intent-select', { dark: isDarkMode, light: !isDarkMode }]"
+            @change="persistSpeechIntentWorldbook"
+          >
+            <option v-for="m in speechIntentWorldModes" :key="m" :value="m">
+              {{ speechIntentOptionLabel(m) }}
+            </option>
+          </select>
+        </div>
+      </div>
+
       <p class="option-behavior-hint">
         点击剧情选项（A / B / C 等）时，将选项文本<strong>直接发送给 AI</strong>，或
         <strong>仅填入本界面底部输入框</strong>（可再编辑后手动发送），在此选择行为。
@@ -521,6 +552,24 @@
         </div>
         <p class="layout-field-note">
           主界面正文区顶部的时间条；默认显示。关闭后不占位。与下方缩放、宽高一样<strong>变更后立即生效</strong>（写入杂项设置，无需点底部保存）。
+        </p>
+      </div>
+
+      <div class="layout-field-block layout-game-time-toggle-block">
+        <div class="layout-field-head">
+          <label class="field-label layout-field-label" for="rule-ui-dark-mode">深色界面</label>
+          <label class="toggle-switch">
+            <input
+              id="rule-ui-dark-mode"
+              v-model="isDarkMode"
+              aria-label="深色界面"
+              type="checkbox"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <p class="layout-field-note">
+          开启为<strong>深色</strong>主题，关闭为<strong>浅色</strong>主题。与左侧栏解耦，仅在此与开局设置中切换；变更立即生效并写入本机。
         </p>
       </div>
 
@@ -643,7 +692,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick, onBeforeUnmount } from 'vue';
-import type { OutputMode, SecondaryApiConfig, InputActionMode } from '../types';
+import type { OutputMode, SecondaryApiConfig, InputActionMode, SpeechIntentWorldbookMode } from '../types';
+import {
+  SPEECH_INTENT_WORLD_MODES,
+  SPEECH_INTENT_WORLDBOOK_NAME_VARIANTS,
+} from '../types';
 import {
   DEFAULT_SECONDARY_API_CONFIG,
   fetchSecondaryApiModelList,
@@ -666,6 +719,7 @@ import {
   saveUiLayout,
 } from '../utils/localSettings';
 import { getOtherSettings, saveOtherSettings } from '../utils/otherSettings';
+import { applySpeechIntentWorldbookMode } from '../utils/speechIntentWorldbook';
 import { injectBundledTavernDbTemplate } from '../utils/shujukuBridge';
 /** 内置注入用表格模板：与 `src/规则/data/tavernDbBundledTemplate.json` 同源，构建时打包；改表后请同步该文件并重建前端。 */
 import tavernDbBundledTemplate from '../data/tavernDbBundledTemplate.json';
@@ -678,10 +732,12 @@ import {
 } from '../utils/fontManager';
 
 const props = defineProps<{
-  isDarkMode: boolean;
   /** 由 App 唯一水合，避免本组件再 readGameData 合并布局导致闪动 */
   uiLayout: UiLayoutSettings;
 }>();
+
+/** 与 App 根级深浅色一致，双向绑定 */
+const isDarkMode = defineModel<boolean>('isDarkMode', { required: true });
 
 const emit = defineEmits<{
   (e: 'modeChange', mode: OutputMode): void;
@@ -706,6 +762,15 @@ const enableEditStagingCart = ref(true);
 
 /** 主界面顶部游戏时间条（默认显示） */
 const showGameTimeHud = ref(true);
+
+/** 抢话/防抢话世界书四选一（与 OtherSettings 一致，默认一般防抢话） */
+const speechIntentWorldbookMode = ref<SpeechIntentWorldbookMode>('anti_soft');
+
+const speechIntentWorldModes = SPEECH_INTENT_WORLD_MODES;
+
+function speechIntentOptionLabel(mode: SpeechIntentWorldbookMode): string {
+  return SPEECH_INTENT_WORLDBOOK_NAME_VARIANTS[mode][0];
+}
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
@@ -970,6 +1035,7 @@ function loadSettings() {
     enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
     enableEditStagingCart.value = other.enableEditStagingCart;
     showGameTimeHud.value = other.showGameTimeHud;
+    speechIntentWorldbookMode.value = other.speechIntentWorldbookMode;
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
     console.log('✅ [SettingsPanel] 设置从 localStorage 加载成功:', {
@@ -1063,6 +1129,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
       enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
       enableEditStagingCart: enableEditStagingCart.value,
       showGameTimeHud: showGameTimeHud.value,
+      speechIntentWorldbookMode: speechIntentWorldbookMode.value,
     });
     showSaveSuccess.value = true;
     setTimeout(() => {
@@ -1100,6 +1167,22 @@ function persistShujukuManualUpdateOption() {
       ? '已开启：自动填表（确认标签后 manualUpdate）'
       : '已关闭：自动填表',
   );
+}
+
+async function persistSpeechIntentWorldbook() {
+  const mode = speechIntentWorldbookMode.value;
+  const prev = getOtherSettings().speechIntentWorldbookMode;
+  if (!saveOtherSettings({ speechIntentWorldbookMode: mode })) {
+    speechIntentWorldbookMode.value = prev;
+    throttledErrorToast('变量不可写，抢话意向未保存');
+    return;
+  }
+  const r = await applySpeechIntentWorldbookMode(mode);
+  if (!r.ok) {
+    toastr.warning(r.message || '世界书未更新');
+  } else {
+    toastr.success('抢话/防抢话世界书已同步');
+  }
 }
 
 function persistShowGameTimeHud() {
@@ -2434,5 +2517,58 @@ input:checked + .toggle-slider:before {
 
 .layout-game-time-toggle-block .layout-field-head {
   align-items: center;
+}
+
+.speech-intent-wb-card .speech-intent-select-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.speech-intent-select-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dark .speech-intent-select-label {
+  color: #67e8f9;
+}
+
+.light .speech-intent-select-label {
+  color: #0369a1;
+}
+
+.speech-intent-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+}
+
+.dark .speech-intent-select {
+  background: rgba(8, 15, 30, 0.75);
+  border: 1px solid rgba(34, 211, 238, 0.55);
+  color: #ecfeff;
+}
+
+.dark .speech-intent-select:focus {
+  border-color: rgba(103, 232, 249, 0.95);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.2);
+}
+
+.light .speech-intent-select {
+  background: #fff;
+  border: 1px solid #0ea5e9;
+  color: #0c4a6e;
+}
+
+.light .speech-intent-select:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 </style>

@@ -7,7 +7,7 @@ import { klona } from 'klona';
 import { isEqual } from 'lodash';
 import type { Activity, Building, BuildingType, Region, Room, World } from '../components/tacticalMap/types';
 import { normalizeWorld } from '../components/tacticalMap/migrate';
-import type { Schema } from '../schema';
+import { parseTacticalMvuMapTripleSnapshot, type Schema } from '../schema';
 import { bumpUpdateTime, isRulesMvuLiveHostAtInit, tryRulesMvuWritable, useDataStore } from '../store';
 import { worldTypeStringToMapStyle } from './tacticalMapWorldType';
 import { isMvuOccupantValuePresent } from './mvuOccupantValue';
@@ -570,7 +570,11 @@ export function buildTacticalMvuMapRecordsFromWorld(
       };
     }
   }
-  return { 区域数据: 区域, 建筑数据: 建筑, 活动数据: 活动 };
+  return parseTacticalMvuMapTripleSnapshot({
+    区域数据: 区域,
+    建筑数据: 建筑,
+    活动数据: 活动,
+  });
 }
 
 /** 将当前地图语义写回 MVU（不写格子）；不可写时返回 false（手动同步会 toast）。 */

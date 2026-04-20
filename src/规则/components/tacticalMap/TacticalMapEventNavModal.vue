@@ -47,7 +47,7 @@
           </div>
         </template>
         <div v-if="!hasAnyActivities" class="tm-empty dynamic-text-muted">
-          <p>当前没有任何活动。您可以在上方点击「创建活动」来生成。</p>
+          <p>当前没有任何活动。您可以在上方点击「AI 创建活动」来生成。</p>
         </div>
       </div>
     </div>

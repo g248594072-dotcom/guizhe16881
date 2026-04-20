@@ -27,7 +27,7 @@ export function formatPersonalRuleKeysSection(statData: Record<string, unknown> 
 export const VARIABLE_JSON_PATCH_RUNTIME_RULES = [
   '## JSON Patch 与本界面合并约定（强制执行）',
   '- **path 根**：path 均相对于 **stat_data** 根（**禁止** `/stat_data/...` 前缀）。',
-  '- **允许的 op**：仅 **replace**、**add**、**remove**、**move**。本界面 **不支持** `delta`、`copy`、`merge` 等扩展；改数字必须用 **replace** 写入**计算后的绝对值**。',
+  '- **允许的 op**：**replace**、**add**、**remove**、**move**；`insert` 视为与 **add** 等价（兼容旧提示）。本界面 **不支持** `delta`、`copy`、`merge` 等扩展；改数字必须用 **replace** 写入**计算后的绝对值**。',
   '- **避免冗余**：「当前变量数据」里已在正确路径且正文未要求修改的规则，**不要**再整段 replace；不要为同一语义造第二条路径。',
   '- **路径示例**（键名随当回合实际 id 替换）：',
   '  - 世界：`/世界规则/<规则键>`',

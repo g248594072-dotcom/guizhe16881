@@ -206,9 +206,9 @@ function onClick() {
 
 .tm-building-label {
   position: absolute;
-  bottom: -1.35rem;
-  padding: 0.15rem 0.4rem;
-  font-size: 0.65rem;
+  bottom: -1.85rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.975rem;
   font-family: ui-monospace, monospace;
   white-space: nowrap;
   pointer-events: none;

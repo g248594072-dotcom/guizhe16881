@@ -234,7 +234,7 @@ function onRegionPointerUp(e: PointerEvent) {
   align-items: flex-start;
   gap: 0.35rem;
   font-weight: 700;
-  font-size: 0.92rem;
+  font-size: 1.38rem;
   line-height: 1.35;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
@@ -254,7 +254,7 @@ function onRegionPointerUp(e: PointerEvent) {
 
 .tm-region-outside-card-desc {
   margin: 0.32rem 0 0;
-  font-size: 0.84rem;
+  font-size: 1.26rem;
   font-weight: 500;
   line-height: 1.4;
   letter-spacing: 0.01em;

@@ -358,38 +358,46 @@
           <div class="appearance-block">
             <span class="section-label">身体部位物理状态</span>
             <div v-if="bodyPartBadgeLines.length > 0" class="body-part-rows">
-              <button
+              <div
                 v-for="line in bodyPartBadgeLines"
                 :key="'bp-' + line"
-                type="button"
-                class="body-part-line"
-                :class="{ 'is-expanded': expandedBodyPart === line }"
-                @click="toggleBodyPartExpand(line)"
+                class="body-part-row-wrap"
               >
-                <span class="body-part-name">{{ line }}</span>
-              </button>
-            </div>
-            <span v-else class="empty-hint">暂无（点「编辑」添加部位）</span>
-            <template v-if="expandedBodyPart">
-              <div class="detail-expand-panel">
-                <div class="detail-header">
-                  <span class="detail-title">{{ expandedBodyPart }}</span>
-                  <button type="button" class="close-btn" @click="expandedBodyPart = null">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
-                </div>
-                <div class="detail-body">
-                  <div v-if="getBodyPartPhysics(expandedBodyPart)?.外观描述" class="detail-row">
-                    <span class="detail-label">外观描述</span>
-                    <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.外观描述 }}</span>
+                <button
+                  type="button"
+                  class="body-part-line"
+                  :class="{
+                    'is-expanded': expandedBodyPart === line,
+                    'is-updated': bodyPartUpdatedHighlight[line],
+                  }"
+                  @click="toggleBodyPartExpand(line)"
+                >
+                  <span class="body-part-name">{{ line }}</span>
+                </button>
+                <div
+                  v-if="expandedBodyPart === line"
+                  class="detail-expand-panel body-part-detail-panel"
+                >
+                  <div class="detail-header">
+                    <span class="detail-title">{{ line }}</span>
+                    <button type="button" class="close-btn" @click="expandedBodyPart = null">
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
                   </div>
-                  <div v-if="getBodyPartPhysics(expandedBodyPart)?.当前状态" class="detail-row">
-                    <span class="detail-label">当前状态</span>
-                    <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.当前状态 }}</span>
+                  <div class="detail-body">
+                    <div v-if="getBodyPartPhysics(line)?.外观描述" class="detail-row">
+                      <span class="detail-label">外观描述</span>
+                      <span class="detail-value">{{ getBodyPartPhysics(line)?.外观描述 }}</span>
+                    </div>
+                    <div v-if="getBodyPartPhysics(line)?.当前状态" class="detail-row">
+                      <span class="detail-label">当前状态</span>
+                      <span class="detail-value">{{ getBodyPartPhysics(line)?.当前状态 }}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </template>
+            </div>
+            <span v-else class="empty-hint">暂无（点「编辑」添加部位）</span>
           </div>
         </div>
       </article>
@@ -607,6 +615,88 @@ const currentExtra = ref<{
 
 const expandedBodyPart = ref<string | null>(null);
 
+/** 身体部位变量自上次快照以来有变更时，对应按钮用绿色边框提示 */
+const bodyPartUpdatedHighlight = ref<Record<string, boolean>>({});
+const bodyPartLastSerialized = ref<Record<string, string>>({});
+const bodyPartDiffPrimed = ref(false);
+
+function serializeBodyPartEntry(v: unknown): string {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return '{"外观描述":"","当前状态":""}';
+  const o = v as Record<string, unknown>;
+  return JSON.stringify({
+    外观描述: String(o['外观描述'] ?? ''),
+    当前状态: String(o['当前状态'] ?? ''),
+  });
+}
+
+watch(
+  () => props.characterId,
+  () => {
+    bodyPartUpdatedHighlight.value = {};
+    bodyPartLastSerialized.value = {};
+    bodyPartDiffPrimed.value = false;
+  },
+);
+
+watch(
+  () => {
+    const raw = dataStore.data.角色档案?.[props.characterId];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const bp = (raw as Record<string, unknown>)['身体部位物理状态'];
+    if (!bp || typeof bp !== 'object' || Array.isArray(bp)) return undefined;
+    return bp as Record<string, { 外观描述?: string; 当前状态?: string }>;
+  },
+  (bp) => {
+    const next = bp && typeof bp === 'object' ? { ...bp } : {};
+    const serialized: Record<string, string> = {};
+    for (const [k, v] of Object.entries(next)) {
+      const nk = String(k).trim();
+      if (!nk) continue;
+      serialized[nk] = serializeBodyPartEntry(v);
+    }
+
+    currentExtra.value = {
+      ...currentExtra.value,
+      bodyPartPhysics: next,
+    };
+
+    if (!bodyPartDiffPrimed.value) {
+      bodyPartLastSerialized.value = { ...serialized };
+      bodyPartDiffPrimed.value = true;
+      return;
+    }
+
+    const prev = bodyPartLastSerialized.value;
+    const prevHadKeys = Object.keys(prev).some(key => prev[key] !== undefined);
+    const nextHasKeys = Object.keys(serialized).length > 0;
+    if (!prevHadKeys && nextHasKeys) {
+      bodyPartLastSerialized.value = { ...serialized };
+      return;
+    }
+
+    const flags = { ...bodyPartUpdatedHighlight.value };
+    const expanded = expandedBodyPart.value;
+    const allKeys = new Set([...Object.keys(prev), ...Object.keys(serialized)]);
+    for (const k of allKeys) {
+      const a = prev[k];
+      const b = serialized[k];
+      if (a === b) continue;
+      if (b !== undefined) {
+        if (expanded !== k) {
+          flags[k] = true;
+        } else {
+          delete flags[k];
+        }
+      } else {
+        delete flags[k];
+      }
+    }
+    bodyPartUpdatedHighlight.value = flags;
+    bodyPartLastSerialized.value = { ...serialized };
+  },
+  { deep: true, immediate: true },
+);
+
 // 展开的性癖详情
 const expandedFetish = ref<string | null>(null);
 const expandedSensitivePart = ref<string | null>(null);
@@ -638,6 +728,9 @@ function toggleBodyPartExpand(partName: string) {
     expandedBodyPart.value = partName;
     expandedFetish.value = null;
     expandedSensitivePart.value = null;
+    const h = { ...bodyPartUpdatedHighlight.value };
+    delete h[partName];
+    bodyPartUpdatedHighlight.value = h;
   }
 }
 
@@ -1975,6 +2068,17 @@ const emit = defineEmits<{
   margin-top: 6px;
 }
 
+.body-part-row-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.body-part-detail-panel {
+  margin-top: 0;
+}
+
 .body-part-line {
   display: flex;
   flex-direction: column;
@@ -1999,6 +2103,16 @@ const emit = defineEmits<{
   &.is-expanded {
     border-color: rgba(167, 139, 250, 0.5);
     background: rgba(167, 139, 250, 0.09);
+  }
+
+  &.is-updated {
+    border-color: rgba(34, 197, 94, 0.65);
+    background: rgba(34, 197, 94, 0.1);
+  }
+
+  &.is-expanded.is-updated {
+    border-color: rgba(34, 197, 94, 0.75);
+    background: rgba(34, 197, 94, 0.12);
   }
 }
 
@@ -2027,6 +2141,16 @@ const emit = defineEmits<{
     &.is-expanded {
       border-color: rgba(124, 58, 237, 0.35);
       background: rgba(124, 58, 237, 0.06);
+    }
+
+    &.is-updated {
+      border-color: rgba(22, 163, 74, 0.55);
+      background: rgba(22, 163, 74, 0.08);
+    }
+
+    &.is-expanded.is-updated {
+      border-color: rgba(21, 128, 61, 0.6);
+      background: rgba(22, 163, 74, 0.1);
     }
   }
 

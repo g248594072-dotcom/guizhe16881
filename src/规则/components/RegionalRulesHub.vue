@@ -48,8 +48,16 @@
         <div class="rr-map-leave-dialog dynamic-panel dynamic-border" role="dialog" aria-labelledby="rr-map-leave-title">
           <h2 id="rr-map-leave-title" class="rr-map-leave-title dynamic-text">地图有未提交的修改</h2>
           <p class="rr-map-leave-desc dynamic-text-muted">
-            切换离开「地图」前请先确认：将修改写入变量并追加 JSON Patch 到酒馆发送框，或放弃修改还原到上次确认状态。
+            切换离开「地图」前请先确认：将修改写入变量并暂存 JSON Patch 到待发队列，或放弃修改还原到上次确认状态。
           </p>
+          <div v-if="mapLeaveChangeLines.length" class="rr-map-leave-changes" role="region" aria-label="变更摘要">
+            <p class="rr-map-leave-changes-title dynamic-text small">相对上次「确认应用」，当前草稿包含：</p>
+            <ul class="rr-map-leave-list">
+              <li v-for="(line, i) in mapLeaveChangeLines" :key="i" class="rr-map-leave-li dynamic-text-muted">
+                {{ line }}
+              </li>
+            </ul>
+          </div>
           <div class="rr-map-leave-actions">
             <button type="button" class="rr-map-leave-btn rr-map-leave-btn--ghost dynamic-border dynamic-text" @click="closeMapLeaveGuard">
               留在地图
@@ -86,9 +94,11 @@ function onOpenModal(type: string, payload?: Record<string, unknown>) {
 const subTab = ref<'rules' | 'map'>('rules');
 const tacticalMapPanelRef = ref<InstanceType<typeof TacticalMapPanel> | null>(null);
 const mapLeaveGuardOpen = ref(false);
+const mapLeaveChangeLines = ref<string[]>([]);
 
 function closeMapLeaveGuard() {
   mapLeaveGuardOpen.value = false;
+  mapLeaveChangeLines.value = [];
 }
 
 function onSubTabRequest(next: 'rules' | 'map') {
@@ -97,6 +107,7 @@ function onSubTabRequest(next: 'rules' | 'map') {
     return;
   }
   if (subTab.value === 'map' && tacticalMapPanelRef.value?.checkMapDraftDirty?.()) {
+    mapLeaveChangeLines.value = tacticalMapPanelRef.value.getMapDraftChangeLines?.() ?? [];
     mapLeaveGuardOpen.value = true;
     return;
   }
@@ -226,9 +237,36 @@ watch(
 }
 
 .rr-map-leave-desc {
-  margin: 0 0 1rem;
+  margin: 0 0 0.65rem;
   font-size: 0.8125rem;
   line-height: 1.45;
+}
+
+.rr-map-leave-changes {
+  margin: 0 0 1rem;
+  max-height: min(40vh, 14rem);
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.rr-map-leave-changes-title {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.rr-map-leave-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.rr-map-leave-li {
+  margin-bottom: 0.25rem;
 }
 
 .rr-map-leave-actions {

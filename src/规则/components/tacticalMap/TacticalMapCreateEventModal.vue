@@ -4,7 +4,7 @@
       <div class="tm-modal-head dynamic-border">
         <h2 class="dynamic-text tm-head-title">
           <i class="fa-solid fa-wand-magic-sparkles dynamic-accent" aria-hidden="true"></i>
-          创建活动（第二 API）
+          AI 创建活动（第二 API）
         </h2>
         <button type="button" class="tm-close dynamic-text-muted" aria-label="关闭" @click="$emit('close')">
           <i class="fa-solid fa-xmark" aria-hidden="true"></i>
