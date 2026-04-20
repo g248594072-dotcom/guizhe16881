@@ -21,7 +21,6 @@ import { postRequestCloseTavernPhone } from './tavernPhoneBridge';
 import { loadTheme, saveTheme, getThemeVars, injectThemeVars, THEME_LABELS } from './theme';
 import type { PhoneTheme } from './theme';
 import TenantArchiveApp from './components/apps/TenantArchiveApp';
-import AnalysisQueueWidget from './components/AnalysisQueueWidget';
 import BackgroundTaskManager from './components/BackgroundTaskManager';
 
 // Import Apps
@@ -365,10 +364,7 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* 分析队列悬浮小组件 */}
-          <AnalysisQueueWidget />
-
-          {/* 后台任务管理器 */}
+          {/* 后台任务管理器（左下角唯一任务浮层；角色分析队列不再单独悬浮） */}
           <BackgroundTaskManager />
           </div>
         </div>

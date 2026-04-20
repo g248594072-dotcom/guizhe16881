@@ -1,7 +1,7 @@
 /**
  * 后台任务管理器
  * 管理所有需要调用API的长时间运行任务（角色分析、日记生成、论坛生成等）
- * 支持最小化到右下角，不影响其他操作
+ * 支持最小化到左下角，不影响其他操作
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -204,12 +204,12 @@ export default function BackgroundTaskManager() {
 
   return (
     <>
-      {/* 最小化状态 - 右下角浮动按钮 */}
+      {/* 最小化状态 - 左下角浮动按钮 */}
       {isMinimized && (
-        <div className="fixed bottom-4 right-4 z-50">
+        <div className="fixed bottom-4 left-4 z-50 max-w-[calc(100%-2rem)]">
           <button
             onClick={() => setIsMinimized(false)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-all hover:scale-105 ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-all hover:scale-105 min-w-0 ${
               runningCount > 0
                 ? 'bg-[#007AFF] text-white animate-pulse'
                 : 'bg-white text-gray-700'
@@ -221,11 +221,11 @@ export default function BackgroundTaskManager() {
             ) : (
               <CheckCircle2 size={18} className="text-green-500" />
             )}
-            <span className="text-sm font-medium">
+            <span className="text-sm font-medium truncate max-w-[11rem]">
               {runningCount > 0 ? `${runningCount}进行中` : `${tasks.length}个任务`}
             </span>
             {completedCount > 0 && !runningCount && (
-              <span className="ml-1 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+              <span className="shrink-0 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
                 完成
               </span>
             )}
@@ -240,7 +240,7 @@ export default function BackgroundTaskManager() {
 
       {/* 展开状态 - 任务列表面板 */}
       {!isMinimized && (
-        <div className="fixed bottom-4 right-4 z-50 w-80 max-h-96 flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+        <div className="fixed bottom-4 left-4 z-50 w-80 max-w-[calc(100%-2rem)] max-h-96 flex flex-col bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
           {/* 头部 */}
           <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
             <div className="flex items-center gap-2">

@@ -148,16 +148,27 @@ export async function getMomentById(id: string): Promise<Moment | null> {
 }
 
 /**
- * 删除动态
+ * 删除动态（同时删除评论表里挂在本条动态下的评论）
  */
 export async function deleteMoment(id: string): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_MOMENTS, 'readwrite');
-    const store = tx.objectStore(STORE_MOMENTS);
-    const req = store.delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    const tx = db.transaction([STORE_MOMENTS, STORE_COMMENTS], 'readwrite');
+    const momentStore = tx.objectStore(STORE_MOMENTS);
+    const commentStore = tx.objectStore(STORE_COMMENTS);
+    const index = commentStore.index('momentId');
+    const listReq = index.getAll(id);
+    listReq.onsuccess = () => {
+      const comments = listReq.result as MomentComment[];
+      for (const c of comments) {
+        commentStore.delete(c.id);
+      }
+      const delReq = momentStore.delete(id);
+      delReq.onsuccess = () => resolve();
+      delReq.onerror = () => reject(delReq.error);
+    };
+    listReq.onerror = () => reject(listReq.error);
+    tx.onerror = () => reject(tx.error);
   });
 }
 

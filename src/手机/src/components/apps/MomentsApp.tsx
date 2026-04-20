@@ -9,13 +9,14 @@
  * - 基于角色关系的评论权限：只有认识的角色才能评论
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ChevronLeft, Heart, MessageCircle, Send, MoreHorizontal, User, Sparkles, X, RefreshCw, Camera, Settings } from 'lucide-react';
 import type { Moment, MomentComment, MomentContentType, MomentVisibility } from '../../types/moments';
 import {
   getAllMoments,
   toggleLike,
   addComment,
+  deleteMoment,
   getMomentsGlobalSettings,
   saveMomentsGlobalSettings,
 } from '../../momentsIndexedDb';
@@ -25,6 +26,9 @@ import {
   backgroundBatchGenerateMoments,
   onNewMomentsGenerated,
 } from '../../momentsScheduler';
+import { extractMomentContentForDisplay } from '../../utils/momentContentDisplay';
+
+const MOMENT_LONG_PRESS_MS = 550;
 
 interface MomentsAppProps {
   onClose: () => void;
@@ -149,7 +153,7 @@ function GenerateOptionsModal({
         <div className="px-5 py-3 bg-blue-50 border-b border-blue-100">
           <p className="text-sm text-blue-800 flex items-center gap-2">
             <Sparkles size={16} />
-            任务将在后台运行，可在右下角查看进度
+            任务将在后台运行，可在左下角查看进度
           </p>
         </div>
 
@@ -444,6 +448,7 @@ function MomentCard({
   onLike,
   onAddComment,
   onViewProfile,
+  onDelete,
   expanded,
   onToggleExpand,
 }: {
@@ -454,10 +459,41 @@ function MomentCard({
   onLike: (momentId: string) => void;
   onAddComment: (momentId: string, content: string) => void;
   onViewProfile: (characterId: string) => void;
+  onDelete: (momentId: string) => void | Promise<void>;
   expanded: boolean;
   onToggleExpand: () => void;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef({ x: 0, y: 0 });
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleCardPointerDown = (e: React.PointerEvent) => {
+    const el = e.target as HTMLElement | null;
+    if (el?.closest('button, a, input, textarea, [contenteditable="true"]')) {
+      return;
+    }
+    longPressStartRef.current = { x: e.clientX, y: e.clientY };
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      if (window.confirm('确定删除这条朋友圈？删除后无法恢复。')) {
+        void onDelete(moment.id);
+      }
+    }, MOMENT_LONG_PRESS_MS);
+  };
+
+  const handleCardPointerMove = (e: React.PointerEvent) => {
+    if (longPressTimerRef.current === null) return;
+    const dx = Math.abs(e.clientX - longPressStartRef.current.x);
+    const dy = Math.abs(e.clientY - longPressStartRef.current.y);
+    if (dx > 12 || dy > 12) clearLongPressTimer();
+  };
 
   const isLiked = moment.likes?.some(l => l.characterId === (currentViewerId || 'main_character'));
   const likeCount = moment.likes?.length || 0;
@@ -473,9 +509,17 @@ function MomentCard({
 
   // 获取角色头像
   const authorChar = allCharacters.find(c => c.id === moment.characterId);
+  const displayContent = extractMomentContentForDisplay(moment.content);
 
   return (
-    <div className="bg-white px-4 py-4 border-b border-gray-100">
+    <div
+      className="bg-white px-4 py-4 border-b border-gray-100 select-none touch-manipulation"
+      onPointerDown={handleCardPointerDown}
+      onPointerMove={handleCardPointerMove}
+      onPointerUp={clearLongPressTimer}
+      onPointerCancel={clearLongPressTimer}
+      onPointerLeave={clearLongPressTimer}
+    >
       <div className="flex gap-3">
         {/* 左侧头像 */}
         <button
@@ -508,17 +552,18 @@ function MomentCard({
             </span>
           )}
 
-          {/* 动态内容 */}
+          {/* 动态内容：展示层剥离误存的 JSON 外壳，避免截断 JSON 整段显示 */}
           <div className="mt-1 text-[15px] text-gray-800 leading-relaxed">
-            <span className={`whitespace-pre-wrap ${!expanded && moment.content.length > 150 ? 'line-clamp-3' : ''}`}>
-              {moment.content}
+            <span className={`whitespace-pre-wrap break-words ${!expanded && displayContent.length > 150 ? 'line-clamp-3' : ''}`}>
+              {displayContent}
             </span>
-            {moment.content.length > 150 && !expanded && (
+            {displayContent.length > 150 && !expanded && (
               <button
+                type="button"
                 onClick={onToggleExpand}
-                className="text-gray-500 text-sm ml-1"
+                className="text-[#576b95] text-sm ml-1 align-baseline shrink-0"
               >
-                ...全文
+                全文
               </button>
             )}
           </div>
@@ -531,18 +576,12 @@ function MomentCard({
             </div>
           )}
 
-          {/* 时间和操作行 */}
-          <div className="mt-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <span>{moment.gameDate} {moment.gameTime}</span>
-              {moment.location && (
-                <span className="text-[#576b95]">{moment.location}</span>
-              )}
-            </div>
-
-            {/* 微信风格的两点按钮 */}
-            <div className="relative">
+          {/* 时间和操作行（菜单在左、时间在右，避免与桌面任务条抢右下角） */}
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {/* 微信风格 ··· 菜单 */}
+            <div className="relative shrink-0">
               <button
+                type="button"
                 onClick={() => setShowActions(!showActions)}
                 className="px-2 py-1 bg-[#f7f7f7] rounded hover:bg-gray-200 transition-colors"
               >
@@ -551,7 +590,7 @@ function MomentCard({
 
               {/* 点赞评论弹窗 */}
               {showActions && (
-                <div className="absolute right-0 top-0 bg-[#4c4c4c] rounded flex items-center overflow-hidden z-10">
+                <div className="absolute left-0 top-0 bg-[#4c4c4c] rounded flex items-center overflow-hidden z-10 shadow-md">
                   <button
                     onClick={handleLike}
                     className="px-4 py-2 text-white text-sm flex items-center gap-1 hover:bg-[#5c5c5c] border-r border-white/20"
@@ -570,6 +609,13 @@ function MomentCard({
                     评论
                   </button>
                 </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 text-xs text-gray-400 min-w-0 flex-1">
+              <span className="truncate text-right">{moment.gameDate} {moment.gameTime}</span>
+              {moment.location && (
+                <span className="text-[#576b95] shrink-0">{moment.location}</span>
               )}
             </div>
           </div>
@@ -996,6 +1042,7 @@ export default function MomentsApp({
                     onLike={handleLike}
                     onAddComment={handleAddComment}
                     onViewProfile={handleViewProfile}
+                    onDelete={handleDeleteMoment}
                     expanded={expandedMoments.has(moment.id)}
                     onToggleExpand={() => toggleExpand(moment.id)}
                   />

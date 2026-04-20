@@ -86,12 +86,8 @@ function glob_script_files() {
   fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
     .filter(file => {
       const n = file.replace(/\\/g, '/');
-      // 勿匹配 node_modules 内包的 index.js；勿匹配 Vite 子项目 src/手机（由 pnpm build:phone 单独构建）；勿匹配 src/小手机壳（可改回参与 webpack 时再删掉此行）
-      return (
-        !n.includes('/node_modules/') &&
-        !n.startsWith('src/手机/') &&
-        !n.startsWith('src/小手机壳/')
-      );
+      // 勿匹配 node_modules 内包的 index.js；勿匹配 Vite 子项目 src/手机（由 pnpm build:phone 单独构建）
+      return !n.includes('/node_modules/') && !n.startsWith('src/手机/');
     })
     .filter(
       file => process.env.CI !== 'true' || !fs.readFileSync(path.join(import.meta.dirname, file)).includes('@no-ci'),
@@ -242,7 +238,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           : false
         : 'eval-cheap-module-source-map',
     watchOptions: {
-      ignored: ['**/dist', '**/node_modules', '**/src/手机/**', '**/src/小手机壳/**'],
+      ignored: ['**/dist', '**/node_modules', '**/src/手机/**'],
     },
     entry: path.join(import.meta.dirname, entry.script),
     target: 'browserslist',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ChevronLeft, Plus, Search, Sparkles, Calendar, User, Trash2, Eye, EyeOff, RefreshCw, X, Settings, Clock } from 'lucide-react';
 import type { DiaryEntry, DiaryGlobalSettings } from '../../diaryIndexedDb';
 import {
@@ -18,6 +18,103 @@ import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characte
 
 interface DiaryAppProps {
   onClose: () => void;
+}
+
+const DIARY_LONG_PRESS_MS = 550;
+
+/** 日记列表项：点击进入详情，长按确认后删除 */
+function DiaryEntryRow({
+  entry,
+  onOpen,
+  onDelete,
+}: {
+  entry: DiaryEntry;
+  onOpen: (e: DiaryEntry) => void;
+  onDelete: (id: string) => void | Promise<void>;
+}) {
+  const longPressTriggered = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef({ x: 0, y: 0 });
+
+  const clearTimer = () => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    startRef.current = { x: e.clientX, y: e.clientY };
+    longPressTriggered.current = false;
+    clearTimer();
+    timerRef.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      if (window.confirm('确定删除这篇日记？删除后无法恢复。')) {
+        void onDelete(entry.id);
+      }
+    }, DIARY_LONG_PRESS_MS);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (timerRef.current === null) return;
+    const dx = Math.abs(e.clientX - startRef.current.x);
+    const dy = Math.abs(e.clientY - startRef.current.y);
+    if (dx > 12 || dy > 12) clearTimer();
+  };
+
+  return (
+    <button
+      type="button"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={clearTimer}
+      onPointerCancel={clearTimer}
+      onPointerLeave={clearTimer}
+      onClick={() => {
+        if (longPressTriggered.current) {
+          longPressTriggered.current = false;
+          return;
+        }
+        onOpen(entry);
+      }}
+      className={`w-full text-left p-4 bg-white rounded-[16px] shadow-sm border transition-all hover:shadow-md active:scale-[0.98] select-none touch-manipulation ${
+        entry.isRead ? 'border-gray-100' : 'border-amber-200 bg-amber-50/30'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        {/* Avatar */}
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${
+            entry.isRead ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-600'
+          }`}
+        >
+          {entry.characterName[0]}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-semibold text-gray-900 text-[15px]">{entry.characterName}</span>
+            {!entry.isRead && <span className="w-2 h-2 bg-red-500 rounded-full" />}
+            <span className="text-xs text-gray-400 ml-auto">{entry.gameDate}</span>
+          </div>
+
+          <h3 className={`font-semibold mb-1.5 leading-tight ${entry.isRead ? 'text-gray-700' : 'text-gray-900'}`}>
+            {entry.title}
+          </h3>
+
+          <p className="text-[13px] text-gray-500 line-clamp-2 leading-relaxed">{entry.content}</p>
+
+          <div className="flex gap-1.5 mt-2.5">
+            {entry.moodTags.slice(0, 3).map(tag => (
+              <span key={tag} className="text-[11px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
 }
 
 /** 日记详情弹窗 */
@@ -227,7 +324,7 @@ function GenerateOptionsModal({
         <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
           <p className="text-sm text-amber-800 flex items-center gap-2">
             <Sparkles size={16} />
-            任务将在后台运行，可在右下角查看进度
+            任务将在后台运行，可在左下角查看进度
           </p>
         </div>
 
@@ -545,58 +642,7 @@ export default function DiaryApp({ onClose }: DiaryAppProps) {
         ) : (
           <div className="space-y-3">
             {filteredEntries.map(entry => (
-              <button
-                key={entry.id}
-                onClick={() => handleOpenDetail(entry)}
-                className={`w-full text-left p-4 bg-white rounded-[16px] shadow-sm border transition-all hover:shadow-md active:scale-[0.98] ${
-                  entry.isRead ? 'border-gray-100' : 'border-amber-200 bg-amber-50/30'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  {/* Avatar */}
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${
-                    entry.isRead ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-600'
-                  }`}>
-                    {entry.characterName[0]}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    {/* Header */}
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold text-gray-900 text-[15px]">
-                        {entry.characterName}
-                      </span>
-                      {!entry.isRead && (
-                        <span className="w-2 h-2 bg-red-500 rounded-full" />
-                      )}
-                      <span className="text-xs text-gray-400 ml-auto">
-                        {entry.gameDate}
-                      </span>
-                    </div>
-
-                    {/* Title */}
-                    <h3 className={`font-semibold mb-1.5 leading-tight ${
-                      entry.isRead ? 'text-gray-700' : 'text-gray-900'
-                    }`}>
-                      {entry.title}
-                    </h3>
-
-                    {/* Preview */}
-                    <p className="text-[13px] text-gray-500 line-clamp-2 leading-relaxed">
-                      {entry.content}
-                    </p>
-
-                    {/* Mood Tags */}
-                    <div className="flex gap-1.5 mt-2.5">
-                      {entry.moodTags.slice(0, 3).map(tag => (
-                        <span key={tag} className="text-[11px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </button>
+              <DiaryEntryRow key={entry.id} entry={entry} onOpen={handleOpenDetail} onDelete={handleDelete} />
             ))}
           </div>
         )}
