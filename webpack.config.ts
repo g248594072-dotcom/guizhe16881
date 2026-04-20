@@ -485,6 +485,11 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             filename: path.parse(entry.html).base,
             scriptLoading: 'module',
             cache: false,
+            // 仅收 HTML 模板里的空白与注释；不 minify 内联 JS/CSS，避免破坏 ESM / Tailwind
+            minify:
+              argv.mode === 'production'
+                ? { collapseWhitespace: true, removeComments: true, minifyCSS: false, minifyJS: false }
+                : false,
           }),
           new HtmlInlineScriptWebpackPlugin(),
           new MiniCssExtractPlugin(),
@@ -542,11 +547,22 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           : [],
       ),
     optimization: {
+      usedExports: true,
       minimize: true,
       minimizer: [
         argv.mode === 'production'
           ? new TerserPlugin({
-              terserOptions: { format: { quote_style: 1 }, mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] } },
+              extractComments: false,
+              terserOptions: {
+                ecma: 2020,
+                format: { quote_style: 1, comments: false },
+                mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] },
+                compress: {
+                  passes: 2,
+                  // 保留 console.info / warn / error（项目约定），去掉仅调试用 log
+                  pure_funcs: ['console.log', 'console.debug', 'console.trace'],
+                },
+              },
             })
           : new TerserPlugin({
               extractComments: false,
