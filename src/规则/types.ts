@@ -119,12 +119,13 @@ export interface CharacterBasic {
   [key: string]: any;
 }
 
-/** MVU「服装状态」单槽，与 schema 一致 */
-export interface ClothingSlotZh {
-  名称?: string;
+/** 身体槽内单件服装（服装名为对象键），与 schema 一致 */
+export interface ClothingBodyGarmentZh {
   状态?: string;
   描述?: string;
 }
+
+export type ClothingBodySlotRecordZh = Record<string, ClothingBodyGarmentZh>;
 
 /** 饰品单条：名字为对象键；兼容旧档仅有「状态」无「部位」 */
 export interface JewelryItemZh {
@@ -140,12 +141,20 @@ export type ClothingBodySlotKeyZh = (typeof CLOTHING_BODY_SLOT_KEYS)[number];
 
 /** MVU「服装状态」根对象 */
 export interface ClothingStateZh {
-  上装?: ClothingSlotZh;
-  下装?: ClothingSlotZh;
-  内衣?: ClothingSlotZh;
-  足部?: ClothingSlotZh;
-  腿部?: ClothingSlotZh;
+  上装?: ClothingBodySlotRecordZh;
+  下装?: ClothingBodySlotRecordZh;
+  内衣?: ClothingBodySlotRecordZh;
+  足部?: ClothingBodySlotRecordZh;
+  腿部?: ClothingBodySlotRecordZh;
   饰品?: Record<string, JewelryItemZh>;
+}
+
+/** 弹窗/购物车：身体槽多行编辑 */
+export interface ClothingBodyGarmentEditRow {
+  slot: ClothingBodySlotKeyZh;
+  name: string;
+  状态: string;
+  描述: string;
 }
 
 /** 弹窗/购物车中饰品一行编辑态 */

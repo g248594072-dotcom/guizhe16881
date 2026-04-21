@@ -9,12 +9,20 @@
 import type {
   BodyPartPhysicsZh,
   CharacterData,
-  ClothingSlotZh,
+  ClothingBodyGarmentEditRow,
+  ClothingBodyGarmentZh,
+  ClothingBodySlotKeyZh,
   ClothingStateZh,
   JewelryEditRow,
+  JewelryItemZh,
   RegionData,
   RuleData,
 } from '../types';
+import {
+  mergeBodySlotRecords,
+  normalizeClothingBodySlotRecord,
+  normalize服装状态Raw,
+} from './clothingStateNormalize';
 import { CLOTHING_BODY_SLOT_KEYS } from '../types';
 import {
   useDataStore,
@@ -90,7 +98,7 @@ export function addCharacterToVariables(name: string, description: string): void
   const n = name.trim() || '未命名';
   const desc = description.trim();
 
-  const slot = () => ({ 名称: '', 状态: '正常', 描述: '' });
+  const emptySlot = () => ({}) as Record<string, { 状态: string; 描述: string }>;
   store.data.角色档案[id] = {
     姓名: n,
     状态: '出场中',
@@ -114,7 +122,7 @@ export function addCharacterToVariables(name: string, description: string): void
       体质特征: '普通',
     },
     服装状态: {
-      ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, slot()])),
+      ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, emptySlot()])),
       饰品: {},
     },
     身体部位物理状态: {},
@@ -454,24 +462,28 @@ export function updateCharacterIdentityTags(
 
 /** 新建角色 / 弹窗重置用：完整默认「服装状态」 */
 export function defaultEmptyClothingState(): ClothingStateZh {
-  const s: ClothingSlotZh = { 名称: '', 状态: '正常', 描述: '' };
   return {
-    ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, { ...s }])),
+    ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, {}])),
     饰品: {},
   } as ClothingStateZh;
 }
 
-function mergeClothingState(incoming: ClothingStateZh): ClothingStateZh {
+function mergeClothingState(incoming: ClothingStateZh | Record<string, unknown>): ClothingStateZh {
   const base = defaultEmptyClothingState();
-  const slot = (a: ClothingSlotZh, b?: ClothingSlotZh): ClothingSlotZh => ({
-    名称: String(b?.名称 ?? a.名称 ?? ''),
-    状态: String(b?.状态 ?? a.状态 ?? '正常'),
-    描述: String(b?.描述 ?? a.描述 ?? ''),
-  });
-  const jewelry = { ...base.饰品, ...(incoming.饰品 && typeof incoming.饰品 === 'object' ? incoming.饰品 : {}) };
+  const raw =
+    incoming != null && typeof incoming === 'object' && !Array.isArray(incoming)
+      ? (normalize服装状态Raw(incoming) as Record<string, unknown>)
+      : {};
+  const jewelry = {
+    ...base.饰品,
+    ...(raw.饰品 && typeof raw.饰品 === 'object' && !Array.isArray(raw.饰品) ? raw.饰品 : {}),
+  } as NonNullable<ClothingStateZh['饰品']>;
   const out: ClothingStateZh = { 饰品: jewelry };
   for (const k of CLOTHING_BODY_SLOT_KEYS) {
-    out[k] = slot(base[k]!, incoming[k]);
+    const slotKey = k;
+    const a = normalizeClothingBodySlotRecord(base[slotKey]);
+    const b = normalizeClothingBodySlotRecord(raw[slotKey]);
+    out[slotKey] = mergeBodySlotRecords(a, b);
   }
   return out;
 }
@@ -504,6 +516,75 @@ export function updateCharacterAppearanceInVariables(
   bumpUpdateTime();
 }
 
+/** 仅更新「服装状态.<槽位>.<服装名>」，其余键不变 */
+export function patchCharacterClothingBodyGarment(
+  characterId: string,
+  slotKey: ClothingBodySlotKeyZh,
+  garmentName: string,
+  garment: ClothingBodyGarmentZh,
+): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+  const nm = String(garmentName ?? '').trim();
+  if (!nm) return;
+  const cur = clothingStateFromMvuRaw(char.服装状态);
+  const slot = { ...(cur[slotKey] ?? {}) };
+  slot[nm] = {
+    状态: String(garment.状态 ?? '正常').trim() || '正常',
+    描述: String(garment.描述 ?? ''),
+  };
+  cur[slotKey] = slot;
+  char.服装状态 = cur;
+  bumpUpdateTime();
+}
+
+/** 移除「服装状态.<槽位>」下某一服装名 */
+export function removeCharacterClothingBodyGarment(
+  characterId: string,
+  slotKey: ClothingBodySlotKeyZh,
+  garmentName: string,
+): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+  const nm = String(garmentName ?? '').trim();
+  if (!nm) return;
+  const cur = clothingStateFromMvuRaw(char.服装状态);
+  const slot = { ...(cur[slotKey] ?? {}) };
+  delete slot[nm];
+  cur[slotKey] = slot;
+  char.服装状态 = cur;
+  bumpUpdateTime();
+}
+
+/** 仅更新「服装状态.饰品」下某一键（如 手镯），其余饰品与身体槽位不变 */
+export function patchCharacterJewelryItem(
+  characterId: string,
+  itemName: string,
+  item: JewelryItemZh,
+): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId];
+  if (!char) return;
+  const nm = String(itemName ?? '').trim();
+  if (!nm) return;
+  const cur = clothingStateFromMvuRaw(char.服装状态);
+  cur.饰品 = {
+    ...(cur.饰品 ?? {}),
+    [nm]: {
+      部位: String(item.部位 ?? ''),
+      状态: String(item.状态 ?? '正常').trim() || '正常',
+      描述: String(item.描述 ?? ''),
+    },
+  };
+  char.服装状态 = cur;
+  bumpUpdateTime();
+}
+
 export function formatEditCharacterAppearanceMessage(
   characterId: string,
   服装状态: ClothingStateZh,
@@ -511,10 +592,19 @@ export function formatEditCharacterAppearanceMessage(
 ): string {
   const lines = ['[编辑角色外观与身体状态]', `角色ID：${characterId}`];
   for (const k of CLOTHING_BODY_SLOT_KEYS) {
-    const x = 服装状态[k];
-    if (x && (String(x.名称 || '').trim() || String(x.状态 || '').trim() || String(x.描述 || '').trim())) {
-      lines.push(`${k}：${x.名称 || '—'} / ${x.状态 || '—'} / ${x.描述 || ''}`.trim());
-    }
+    const rec = 服装状态[k];
+    if (!rec || typeof rec !== 'object') continue;
+    const entries = Object.entries(rec).filter(([n]) => String(n).trim());
+    if (entries.length === 0) continue;
+    lines.push(
+      `${k}：${entries
+        .map(([n, o]) => {
+          const st = String((o as ClothingBodyGarmentZh)?.状态 ?? '').trim() || '正常';
+          const d = String((o as ClothingBodyGarmentZh)?.描述 ?? '').trim();
+          return d ? `${n} / ${st} / ${d}` : `${n} / ${st}`;
+        })
+        .join('；')}`,
+    );
   }
   const acc = 服装状态.饰品;
   if (acc && typeof acc === 'object') {
@@ -556,12 +646,55 @@ export async function submitEditCharacterAppearance(
   return message;
 }
 
-/** 从 MVU 原始「服装状态」填弹窗（缺项补默认） */
+/** 从 MVU 原始「服装状态」填弹窗（缺项补默认，兼容旧单槽结构） */
 export function clothingStateFromMvuRaw(raw: unknown): ClothingStateZh {
   if (raw != null && typeof raw === 'object' && !Array.isArray(raw)) {
-    return mergeClothingState(raw as ClothingStateZh);
+    return mergeClothingState(raw as Record<string, unknown>);
   }
   return defaultEmptyClothingState();
+}
+
+/** 将身体槽 record 展开为弹窗/购物车多行 */
+export function bodyGarmentRowsFromClothingState(c: ClothingStateZh): ClothingBodyGarmentEditRow[] {
+  const rows: ClothingBodyGarmentEditRow[] = [];
+  for (const slot of CLOTHING_BODY_SLOT_KEYS) {
+    const rec = c[slot];
+    if (!rec || typeof rec !== 'object') continue;
+    for (const [name, v] of Object.entries(rec)) {
+      const nm = String(name).trim();
+      if (!nm) continue;
+      const o = v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+      rows.push({
+        slot,
+        name: nm,
+        状态: String(o.状态 ?? '正常').trim() || '正常',
+        描述: String(o.描述 ?? ''),
+      });
+    }
+  }
+  rows.sort((a, b) => `${a.slot}/${a.name}`.localeCompare(`${b.slot}/${b.name}`, 'zh-Hans-CN'));
+  return rows;
+}
+
+/** 由身体行 + 饰品行拼出完整「服装状态」 */
+export function mergeClothingAppearanceSubmit(
+  bodyRows: ClothingBodyGarmentEditRow[],
+  jewelryRows: JewelryEditRow[],
+): ClothingStateZh {
+  const base = defaultEmptyClothingState();
+  for (const row of bodyRows) {
+    const nm = String(row.name ?? '').trim();
+    if (!nm) continue;
+    const sk = row.slot;
+    if (!(CLOTHING_BODY_SLOT_KEYS as readonly string[]).includes(sk)) continue;
+    const slot = { ...(base[sk] ?? {}) };
+    slot[nm] = {
+      状态: String(row.状态 ?? '正常').trim() || '正常',
+      描述: String(row.描述 ?? ''),
+    };
+    base[sk] = slot;
+  }
+  return applyJewelryRowsToClothing(base, jewelryRows);
 }
 
 /** 从 MVU「身体部位物理状态」生成弹窗行列表 */

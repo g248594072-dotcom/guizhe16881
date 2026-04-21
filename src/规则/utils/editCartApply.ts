@@ -143,14 +143,12 @@ export async function runModalCommit(
   } else if (type === 'edit_character_appearance' && p?.characterId) {
     const {
       submitEditCharacterAppearance,
-      defaultEmptyClothingState,
-      applyJewelryRowsToClothing,
+      mergeClothingAppearanceSubmit,
       normalizeJewelryEditRow,
     } = await import('./dialogAndVariable');
     const characterId = String(p.characterId);
-    const base = form.appearanceClothing ?? defaultEmptyClothingState();
     const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
-    const clothing = applyJewelryRowsToClothing(base, jewelryRows);
+    const clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
     const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
     for (const row of form.appearanceBodyPartRows ?? []) {
       const k = String(row.key ?? '').trim();

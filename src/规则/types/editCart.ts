@@ -2,7 +2,7 @@
  * 编辑暂存购物车：条目类型（与 App 弹窗表单、归档、角色详情、随机规则对齐）
  */
 
-import type { ClothingStateZh, JewelryEditRow } from '../types';
+import type { ClothingBodyGarmentEditRow, ClothingStateZh, JewelryEditRow } from '../types';
 
 export interface EditCartModalForm {
   addCharacterName: string;
@@ -29,8 +29,10 @@ export interface EditCartModalForm {
   sensitivePartDetails: Array<{ name: string; level: number; reaction: string; devDetails: string }>;
   identityTags: Array<{ category: string; value: string }>;
   avatarUrl: string;
-  /** 编辑服装状态 + 身体部位物理状态 */
+  /** 编辑服装状态 + 身体部位物理状态（身体槽用多行；饰品仍用 appearanceJewelryRows） */
   appearanceClothing: ClothingStateZh;
+  /** 身体槽「上装/下装…」多件：服装名为行内 name，写入 MVU 时为对应槽的 object 键 */
+  appearanceBodyGarmentRows: ClothingBodyGarmentEditRow[];
   appearanceJewelryRows: JewelryEditRow[];
   appearanceBodyPartRows: Array<{ key: string; 外观描述: string; 当前状态: string }>;
 }

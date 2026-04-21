@@ -2,7 +2,7 @@ import { StoreDefinition } from 'pinia';
 import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
 /** 从变量表中取出 MVU stat_data（单层；遇双层嵌套则取内层） */
-function extractMvuStatData(variables: any): Record<string, unknown> {
+export function extractMvuStatData(variables: any): Record<string, unknown> {
   if (!variables) return {};
   if (variables.stat_data && typeof variables.stat_data === 'object') {
     if (
@@ -23,6 +23,77 @@ function extractMvuStatData(variables: any): Record<string, unknown> {
  * - 绑定 **最新层**（message_id: -1）时：先铺 **0 层** 的 `游戏时间`，再叠 **角色卡**，最后叠 **当前层**（后者覆盖前者同名字段）。
  * - 历史楼层 iframe：不读 0 层，仅尝试 **角色卡 → 当前层**，避免把当前剧本的纪元套进旧快照。
  */
+/**
+ * 合并「区域数据 / 建筑数据 / 活动数据 / 角色档案」的 record 层后再交给 schema：
+ * - 剧情层消息上的 stat_data 往往只有 ID 引用或小 patch，**词典式定义**常在角色卡或第 0 层消息。
+ * - 绑定 **message** 时：先铺 **角色卡**，再（仅最新层时）铺 **0 层**，最后叠 **当前层**（同 id 后者覆盖前者）。
+ * - 历史楼层：仅 **角色卡 → 当前层**，不把 0 层套进旧快照（与 `游戏时间` 分支一致）。
+ */
+export function mergeMessageRefRecordsWithCharacterAndMaybeMessage0(
+  statData: Record<string, unknown>,
+  option: VariableOption,
+): Record<string, unknown> {
+  if (option.type !== 'message') return statData;
+
+  const mid =
+    option.message_id === undefined || option.message_id === 'latest'
+      ? -1
+      : option.message_id;
+
+  const mergeKeys = ['区域数据', '建筑数据', '活动数据', '角色档案'] as const;
+
+  function shallowMergeRecordLayers(...layers: unknown[]): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const layer of layers) {
+      if (layer == null || typeof layer !== 'object' || Array.isArray(layer)) continue;
+      Object.assign(out, layer as Record<string, unknown>);
+    }
+    return out;
+  }
+
+  const layersFromChar: unknown[] = [];
+  try {
+    const charVariables = getVariables({ type: 'character' });
+    const charSd = sanitizeStatDataRoleArchivesNestedMaps(extractMvuStatData(charVariables)) as Record<
+      string,
+      unknown
+    >;
+    layersFromChar.push(charSd);
+  } catch {
+    /* 未打开角色卡等 */
+  }
+
+  const layersFrom0: unknown[] = [];
+  if (mid === -1) {
+    try {
+      const v0 = getVariables({ type: 'message', message_id: 0 });
+      const sd0 = sanitizeStatDataRoleArchivesNestedMaps(extractMvuStatData(v0)) as Record<string, unknown>;
+      layersFrom0.push(sd0);
+    } catch {
+      /* 0 层可能尚未存在 */
+    }
+  }
+
+  let changed = false;
+  const out = { ...statData };
+  for (const key of mergeKeys) {
+    const merged = shallowMergeRecordLayers(
+      ...layersFromChar.map(sd => (sd as Record<string, unknown>)?.[key]),
+      ...layersFrom0.map(sd => (sd as Record<string, unknown>)?.[key]),
+      statData[key],
+    );
+    const prev = statData[key];
+    if (Object.keys(merged).length === 0 && (prev == null || prev === undefined)) {
+      continue;
+    }
+    if (!_.isEqual(prev, merged)) {
+      (out as Record<string, unknown>)[key] = merged;
+      changed = true;
+    }
+  }
+  return changed ? out : statData;
+}
+
 function mergeMessageGameTimeWithCharacter(
   statData: Record<string, unknown>,
   option: VariableOption,
@@ -161,6 +232,7 @@ export function defineMvuDataStore<T extends z.ZodObject>(
 
       const rawVariables = getVariables(resolvedOption);
       let statData = sanitizeStatDataRoleArchivesNestedMaps(getStatData(rawVariables)) as Record<string, unknown>;
+      statData = mergeMessageRefRecordsWithCharacterAndMaybeMessage0(statData, resolvedOption);
       statData = mergeMessageGameTimeWithCharacter(statData, resolvedOption);
       const data = ref(
         schema.parse(statData, { reportInput: true }),
@@ -174,7 +246,8 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         const rawStatData = getStatData(variables);
         const sanitizedOnly = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
         const hadCorruption = !_.isEqual(rawStatData, sanitizedOnly);
-        let stat_data = mergeMessageGameTimeWithCharacter(sanitizedOnly, resolvedOption);
+        let stat_data = mergeMessageRefRecordsWithCharacterAndMaybeMessage0(sanitizedOnly, resolvedOption);
+        stat_data = mergeMessageGameTimeWithCharacter(stat_data, resolvedOption);
         const result = schema.safeParse(stat_data);
         if (result.error) {
           return;

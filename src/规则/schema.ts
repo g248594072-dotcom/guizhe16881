@@ -12,6 +12,7 @@ import {
   normalizeFetishRecord,
   normalizeSensitivePartRecord,
 } from './utils/tagMap';
+import { normalize服装状态Raw } from './utils/clothingStateNormalize';
 
 /** 性格：Record<名, 描述>，兼容旧 string[] */
 const 标签映射 = z.preprocess(
@@ -49,38 +50,41 @@ const 敏感点开发映射 = z.preprocess(
   z.record(z.string(), 敏感部位条目),
 ).prefault({});
 
-const 服装穿戴单项 = z
+/** 身体槽：服装名为键，值为 { 状态, 描述 }（无「名称」字段）；旧档单对象经 preprocess 迁移 */
+const 服装身体槽记录项 = z
   .object({
-    名称: z.string().prefault(''),
     状态: z.string().prefault('正常'),
     描述: z.string().prefault(''),
   })
   .passthrough()
   .prefault({});
 
-const 服装状态结构 = z
-  .object({
-    上装: 服装穿戴单项,
-    下装: 服装穿戴单项,
-    内衣: 服装穿戴单项,
-    腿部: 服装穿戴单项,
-    足部: 服装穿戴单项,
-    饰品: z
-      .record(
-        z.string(),
-        z
-          .object({
-            部位: z.string().prefault('未知'),
-            状态: z.string().prefault('正常'),
-            描述: z.string().prefault(''),
-          })
-          .passthrough()
-          .prefault({}),
-      )
-      .prefault({}),
-  })
-  .passthrough()
-  .prefault({});
+const 服装状态结构 = z.preprocess(
+  normalize服装状态Raw,
+  z
+    .object({
+      上装: z.record(z.string(), 服装身体槽记录项).prefault({}),
+      下装: z.record(z.string(), 服装身体槽记录项).prefault({}),
+      内衣: z.record(z.string(), 服装身体槽记录项).prefault({}),
+      腿部: z.record(z.string(), 服装身体槽记录项).prefault({}),
+      足部: z.record(z.string(), 服装身体槽记录项).prefault({}),
+      饰品: z
+        .record(
+          z.string(),
+          z
+            .object({
+              部位: z.string().prefault('未知'),
+              状态: z.string().prefault('正常'),
+              描述: z.string().prefault(''),
+            })
+            .passthrough()
+            .prefault({}),
+        )
+        .prefault({}),
+    })
+    .passthrough()
+    .prefault({}),
+);
 
 const 身体部位物理单项 = z
   .object({

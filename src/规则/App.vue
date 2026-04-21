@@ -978,44 +978,51 @@
               </button>
             </div>
             <div v-else-if="modalType === 'edit_character_appearance'" class="rule-form character-appearance-form">
-              <p class="form-hint">编辑 MVU「服装状态」与「身体部位物理状态」。饰品以<strong>名字</strong>为键，并填写<strong>部位</strong>与<strong>描述</strong>。</p>
-              <h4 class="appearance-section-title">服装槽位</h4>
+              <p class="form-hint">
+                编辑 MVU「服装状态」与「身体部位物理状态」。<strong>上装/下装/内衣/腿部/足部</strong>下每件服装为<strong>服装名 → 状态、描述</strong>（服装名为键）；饰品仍以<strong>名字</strong>为键，并填写<strong>部位</strong>与<strong>描述</strong>。
+              </p>
+              <h4 class="appearance-section-title">服装（按槽位多件）</h4>
               <div
-                v-for="slotKey in appearanceSlotKeys"
-                :key="slotKey"
-                class="appearance-slot-block"
+                v-for="(gr, gidx) in modalForm.appearanceBodyGarmentRows"
+                :key="'bg-' + gidx"
+                class="appearance-jewelry-block"
               >
-                <div class="appearance-slot-label">{{ slotKey }}</div>
+                <div class="appearance-jewelry-toolbar">
+                  <span class="appearance-slot-label">第 {{ gidx + 1 }} 件</span>
+                  <button
+                    type="button"
+                    class="btn-icon btn-danger"
+                    @click="modalForm.appearanceBodyGarmentRows.splice(gidx, 1)"
+                    title="删除"
+                  >
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
                 <div class="detail-edit-fields">
                   <div class="detail-field">
-                    <label>名称</label>
-                    <input
-                      v-model="modalForm.appearanceClothing[slotKey].名称"
-                      type="text"
-                      class="form-input"
-                      placeholder="名称"
-                    />
+                    <label>槽位</label>
+                    <select v-model="gr.slot" class="form-input">
+                      <option v-for="sk in appearanceSlotKeys" :key="'opt-' + sk" :value="sk">{{ sk }}</option>
+                    </select>
+                  </div>
+                  <div class="detail-field">
+                    <label>服装名（MVU 键）</label>
+                    <input v-model="gr.name" type="text" class="form-input" placeholder="如：白衬衫" />
                   </div>
                   <div class="detail-field">
                     <label>状态</label>
-                    <input
-                      v-model="modalForm.appearanceClothing[slotKey].状态"
-                      type="text"
-                      class="form-input"
-                      placeholder="如：正常"
-                    />
+                    <input v-model="gr.状态" type="text" class="form-input" placeholder="如：正常" />
                   </div>
                   <div class="detail-field full-width">
                     <label>描述</label>
-                    <textarea
-                      v-model="modalForm.appearanceClothing[slotKey].描述"
-                      class="form-textarea"
-                      rows="2"
-                      placeholder="外观或穿着描述"
-                    />
+                    <textarea v-model="gr.描述" class="form-textarea" rows="2" placeholder="外观或穿着描述" />
                   </div>
                 </div>
               </div>
+              <button type="button" class="btn-secondary" @click="pushModalBodyGarmentRow">
+                <i class="fa-solid fa-plus"></i>
+                添加服装条目
+              </button>
               <h4 class="appearance-section-title">饰品</h4>
               <div
                 v-for="(jw, jidx) in modalForm.appearanceJewelryRows"
@@ -1569,6 +1576,7 @@ import { takePendingTacticalMapUpdateVariableBlock } from './utils/pendingTactic
 import {
   GamePhase,
   CLOTHING_BODY_SLOT_KEYS,
+  type ClothingBodyGarmentEditRow,
   type JewelryEditRow,
   type OpeningFormData,
   type OutputMode,
@@ -1617,11 +1625,12 @@ import {
   stageItem,
 } from './utils/editCartFlow';
 import {
-  applyJewelryRowsToClothing,
+  bodyGarmentRowsFromClothingState,
   bodyPartRowsFromMvuRaw,
   clothingStateFromMvuRaw,
   defaultEmptyClothingState,
   jewelryRowsFromClothingState,
+  mergeClothingAppearanceSubmit,
   normalizeJewelryEditRow,
   submitEditCharacterAppearance,
 } from './utils/dialogAndVariable';
@@ -1832,11 +1841,21 @@ const modalForm = ref({
   identityTags: [] as Array<{ category: string; value: string }>,
   avatarUrl: '',
   appearanceClothing: defaultEmptyClothingState(),
+  appearanceBodyGarmentRows: [] as ClothingBodyGarmentEditRow[],
   appearanceJewelryRows: [] as JewelryEditRow[],
   appearanceBodyPartRows: [] as Array<{ key: string; 外观描述: string; 当前状态: string }>,
 });
 
 const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
+
+function pushModalBodyGarmentRow() {
+  modalForm.value.appearanceBodyGarmentRows.push({
+    slot: CLOTHING_BODY_SLOT_KEYS[0],
+    name: '',
+    状态: '正常',
+    描述: '',
+  });
+}
 
 // 同层界面状态
 const userInput = ref('');
@@ -2624,6 +2643,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
     identityTags: [],
     avatarUrl: '',
     appearanceClothing: defaultEmptyClothingState(),
+    appearanceBodyGarmentRows: [],
     appearanceJewelryRows: [],
     appearanceBodyPartRows: [],
   };
@@ -2695,6 +2715,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
       const rawChar = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
       const cloth = clothingStateFromMvuRaw(rawChar?.服装状态);
       modalForm.value.appearanceClothing = cloth;
+      modalForm.value.appearanceBodyGarmentRows = bodyGarmentRowsFromClothingState(cloth);
       modalForm.value.appearanceJewelryRows = jewelryRowsFromClothingState(cloth);
       modalForm.value.appearanceBodyPartRows = bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态);
     } catch (e) {
@@ -2964,9 +2985,8 @@ async function onModalComplete() {
         })));
       }
     } else if (type === 'edit_character_appearance' && payload?.characterId) {
-      const base = form.appearanceClothing ?? defaultEmptyClothingState();
       const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
-      const clothing = applyJewelryRowsToClothing(base, jewelryRows);
+      const clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
       const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
       for (const row of form.appearanceBodyPartRows ?? []) {
         const k = String(row.key ?? '').trim();

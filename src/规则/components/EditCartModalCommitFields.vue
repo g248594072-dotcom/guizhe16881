@@ -128,32 +128,41 @@
     </template>
 
     <template v-else-if="modalType === 'edit_character_appearance'">
-      <p class="eci-hint">服装槽位与身体部位物理状态（与主弹窗一致）。</p>
-      <div
-        v-for="slotKey in appearanceSlotKeys"
-        :key="slotKey"
-        class="ecf-detail-block"
-      >
-        <div class="eci-label">{{ slotKey }}</div>
-        <input
-          v-model="form.appearanceClothing[slotKey].名称"
-          type="text"
-          class="eci-input"
-          placeholder="名称"
-        />
-        <input
-          v-model="form.appearanceClothing[slotKey].状态"
-          type="text"
-          class="eci-input"
-          placeholder="状态"
-        />
-        <textarea
-          v-model="form.appearanceClothing[slotKey].描述"
-          class="eci-textarea"
-          rows="2"
-          placeholder="描述"
-        />
-      </div>
+      <p class="eci-hint">身体槽下多件服装（服装名为 MVU 键）；与主弹窗一致。</p>
+      <details class="ecf-details" open>
+        <summary>服装（槽位 · 名字 · 状态 · 描述）</summary>
+        <div
+          v-for="(gr, gidx) in form.appearanceBodyGarmentRows"
+          :key="'bg-' + gidx"
+          class="ecf-detail-block"
+        >
+          <div class="ecf-detail-row">
+            <select v-model="gr.slot" class="eci-input" aria-label="槽位">
+              <option v-for="sk in appearanceSlotKeys" :key="'sk-' + sk" :value="sk">{{ sk }}</option>
+            </select>
+            <button type="button" class="ecf-icon-btn" @click="form.appearanceBodyGarmentRows.splice(gidx, 1)">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+          <input v-model="gr.name" type="text" class="eci-input" placeholder="服装名（键）" />
+          <input v-model="gr.状态" type="text" class="eci-input" placeholder="状态" />
+          <textarea v-model="gr.描述" class="eci-textarea" rows="2" placeholder="描述" />
+        </div>
+        <button
+          type="button"
+          class="ecf-add-btn"
+          @click="
+            form.appearanceBodyGarmentRows.push({
+              slot: appearanceSlotKeys[0],
+              name: '',
+              状态: '正常',
+              描述: '',
+            })
+          "
+        >
+          + 服装条目
+        </button>
+      </details>
       <details class="ecf-details">
         <summary>饰品（名字 · 部位 · 描述）</summary>
         <div

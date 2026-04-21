@@ -26,10 +26,15 @@ export function isMvuOccupantValuePresent(raw: unknown): boolean {
   return false;
 }
 
-/** 列出视为「在场」的标识符，用于角色详情等只读展示 */
-export function formatMvuBuildingOccupantsLine(当前角色: Record<string, unknown> | null | undefined): string {
+/** 列出视为「在场」的标识符，用于角色详情等只读展示；可选 `displayKey` 将键转为展示名（如 CHR-001 → 姓名） */
+export function formatMvuBuildingOccupantsLine(
+  当前角色: Record<string, unknown> | null | undefined,
+  displayKey?: (key: string) => string,
+): string {
   if (!当前角色 || typeof 当前角色 !== 'object' || Array.isArray(当前角色)) return '';
   const keys = Object.keys(当前角色).filter(k => isMvuOccupantValuePresent(当前角色[k]));
   if (keys.length === 0) return '';
-  return keys.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')).join('，');
+  const sorted = keys.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+  const labels = displayKey ? sorted.map(displayKey) : sorted;
+  return labels.join('，');
 }

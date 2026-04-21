@@ -183,26 +183,26 @@
             <span class="detail-label">区域 / 建筑 / 活动</span>
             <span class="detail-value">{{ locationLine }}</span>
           </div>
-          <div v-if="displayLocation.当前行为描述" class="detail-row">
+          <div v-if="locationBehaviorDescription" class="detail-row">
             <span class="detail-label">当前行为</span>
-            <span class="detail-value">{{ displayLocation.当前行为描述 }}</span>
+            <span class="detail-value">{{ locationBehaviorDescription }}</span>
           </div>
           <div v-if="buildingOccupantsSummary" class="detail-row">
-            <span class="detail-label">同建筑在场（变量索引）</span>
+            <span class="detail-label">同建筑在场：</span>
             <span class="detail-value">{{ buildingOccupantsSummary }}</span>
           </div>
           <template v-if="participationRows.length > 0">
             <span class="section-label sub">参与活动记录</span>
             <ul class="participation-list">
               <li v-for="row in participationRows" :key="row.id">
-                <strong>{{ row.id }}</strong>：{{ row.summary }}
+                <strong>{{ row.activityTitle }}</strong>：{{ row.summary }}
               </li>
             </ul>
           </template>
           <p
             v-if="
               locationLine === '—' &&
-              !displayLocation.当前行为描述 &&
+              !locationBehaviorDescription &&
               !buildingOccupantsSummary &&
               participationRows.length === 0
             "
@@ -229,7 +229,20 @@
         <div class="fetish-content">
           <div class="sensitive-section">
             <span class="section-label">敏感点开发</span>
-            <div class="badges">
+            <div v-if="sensitiveChipsList.length > 0" class="fetish-chip-row">
+              <button
+                v-for="chip in sensitiveChipsList"
+                :key="chip.name"
+                type="button"
+                class="fetish-chip-btn"
+                :class="{ 'fetish-chip-btn--active': expandedSensitivePart === chip.name }"
+                :style="mvuLevelPinkChipStyle(chip.level)"
+                @click="toggleSensitivePartDetail(chip.name)"
+              >
+                {{ chip.name }}
+              </button>
+            </div>
+            <div v-else class="badges">
               <template v-if="displaySensitiveParts.length > 0">
                 <Badge
                   v-for="(p, idx) in displaySensitiveParts"
@@ -254,17 +267,29 @@
                   </button>
                 </div>
                 <div class="detail-body">
-                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.level">
+                  <div v-if="sensitiveExpandedDetail != null" class="detail-row">
                     <span class="detail-label">敏感等级</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.level }}</span>
+                    <span class="detail-value">{{ sensitiveExpandedDetail.level }}</span>
                   </div>
-                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.reaction">
+                  <div
+                    v-if="
+                      sensitiveExpandedDetail?.reaction != null &&
+                      String(sensitiveExpandedDetail.reaction).length > 0
+                    "
+                    class="detail-row"
+                  >
                     <span class="detail-label">生理反应</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.reaction }}</span>
+                    <span class="detail-value">{{ sensitiveExpandedDetail.reaction }}</span>
                   </div>
-                  <div class="detail-row" v-if="getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.devDetails">
+                  <div
+                    v-if="
+                      sensitiveExpandedDetail?.devDetails != null &&
+                      String(sensitiveExpandedDetail.devDetails).length > 0
+                    "
+                    class="detail-row"
+                  >
                     <span class="detail-label">开发细节</span>
-                    <span class="detail-value">{{ getSensitivePartDetail(sensitiveBadgeKey(expandedSensitivePart))?.devDetails }}</span>
+                    <span class="detail-value">{{ sensitiveExpandedDetail.devDetails }}</span>
                   </div>
                 </div>
               </div>
@@ -272,7 +297,20 @@
           </div>
           <div class="traits-section">
             <span class="section-label">性癖</span>
-            <div class="badges">
+            <div v-if="fetishChipsList.length > 0" class="fetish-chip-row">
+              <button
+                v-for="chip in fetishChipsList"
+                :key="chip.name"
+                type="button"
+                class="fetish-chip-btn"
+                :class="{ 'fetish-chip-btn--active': expandedFetish === chip.name }"
+                :style="mvuLevelPinkChipStyle(chip.level)"
+                @click="toggleFetishDetail(chip.name)"
+              >
+                {{ chip.name }}
+              </button>
+            </div>
+            <div v-else class="badges">
               <template v-if="displayFetishes.length > 0">
                 <Badge
                   v-for="(f, idx) in displayFetishes"
@@ -280,7 +318,7 @@
                   :text="String(f)"
                   :highlight="idx === 0"
                   class="clickable-badge"
-                  @click="toggleFetishDetail(String(f))"
+                  @click="toggleFetishDetail(fetishBadgeKey(String(f)))"
                 />
               </template>
               <template v-else>
@@ -297,9 +335,9 @@
                   </button>
                 </div>
                 <div class="detail-body">
-                  <div class="detail-row" v-if="getFetishDetail(expandedFetish)?.level">
+                  <div v-if="expandedFetish && getFetishDetail(expandedFetish) != null" class="detail-row">
                     <span class="detail-label">等级</span>
-                    <span class="detail-value">{{ getFetishDetail(expandedFetish)?.level }}</span>
+                    <span class="detail-value">{{ getFetishDetail(expandedFetish)!.level }}</span>
                   </div>
                   <div class="detail-row" v-if="getFetishDetail(expandedFetish)?.description">
                     <span class="detail-label">细节描述</span>
@@ -340,20 +378,66 @@
         <div class="appearance-content">
           <div class="appearance-block">
             <span class="section-label">服装槽位</span>
-            <div class="appearance-slots">
-              <template v-for="slotKey in appearanceSlotKeys" :key="slotKey">
-                <div v-if="clothingSlotSummary(slotKey)" class="appearance-slot-line">
-                  <span class="slot-name">{{ slotKey }}</span>
-                  <span class="slot-text">{{ clothingSlotSummary(slotKey) }}</span>
+            <p class="clothing-slot-hint">
+              每槽可多件，<strong>服装名</strong>为 MVU 对象键（<code>服装状态.&lt;槽位&gt;.&lt;服装名&gt;</code>）；点服装名编辑，或点「添加」。
+            </p>
+            <div class="clothing-slot-stack">
+              <div
+                v-for="slotKey in appearanceSlotKeys"
+                :key="'slot-' + slotKey"
+                class="clothing-slot-block clothing-slot-block--group"
+              >
+                <div class="clothing-slot-group-head">
+                  <span class="clothing-slot-section-title">{{ slotKey }}</span>
+                  <button type="button" class="clothing-add-chip" @click="openBodyGarmentEditor(slotKey, null)">
+                    + 添加
+                  </button>
                 </div>
-              </template>
-              <span v-if="!hasAnyClothingSlot" class="empty-hint">暂无（点「编辑」填写上装/下装/内衣/腿部/足部）</span>
+                <div v-if="bodyGarmentEntriesForSlot(slotKey).length" class="clothing-slot-stack clothing-slot-stack--nested">
+                  <div
+                    v-for="row in bodyGarmentEntriesForSlot(slotKey)"
+                    :key="slotKey + '-' + row.name"
+                    class="clothing-slot-block clothing-slot-block--nested"
+                  >
+                    <button type="button" class="clothing-slot-btn" @click="openBodyGarmentEditor(slotKey, row.name)">
+                      {{ row.name }}
+                    </button>
+                    <div class="clothing-slot-detail">
+                      <div class="clothing-meta-row">
+                        <span class="meta-k">状态</span>
+                        <span class="meta-v">{{ row.状态 }}</span>
+                      </div>
+                      <div v-if="row.描述" class="clothing-meta-row">
+                        <span class="meta-k">描述</span>
+                        <span class="meta-v">{{ row.描述 }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <span v-else class="empty-hint clothing-slot-empty">暂无</span>
+              </div>
             </div>
             <span class="section-label sub">饰品</span>
-            <ul v-if="jewelryDisplayLines.length > 0" class="appearance-list">
-              <li v-for="(line, idx) in jewelryDisplayLines" :key="'jw-' + idx">{{ line }}</li>
-            </ul>
-            <span v-else class="empty-hint">暂无（点「编辑」添加：名字、部位、描述）</span>
+            <p class="clothing-slot-hint">每件饰品单独按钮编辑，对应 <code>服装状态.饰品.&lt;名字&gt;</code>。</p>
+            <div v-if="jewelryEntries.length > 0" class="clothing-slot-stack">
+              <div v-for="jw in jewelryEntries" :key="'jw-' + jw.name" class="clothing-slot-block clothing-slot-block--jewelry">
+                <button type="button" class="clothing-slot-btn" @click="openJewelryItemEditor(jw.name)">
+                  {{ jw.name }}
+                </button>
+                <div class="clothing-slot-detail">
+                  <span class="clothing-name-tag">{{ jewelryTagTitle(jw.name, jw) }}</span>
+                  <div class="clothing-meta-row">
+                    <span class="meta-k">状态</span>
+                    <span class="meta-v">{{ jw.状态 }}</span>
+                  </div>
+                  <div v-if="jw.描述" class="clothing-meta-row">
+                    <span class="meta-k">描述</span>
+                    <span class="meta-v">{{ jw.描述 }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <span v-else class="empty-hint">暂无饰品（点某件饰品名或顶部「编辑」添加）</span>
           </div>
           <div class="appearance-block">
             <span class="section-label">身体部位物理状态</span>
@@ -491,13 +575,16 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { useIntervalFn } from '@vueuse/core';
 import Swal from 'sweetalert2';
 import 'sweetalert2/dist/sweetalert2.css';
 import type {
   ActivityParticipationRecordZh,
   CharacterData,
   CharacterLocationZh,
+  ClothingBodySlotKeyZh,
   ClothingStateZh,
+  JewelryItemZh,
   RuleData,
 } from '../types';
 import { CLOTHING_BODY_SLOT_KEYS } from '../types';
@@ -517,7 +604,9 @@ import {
   stageItem,
 } from '../utils/editCartFlow';
 import { tagFieldToBadgeLines } from '../utils/tagMap';
+import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
 import { formatMvuBuildingOccupantsLine } from '../utils/mvuOccupantValue';
+import { getRulesMergedStatSnapshotForDisplay } from '../utils/rulesMvuDisplaySnapshot';
 
 const props = defineProps<{
   characterId: string;
@@ -529,6 +618,137 @@ const isDarkMode = computed(() => !!props.isDarkMode);
 const dataStore = useDataStore();
 const displayLocation = ref<CharacterLocationZh>({});
 const participationMap = ref<Record<string, ActivityParticipationRecordZh>>({});
+
+/** 与 store 同规则从 `getVariables` 拉平合并后的快照，专供本卡名称类只读展示 */
+const mergedDisplayStat = computed(() => {
+  void dataStore.data.角色档案;
+  void dataStore.data.区域数据;
+  void dataStore.data.建筑数据;
+  void dataStore.data.活动数据;
+  void dataStore.data.区域规则;
+  void dataStore.data.元信息?.最近更新时间;
+  return getRulesMergedStatSnapshotForDisplay();
+});
+
+/** 与名称解析同源：从合并快照取当前角色的「当前位置」「参与活动记录」 */
+function getCharacterRecordFromSnap(
+  snap: Record<string, unknown>,
+  characterId: string,
+): Record<string, unknown> | undefined {
+  const chars = snap['角色档案'] as Record<string, unknown> | undefined;
+  const raw = chars?.[characterId];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  return undefined;
+}
+
+const locationParticipationFromSnap = computed(() => {
+  const snap = mergedDisplayStat.value;
+  const ch = getCharacterRecordFromSnap(snap, props.characterId);
+  if (!ch) return null;
+  const loc = ch['当前位置'];
+  if (loc == null || typeof loc !== 'object' || Array.isArray(loc)) return null;
+  const o = loc as Record<string, unknown>;
+  const prRaw = ch['参与活动记录'];
+  const 参与活动记录: Record<string, ActivityParticipationRecordZh> =
+    prRaw != null && typeof prRaw === 'object' && !Array.isArray(prRaw)
+      ? { ...(prRaw as Record<string, ActivityParticipationRecordZh>) }
+      : {};
+  return {
+    区域ID: String(o['区域ID'] ?? '').trim(),
+    建筑ID: String(o['建筑ID'] ?? '').trim(),
+    活动ID: String(o['活动ID'] ?? '').trim(),
+    当前行为描述: String(o['当前行为描述'] ?? '').trim(),
+    参与活动记录,
+  };
+});
+
+const locationBehaviorDescription = computed(() => {
+  const fromSnap = locationParticipationFromSnap.value;
+  if (fromSnap?.当前行为描述) return fromSnap.当前行为描述;
+  return String(displayLocation.value.当前行为描述 ?? '').trim();
+});
+
+function resolveMvuRegionDisplayName(snap: Record<string, unknown>, regionId: string): string {
+  const id = regionId.trim();
+  if (!id) return '';
+  const map = snap['区域数据'] as Record<string, unknown> | undefined;
+  const r = map?.[id] as Record<string, unknown> | undefined;
+  let name = String(r?.['名称'] ?? '').trim();
+  if (!name) {
+    const rules = snap['区域规则'] as Record<string, unknown> | undefined;
+    const rr = rules?.[id] as Record<string, unknown> | undefined;
+    name = String(rr?.['名称'] ?? '').trim();
+  }
+  return name || id;
+}
+
+function resolveMvuBuildingDisplayName(snap: Record<string, unknown>, buildingId: string): string {
+  const id = buildingId.trim();
+  if (!id) return '';
+  const map = snap['建筑数据'] as Record<string, unknown> | undefined;
+  const r = map?.[id] as Record<string, unknown> | undefined;
+  const name = String(r?.['名称'] ?? '').trim();
+  return name || id;
+}
+
+function resolveMvuActivityDisplayName(snap: Record<string, unknown>, activityId: string): string {
+  const id = activityId.trim();
+  if (!id) return '';
+  const map = snap['活动数据'] as Record<string, unknown> | undefined;
+  const r = map?.[id] as Record<string, unknown> | undefined;
+  const name = String(r?.['活动名称'] ?? '').trim();
+  return name || id;
+}
+
+/**
+ * 对应酒馆提示词里的 `{{user}}`：当前聊天用户显示名以 `SillyTavern.name1` 为准（随人设/用户资料变更），
+ * 再回退 MVU `元信息.玩家名称`、`player.name`。
+ */
+function resolvePlayerDisplayNameForUi(snap: Record<string, unknown>): string {
+  const st = String(SillyTavern?.name1 ?? '').trim();
+  if (st) return st;
+  const meta = snap['元信息'] as Record<string, unknown> | undefined;
+  const fromMeta = String(meta?.['玩家名称'] ?? '').trim();
+  if (fromMeta) return fromMeta;
+  const pl = snap['player'] as Record<string, unknown> | undefined;
+  const fromPlayer = String(pl?.['name'] ?? '').trim();
+  if (fromPlayer) return fromPlayer;
+  return '玩家';
+}
+
+/** 轻量轮询：人设改名后 `name1` 会变，触发「同建筑在场」等重算 */
+const stUserNameDisplayRev = ref(0);
+let lastStUserNameForPoll = '';
+const { pause: pauseStUserNamePoll } = useIntervalFn(
+  () => {
+    const n = String(SillyTavern?.name1 ?? '').trim();
+    if (n !== lastStUserNameForPoll) {
+      lastStUserNameForPoll = n;
+      stUserNameDisplayRev.value += 1;
+    }
+  },
+  1500,
+  { immediate: true },
+);
+onUnmounted(() => pauseStUserNamePoll());
+
+/** `当前角色` 的键可为 CHR-ID 或文字标签；`玩家` 对应酒馆 `{{user}}` 显示为当前用户显示名 */
+function resolveMvuOccupantKeyDisplay(snap: Record<string, unknown>, key: string): string {
+  const k = key.trim();
+  if (!k) return '';
+  const lower = k.toLowerCase();
+  if (k === '玩家' || lower === 'player') return resolvePlayerDisplayNameForUi(snap);
+  const chars = snap['角色档案'] as Record<string, unknown> | undefined;
+  const raw = chars?.[k];
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    const zh = String(o['姓名'] ?? '').trim();
+    if (zh && zh !== '未知') return zh;
+    const en = String((o as { name?: unknown }).name ?? '').trim();
+    if (en) return en;
+  }
+  return k;
+}
 
 watch(
   () => dataStore.data.角色档案?.[props.characterId],
@@ -561,14 +781,33 @@ watch(
 );
 
 const locationLine = computed(() => {
-  const a = displayLocation.value;
-  const parts = [a.区域ID, a.建筑ID, a.活动ID].map(x => String(x ?? '').trim()).filter(Boolean);
+  const snap = mergedDisplayStat.value;
+  const fromSnap = locationParticipationFromSnap.value;
+  const a = fromSnap ?? {
+    区域ID: displayLocation.value.区域ID,
+    建筑ID: displayLocation.value.建筑ID,
+    活动ID: displayLocation.value.活动ID,
+  };
+  const parts: string[] = [];
+  const r = String(a.区域ID ?? '').trim();
+  const b = String(a.建筑ID ?? '').trim();
+  const act = String(a.活动ID ?? '').trim();
+  if (r) parts.push(resolveMvuRegionDisplayName(snap, r));
+  if (b) parts.push(resolveMvuBuildingDisplayName(snap, b));
+  if (act) parts.push(resolveMvuActivityDisplayName(snap, act));
   return parts.length > 0 ? parts.join(' / ') : '—';
 });
 
-const participationRows = computed(() =>
-  Object.entries(participationMap.value).map(([id, rec]) => ({
+const participationRows = computed(() => {
+  const snap = mergedDisplayStat.value;
+  const fromSnap = locationParticipationFromSnap.value;
+  const map =
+    fromSnap && Object.keys(fromSnap.参与活动记录).length > 0
+      ? fromSnap.参与活动记录
+      : participationMap.value;
+  return Object.entries(map).map(([id, rec]) => ({
     id,
+    activityTitle: resolveMvuActivityDisplayName(snap, id),
     summary: [
       rec.开始时间 && `起 ${rec.开始时间}`,
       rec.结束时间 && `止 ${rec.结束时间}`,
@@ -576,17 +815,22 @@ const participationRows = computed(() =>
     ]
       .filter(Boolean)
       .join('；') || '（无起止与程度字段）',
-  })),
-);
+  }));
+});
 
 /** 自 MVU「建筑数据.<建筑ID>.当前角色」读取在场标识（兼容 true / "在场" / 1） */
 const buildingOccupantsSummary = computed(() => {
-  const bid = String(displayLocation.value.建筑ID ?? '').trim();
+  void stUserNameDisplayRev.value;
+  const snap = mergedDisplayStat.value;
+  const fromSnap = locationParticipationFromSnap.value;
+  const bid = String(fromSnap?.建筑ID ?? displayLocation.value.建筑ID ?? '').trim();
   if (!bid) return '';
-  const b = dataStore.data.建筑数据?.[bid] as Record<string, unknown> | undefined;
+  const buildings = snap['建筑数据'] as Record<string, unknown> | undefined;
+  const b = buildings?.[bid] as Record<string, unknown> | undefined;
   const cur = b?.['当前角色'];
   return formatMvuBuildingOccupantsLine(
     cur != null && typeof cur === 'object' && !Array.isArray(cur) ? (cur as Record<string, unknown>) : undefined,
+    key => resolveMvuOccupantKeyDisplay(snap, key),
   );
 });
 
@@ -738,28 +982,163 @@ function getBodyPartPhysics(name: string) {
   return currentExtra.value.bodyPartPhysics?.[name];
 }
 
-function clothingSlotSummary(slotKey: (typeof appearanceSlotKeys)[number]): string {
-  const c = currentExtra.value.clothingState;
-  const s = c?.[slotKey];
-  if (!s) return '';
-  const parts = [s.名称, s.状态, s.描述].map(x => String(x ?? '').trim()).filter(Boolean);
-  return parts.join(' · ');
+function bodyGarmentEntriesForSlot(slotKey: ClothingBodySlotKeyZh): Array<{ name: string; 状态: string; 描述: string }> {
+  const rec = currentExtra.value.clothingState?.[slotKey];
+  if (!rec || typeof rec !== 'object') return [];
+  return Object.entries(rec)
+    .filter(([k]) => String(k).trim())
+    .map(([name, raw]) => {
+      const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+      return {
+        name,
+        状态: String(o.状态 ?? '正常').trim() || '正常',
+        描述: String(o.描述 ?? '').trim(),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
-const hasAnyClothingSlot = computed(() =>
-  appearanceSlotKeys.some(k => Boolean(clothingSlotSummary(k).trim())),
-);
-
-const jewelryDisplayLines = computed(() => {
+const jewelryEntries = computed(() => {
   const acc = currentExtra.value.clothingState?.饰品;
   if (!acc || typeof acc !== 'object') return [];
-  return Object.entries(acc).map(([name, o]) => {
-    const part = String(o?.部位 ?? o?.状态 ?? '').trim();
-    const d = String(o?.描述 ?? '').trim();
-    const head = part ? `${name}（${part}）` : name;
-    return d ? `${head}：${d}` : head;
-  });
+  return Object.entries(acc)
+    .filter(([k]) => String(k).trim().length > 0)
+    .map(([name, raw]) => {
+      const o = raw as JewelryItemZh;
+      return {
+        name,
+        部位: String(o?.部位 ?? '').trim(),
+        状态: String(o?.状态 ?? '正常').trim() || '正常',
+        描述: String(o?.描述 ?? '').trim(),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 });
+
+function jewelryTagTitle(name: string, row: { 部位: string }): string {
+  const p = String(row.部位 ?? '').trim();
+  return p ? `${name}（${p}）` : name;
+}
+
+async function openBodyGarmentEditor(slotKey: ClothingBodySlotKeyZh, itemName: string | null) {
+  const { tryRulesMvuWritable } = await import('../store');
+  if (!tryRulesMvuWritable()) return;
+  const existing = itemName != null && String(itemName).trim() !== '';
+  const nm0 = existing ? String(itemName).trim() : '';
+  const row = existing ? bodyGarmentEntriesForSlot(slotKey).find(r => r.name === nm0) : undefined;
+  const status0 = row?.状态 ?? '正常';
+  const desc0 = row?.描述 ?? '';
+  const baseId = `th-cloth-${Math.random().toString(36).slice(2, 10)}`;
+  const result = await Swal.fire({
+    title: existing ? `编辑「${slotKey}」·${nm0}` : `添加「${slotKey}」`,
+    html: `<div class="th-swal-cloth-form" style="text-align:left">
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px">写入 MVU <b>服装状态.${slotKey}.${existing ? nm0 : '〈服装名〉'}</b>（服装名为对象键）</p>
+      ${
+        existing
+          ? ''
+          : `<label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">服装名</label>
+      <input id="${baseId}-n" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：白衬衫">`
+      }
+      <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">状态</label>
+      <input id="${baseId}-s" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：正常">
+      <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">描述</label>
+      <textarea id="${baseId}-d" class="swal2-textarea" rows="3" style="width:100%;box-sizing:border-box;margin:0" placeholder="外观或穿着描述"></textarea>
+    </div>`,
+    width: 520,
+    showCancelButton: true,
+    showDenyButton: existing,
+    confirmButtonText: '保存',
+    denyButtonText: '移除',
+    cancelButtonText: '取消',
+    focusConfirm: false,
+    didOpen: () => {
+      if (!existing) {
+        const n = document.getElementById(`${baseId}-n`) as HTMLInputElement | null;
+        if (n) n.value = '';
+      }
+      const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      if (s) s.value = status0;
+      if (d) d.value = desc0;
+    },
+    preConfirm: () => {
+      const n = document.getElementById(`${baseId}-n`) as HTMLInputElement | null;
+      const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      const nameNew = existing ? nm0 : (n?.value ?? '').trim();
+      if (!nameNew) {
+        Swal.showValidationMessage('请填写服装名');
+        return false;
+      }
+      return {
+        garmentName: nameNew,
+        状态: (s?.value ?? '正常').trim() || '正常',
+        描述: (d?.value ?? '').trim(),
+      };
+    },
+  });
+  const { patchCharacterClothingBodyGarment, removeCharacterClothingBodyGarment } = await import('../utils/dialogAndVariable');
+  if (result.isDenied && existing) {
+    removeCharacterClothingBodyGarment(props.characterId, slotKey, nm0);
+    return;
+  }
+  if (!result.isConfirmed || !result.value) return;
+  const v = result.value as { garmentName: string; 状态: string; 描述: string };
+  patchCharacterClothingBodyGarment(props.characterId, slotKey, v.garmentName, {
+    状态: v.状态,
+    描述: v.描述,
+  });
+}
+
+async function openJewelryItemEditor(itemName: string) {
+  const { tryRulesMvuWritable } = await import('../store');
+  if (!tryRulesMvuWritable()) return;
+  const nm = String(itemName ?? '').trim();
+  if (!nm) return;
+  const o = currentExtra.value.clothingState?.饰品?.[nm] ?? {};
+  const part0 = String(o.部位 ?? '');
+  const status0 = String(o.状态 ?? '正常');
+  const desc0 = String(o.描述 ?? '');
+  const baseId = `th-jw-${Math.random().toString(36).slice(2, 10)}`;
+  const result = await Swal.fire({
+    title: `编辑饰品「${nm}」`,
+    html: `<div class="th-swal-cloth-form" style="text-align:left">
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px">写入 MVU <b>服装状态.饰品.${nm}</b>（名字为键，不可在此改名；改名请用顶部「编辑」）</p>
+      <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">部位</label>
+      <input id="${baseId}-p" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：手腕">
+      <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">状态</label>
+      <input id="${baseId}-s" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：正常">
+      <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">描述</label>
+      <textarea id="${baseId}-d" class="swal2-textarea" rows="3" style="width:100%;box-sizing:border-box;margin:0" placeholder="外观或佩戴方式"></textarea>
+    </div>`,
+    width: 520,
+    showCancelButton: true,
+    confirmButtonText: '保存',
+    cancelButtonText: '取消',
+    focusConfirm: false,
+    didOpen: () => {
+      const p = document.getElementById(`${baseId}-p`) as HTMLInputElement | null;
+      const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      if (p) p.value = part0;
+      if (s) s.value = status0;
+      if (d) d.value = desc0;
+    },
+    preConfirm: () => {
+      const p = document.getElementById(`${baseId}-p`) as HTMLInputElement | null;
+      const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      return {
+        部位: (p?.value ?? '').trim(),
+        状态: (s?.value ?? '正常').trim() || '正常',
+        描述: (d?.value ?? '').trim(),
+      };
+    },
+  });
+  if (!result.isConfirmed || !result.value) return;
+  const { patchCharacterJewelryItem } = await import('../utils/dialogAndVariable');
+  patchCharacterJewelryItem(props.characterId, nm, result.value);
+}
 
 const bodyPartBadgeLines = computed(() => {
   const m = currentExtra.value.bodyPartPhysics;
@@ -780,6 +1159,12 @@ function sensitiveBadgeKey(line: string) {
   const m = String(line).match(/^([^：]+)/);
   return m ? m[1].trim() : String(line).trim();
 }
+
+const sensitiveExpandedDetail = computed(() => {
+  const k = expandedSensitivePart.value;
+  if (!k) return null;
+  return getSensitivePartDetail(sensitiveBadgeKey(k)) ?? null;
+});
 
 const displayIdentityTags = computed(() => {
   const tags = currentExtra.value.identityTags;
@@ -849,7 +1234,55 @@ const displayThought = computed(() => {
 });
 const displayTraits = computed(() => tagFieldToBadgeLines(currentExtra.value.traits));
 const displayFetishes = computed(() => tagFieldToBadgeLines(currentExtra.value.fetishes, 'fetish'));
+
+/** 有结构化 `fetishDetails` 时：一名称一按钮（等级 0–10 控制白→粉配色） */
+const fetishChipsList = computed(() => {
+  const fd = currentExtra.value.fetishDetails;
+  if (!fd || typeof fd !== 'object') return [];
+  return Object.entries(fd)
+    .filter(([name]) => String(name).trim().length > 0)
+    .map(([name, d]) => ({
+      name,
+      level: Math.min(10, Math.max(0, Math.round(Number(d?.level) || 0))),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+});
+
+/** Badge 行「名称：Lv…」取名称，供旧数据展开 */
+function fetishBadgeKey(line: string) {
+  const m = String(line).match(/^([^：:]+)[：:]/);
+  return m ? m[1].trim() : String(line).trim();
+}
+
+/** 性癖等级 / 敏感等级共用：0 偏白 → 10 偏粉 */
+function mvuLevelPinkChipStyle(level: number): Record<string, string> {
+  const t = Math.min(10, Math.max(0, Math.round(Number(level) || 0))) / 10;
+  const r = Math.round(244 + (251 - 244) * t);
+  const g = Math.round(244 + (207 - 244) * t);
+  const b = Math.round(245 + (232 - 245) * t);
+  const color = t > 0.5 ? '#9d174d' : '#27272a';
+  const border = `1px solid rgba(244, 114, 182, ${0.2 + t * 0.55})`;
+  return {
+    background: `rgb(${r}, ${g}, ${b})`,
+    color,
+    border,
+  };
+}
+
 const displaySensitiveParts = computed(() => tagFieldToBadgeLines(currentExtra.value.sensitiveParts, 'sensitive'));
+
+/** 有结构化 `sensitivePartDetails` 时：部位名按钮，敏感等级 0–10 控制白→粉 */
+const sensitiveChipsList = computed(() => {
+  const sd = currentExtra.value.sensitivePartDetails;
+  if (!sd || typeof sd !== 'object') return [];
+  return Object.entries(sd)
+    .filter(([name]) => String(name).trim().length > 0)
+    .map(([name, d]) => ({
+      name,
+      level: Math.min(10, Math.max(0, Math.round(Number(d?.level) || 0))),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+});
 const displayHiddenFetish = computed(() => {
   const v = currentExtra.value.hiddenFetish;
   if (typeof v === 'string' && v.trim().length > 0) return v;
@@ -919,7 +1352,7 @@ onMounted(() => {
         fetishDetails: (current as any).fetishDetails || {},
         sensitivePartDetails: (current as any).sensitivePartDetails || {},
         identityTags: (current as any).identityTags || {},
-        clothingState: (current as any).服装状态,
+        clothingState: clothingStateFromMvuRaw((current as any).服装状态),
         bodyPartPhysics: (current as any).身体部位物理状态 || {},
       };
       characterStatusText.value = (current as any).status === 'active' ? '出场中' : '暂时退场';
@@ -1612,6 +2045,41 @@ const emit = defineEmits<{
     flex-wrap: wrap;
     gap: 8px;
   }
+
+  .fetish-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .fetish-chip-btn {
+    appearance: none;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1.35;
+    transition:
+      transform 0.12s ease,
+      box-shadow 0.12s ease,
+      filter 0.12s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+
+    &--active {
+      box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.65);
+    }
+  }
 }
 
 .empty-hint {
@@ -2028,37 +2496,145 @@ const emit = defineEmits<{
   color: #dc2626;
 }
 
-.appearance-slots {
+.clothing-slot-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: #71717a;
+  line-height: 1.5;
+}
+
+.clothing-slot-stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 14px;
 }
 
-.appearance-slot-line {
+.clothing-slot-block--group {
+  width: 100%;
+}
+
+.clothing-slot-group-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 1.5;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
 
-  .slot-name {
-    flex-shrink: 0;
-    min-width: 2.5em;
-    color: #a78bfa;
-    font-weight: 500;
-  }
+.clothing-slot-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e4e4e7;
+}
 
-  .slot-text {
-    color: #d4d4d8;
+.clothing-add-chip {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(167, 139, 250, 0.5);
+  background: transparent;
+  color: #d8b4fe;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: rgba(167, 139, 250, 0.85);
+    background: rgba(167, 139, 250, 0.1);
   }
 }
 
-.appearance-list {
+.clothing-slot-stack--nested {
+  gap: 10px;
+  width: 100%;
+}
+
+.clothing-slot-block--nested {
+  padding: 10px 12px;
+}
+
+.clothing-slot-empty {
   margin: 0;
-  padding-left: 1.25em;
-  font-size: 14px;
+  font-size: 12px;
+}
+
+.clothing-slot-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.clothing-slot-btn {
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: rgba(167, 139, 250, 0.12);
+  color: #e9d5ff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: rgba(167, 139, 250, 0.22);
+    border-color: rgba(167, 139, 250, 0.65);
+  }
+}
+
+.clothing-slot-detail {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 2px;
+}
+
+.clothing-name-tag {
+  display: inline-block;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fce7f3;
+  background: rgba(244, 114, 182, 0.18);
+  border: 1px solid rgba(244, 114, 182, 0.35);
+}
+
+.clothing-meta-row {
+  font-size: 13px;
   color: #d4d4d8;
-  line-height: 1.6;
+  line-height: 1.55;
+
+  .meta-k {
+    display: inline-block;
+    min-width: 3em;
+    margin-right: 6px;
+    color: #a1a1aa;
+    font-size: 12px;
+  }
+
+  .meta-v {
+    color: #e4e4e7;
+  }
+}
+
+.clothing-slot-block--jewelry .clothing-slot-btn {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+
+  &:hover {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: rgba(248, 113, 113, 0.6);
+  }
 }
 
 .body-part-rows {
@@ -2124,9 +2700,31 @@ const emit = defineEmits<{
 }
 
 :global(.light) {
-  .appearance-slot-line .slot-text,
-  .appearance-list {
+  .clothing-slot-hint {
+    color: #71717a;
+  }
+
+  .clothing-slot-block {
+    border-color: rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.02);
+  }
+
+  .clothing-name-tag {
+    color: #9d174d;
+    background: rgba(244, 114, 182, 0.15);
+    border-color: rgba(244, 114, 182, 0.35);
+  }
+
+  .clothing-meta-row {
     color: #3f3f46;
+
+    .meta-k {
+      color: #71717a;
+    }
+
+    .meta-v {
+      color: #27272a;
+    }
   }
 
   .body-part-line {

@@ -369,19 +369,54 @@
             "type": "object",
             "properties": {
               "上装": {
-                "$ref": "#/$defs/__schema4"
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
               },
               "下装": {
-                "$ref": "#/$defs/__schema4"
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
               },
               "内衣": {
-                "$ref": "#/$defs/__schema4"
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
               },
               "腿部": {
-                "$ref": "#/$defs/__schema4"
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
               },
               "足部": {
-                "$ref": "#/$defs/__schema4"
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema4"
+                }
               },
               "饰品": {
                 "default": {},
@@ -520,7 +555,8 @@
           }
         },
         "required": [
-          "当前位置"
+          "当前位置",
+          "服装状态"
         ],
         "additionalProperties": {}
       }
@@ -559,7 +595,7 @@
           "type": "number"
         },
         "最近更新时间": {
-          "default": 1776664652882,
+          "default": 1776759560616,
           "type": "number"
         }
       }
@@ -647,9 +683,6 @@
       "default": {},
       "type": "object",
       "properties": {
-        "名称": {
-          "type": "string"
-        },
         "状态": {
           "default": "正常",
           "type": "string"
