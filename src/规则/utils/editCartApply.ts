@@ -1,8 +1,9 @@
 /**
  * 执行购物车单条操作（与 App onModalComplete / 归档 / 角色详情 行为一致）
  */
-import { tryRulesMvuWritable, useDataStore } from '../store';
+import { bumpUpdateTime, tryRulesMvuWritable, useDataStore } from '../store';
 import type { EditCartAction, EditCartModalForm } from '../types/editCart';
+import { applyJsonPatch } from './jsonPatchStat';
 
 /** 兼容旧版 random_add_personal：detail 曾为「标题: 描述」单串 */
 function normalizeRandomPersonalCartDetail(action: {
@@ -238,6 +239,24 @@ export async function applyEditCartAction(action: EditCartAction): Promise<strin
     }
     case 'modal_commit':
       return await runModalCommit(action.modalType, action.form, action.payload);
+    case 'tactical_map_commit': {
+      const store = useDataStore();
+      if (action.patches.length > 0) {
+        applyJsonPatch(store.data as Record<string, unknown>, action.patches as Parameters<typeof applyJsonPatch>[1]);
+        bumpUpdateTime();
+        void import('./worldLifeFromPatch').then(({ scheduleWorldLifeTriggersFromJsonPatches }) => {
+          scheduleWorldLifeTriggersFromJsonPatches(action.patches, store.data as Record<string, unknown>);
+        });
+        void import('./residentLifePending').then(({ tryFlushPendingResidentLife }) => {
+          void tryFlushPendingResidentLife(store.data as Record<string, unknown>);
+        });
+      }
+      return '';
+    }
+    case 'meta_world_info': {
+      m.updateMetaWorldInfo(action.世界类型, action.世界简介);
+      return m.formatMetaWorldInfoMessage(action.世界类型, action.世界简介);
+    }
     default: {
       const _exhaustive: never = action;
       void _exhaustive;

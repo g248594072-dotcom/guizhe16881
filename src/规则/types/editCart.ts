@@ -3,6 +3,7 @@
  */
 
 import type { ClothingBodyGarmentEditRow, ClothingStateZh, JewelryEditRow } from '../types';
+import type { TacticalMapCommitPatchOp } from '../utils/tacticalMapCommitSendBox';
 
 export interface EditCartModalForm {
   addCharacterName: string;
@@ -80,7 +81,11 @@ export type EditCartAction =
   | { kind: 'delete_character'; characterId: string; characterName: string }
   | { kind: 'random_add_world'; title: string; desc: string }
   | { kind: 'random_add_regional'; regionId: string; regionName: string; title: string; desc: string }
-  | { kind: 'random_add_personal'; target: string; ruleName: string; detail: string };
+  | { kind: 'random_add_personal'; target: string; ruleName: string; detail: string }
+  /** 战术地图确认：仅含最小 JSON Patch，由购物车统一 apply */
+  | { kind: 'tactical_map_commit'; patches: TacticalMapCommitPatchOp[]; label: string }
+  /** MVU「元信息.世界类型 / 世界简介」；dedupeKey 固定 meta:world_info 覆盖 */
+  | { kind: 'meta_world_info'; 世界类型: string; 世界简介: string };
 
 export interface EditCartItem {
   id: string;

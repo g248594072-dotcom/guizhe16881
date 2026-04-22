@@ -221,7 +221,7 @@ export default function BackgroundTaskManager() {
             ) : (
               <CheckCircle2 size={18} className="text-green-500" />
             )}
-            <span className="text-sm font-medium truncate max-w-[11rem]">
+            <span className="text-sm font-medium truncate max-w-44">
               {runningCount > 0 ? `${runningCount}进行中` : `${tasks.length}个任务`}
             </span>
             {completedCount > 0 && !runningCount && (

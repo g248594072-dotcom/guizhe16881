@@ -51,6 +51,12 @@ export function getOtherSettings(): OtherSettings {
           : typeof local?.enableEditStagingCart === 'boolean'
             ? local.enableEditStagingCart
             : DEFAULT_OTHER_SETTINGS.enableEditStagingCart,
+      copyStagingChangeHintsToInput:
+        typeof settings?.copyStagingChangeHintsToInput === 'boolean'
+          ? settings.copyStagingChangeHintsToInput
+          : typeof local?.copyStagingChangeHintsToInput === 'boolean'
+            ? local.copyStagingChangeHintsToInput
+            : DEFAULT_OTHER_SETTINGS.copyStagingChangeHintsToInput,
       showGameTimeHud:
         typeof settings?.showGameTimeHud === 'boolean'
           ? settings.showGameTimeHud

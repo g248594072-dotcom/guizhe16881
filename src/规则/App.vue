@@ -259,6 +259,7 @@
                 v-else-if="activeTab === 'world_rules'"
                 :is-dark-mode="isDarkMode"
                 @open-modal="openModal"
+                @copy-to-input="copyToInput"
               />
               <RegionalRulesHub
                 v-else-if="activeTab === 'regional_rules'"
@@ -1572,7 +1573,13 @@ import {
 } from './utils/messageParser';
 import { applyMaintextInlineBeautify } from './utils/maintextInlineBeautify';
 import { applyJsonPatch, extractJsonPatchFromUpdateVariable } from './utils/jsonPatchStat';
-import { takePendingTacticalMapUpdateVariableBlock } from './utils/pendingTacticalMapUpdateVariable';
+import {
+  appendPendingUpdateVariablePatches,
+  appendStagingSummaryForNextPendingUvBlock,
+  setStagingSummaryForNextPendingUvBlock,
+  takePendingUpdateVariableBlock,
+} from './utils/pendingUpdateVariableQueue';
+import { diffValueToJsonPatches } from './utils/tacticalMapCommitSendBox';
 import {
   GamePhase,
   CLOTHING_BODY_SLOT_KEYS,
@@ -2790,13 +2797,24 @@ async function onAvatarFileSelected(event: Event) {
 }
 
 /**
- * 将文本复制到输入框
+ * 将修改说明写入本界面输入框，或（关闭「修改是否写入对话框」时）写入待发 `<UpdateVariable>` 摘要，随发送合并。
  * @param text 要复制的文本
  * @param mode 模式：'replace' 替换，'append' 追加（默认）
+ * @param bypassVariableHintGate 为 true 时强制写入输入框（如恢复用户发言），忽略「修改是否写入对话框」
  */
-function copyToInput(text: string, mode: 'replace' | 'append' = 'append') {
+function copyToInput(text: string, mode: 'replace' | 'append' = 'append', bypassVariableHintGate = false) {
   const messageText = String(text ?? '').trim();
   if (!messageText) return;
+
+  if (!bypassVariableHintGate && getOtherSettings().copyStagingChangeHintsToInput === false) {
+    if (mode === 'replace') {
+      setStagingSummaryForNextPendingUvBlock(messageText);
+    } else {
+      appendStagingSummaryForNextPendingUvBlock(messageText);
+    }
+    toastr.success('修改说明已暂存，发送消息时将并入变量块');
+    return;
+  }
 
   const currentInput = userInput.value.trim();
 
@@ -2867,10 +2885,10 @@ async function onEditCartApply() {
 }
 
 function onCopyToInputEvent(event: Event) {
-  const customEvent = event as CustomEvent<{ message?: string }>;
+  const customEvent = event as CustomEvent<{ message?: string; bypassVariableHintGate?: boolean }>;
   const messageText = String(customEvent.detail?.message ?? '').trim();
   if (!messageText) return;
-  copyToInput(messageText, 'append'); // 使用追加模式，不影响现有内容
+  copyToInput(messageText, 'append', customEvent.detail?.bypassVariableHintGate === true);
 }
 
 async function onModalComplete() {
@@ -2891,6 +2909,9 @@ async function onModalComplete() {
         return;
       }
     }
+
+    const capturePendingUv = !isEditCartEnabled();
+    const statBeforeModal = capturePendingUv ? klona(useDataStore().data) : null;
 
     if (type === 'add_character') {
       // 只生成 [新增角色] 消息，不预写角色档案（与 editCartApply.runModalCommit 一致）
@@ -3020,19 +3041,17 @@ async function onModalComplete() {
       return;
     }
 
-    // 将生成的文本放入前端输入框（追加模式，不影响现有内容）；头像编辑不写对话框
+    if (capturePendingUv && statBeforeModal) {
+      const after = klona(useDataStore().data);
+      const patches = diffValueToJsonPatches('', statBeforeModal, after);
+      if (patches.length > 0) {
+        appendPendingUpdateVariablePatches(patches);
+      }
+    }
+
+    // 将生成的说明写入前端输入框，或（开关关）并入待发变量块；头像编辑不写。不再二次 sendToDialog，避免重复。
     if (messageText && type !== 'edit_avatar') {
       copyToInput(messageText, 'append');
-
-      // 角色心理/性癖编辑：同时写入对话框（创建一条 user 消息）
-      if (type === 'edit_character_mind' || type === 'edit_character_fetish' || type === 'edit_character_appearance') {
-        try {
-          const { sendToDialog } = await import('./utils/dialogAndVariable');
-          await sendToDialog(messageText);
-        } catch (e) {
-          console.warn('写入对话框失败', e);
-        }
-      }
     }
     closeModal();
   } catch (e) {
@@ -3203,7 +3222,7 @@ async function onRecoverLastUserMessage() {
     await deleteChatMessages(idsToDelete, { refresh: 'all' });
 
     const { sendToDialog } = await import('./utils/dialogAndVariable');
-    await sendToDialog(text);
+    await sendToDialog(text, true);
 
     refreshMessage();
     toastr.success(
@@ -3296,9 +3315,8 @@ async function applyMvuParseToMessageFloor(
 // 发送消息（同层前端界面核心功能）
 async function sendMessage() {
   const typed = userInput.value.trim();
-  const pendingMapUv = takePendingTacticalMapUpdateVariableBlock();
-  const content =
-    pendingMapUv ? (typed ? `${typed}\n\n${pendingMapUv}` : pendingMapUv) : typed;
+  const pendingUv = takePendingUpdateVariableBlock();
+  const content = pendingUv ? (typed ? `${typed}\n\n${pendingUv}` : pendingUv) : typed;
   if (!content || isGenerating.value || isVariablePersistInProgress.value) return;
 
   console.log('🎮 [App] 发送消息:', content.substring(0, 80) + '...');

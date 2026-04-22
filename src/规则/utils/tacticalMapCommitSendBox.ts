@@ -83,3 +83,29 @@ export function formatTacticalMapCommitForSendBox(patches: TacticalMapCommitPatc
   const inner = JSON.stringify(patches, null, 2);
   return `<UpdateVariable>\n<JSONPatch>\n${inner}\n</JSONPatch>\n</UpdateVariable>`;
 }
+
+function escapeXmlText(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * 单条 `<UpdateVariable>`：可选 `<PlayerStagingSummary>` + `<JSONPatch>`（path 仍相对 stat_data）。
+ * 无摘要且 patches 非空时与 `formatTacticalMapCommitForSendBox` 等价。
+ */
+export function formatMergedUpdateVariableBlock(opts: {
+  summary?: string;
+  patches: TacticalMapCommitPatchOp[];
+}): string {
+  const summary = opts.summary?.trim();
+  const patches = opts.patches ?? [];
+  if (!summary && patches.length === 0) return '';
+  if (!summary) {
+    return formatTacticalMapCommitForSendBox(patches);
+  }
+  const patchInner = JSON.stringify(patches, null, 2);
+  return `<UpdateVariable>\n<PlayerStagingSummary>${escapeXmlText(summary)}</PlayerStagingSummary>\n<JSONPatch>\n${patchInner}\n</JSONPatch>\n</UpdateVariable>`;
+}

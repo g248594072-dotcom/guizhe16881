@@ -156,6 +156,7 @@ const DEFAULT_OTHER_LOCAL: OtherSettings = {
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
   enableEditStagingCart: true,
+  copyStagingChangeHintsToInput: true,
   showGameTimeHud: true,
   speechIntentWorldbookMode: 'anti_soft',
 };
@@ -182,6 +183,10 @@ export function loadOtherSettings(): OtherSettings {
           typeof parsed.enableEditStagingCart === 'boolean'
             ? parsed.enableEditStagingCart
             : DEFAULT_OTHER_LOCAL.enableEditStagingCart,
+        copyStagingChangeHintsToInput:
+          typeof parsed.copyStagingChangeHintsToInput === 'boolean'
+            ? parsed.copyStagingChangeHintsToInput
+            : DEFAULT_OTHER_LOCAL.copyStagingChangeHintsToInput,
         showGameTimeHud:
           typeof parsed.showGameTimeHud === 'boolean'
             ? parsed.showGameTimeHud

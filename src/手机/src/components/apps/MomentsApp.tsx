@@ -554,7 +554,7 @@ function MomentCard({
 
           {/* 动态内容：展示层剥离误存的 JSON 外壳，避免截断 JSON 整段显示 */}
           <div className="mt-1 text-[15px] text-gray-800 leading-relaxed">
-            <span className={`whitespace-pre-wrap break-words ${!expanded && displayContent.length > 150 ? 'line-clamp-3' : ''}`}>
+            <span className={`whitespace-pre-wrap wrap-break-word ${!expanded && displayContent.length > 150 ? 'line-clamp-3' : ''}`}>
               {displayContent}
             </span>
             {displayContent.length > 150 && !expanded && (
@@ -834,6 +834,21 @@ export default function MomentsApp({
       };
     }));
   };
+
+  const handleDeleteMoment = useCallback(async (momentId: string) => {
+    try {
+      await deleteMoment(momentId);
+      setMoments(prev => prev.filter(m => m.id !== momentId));
+      setExpandedMoments(prev => {
+        const next = new Set(prev);
+        next.delete(momentId);
+        return next;
+      });
+    } catch (e) {
+      console.error('[MomentsApp] 删除动态失败:', e);
+      toastr.error('删除失败');
+    }
+  }, []);
 
   // 处理生成单条动态
   const handleSingleGenerate = async (char: PhoneCharacterArchive) => {

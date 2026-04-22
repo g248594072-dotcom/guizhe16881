@@ -273,6 +273,7 @@
 </template>
 
 <script setup lang="ts">
+import { klona } from 'klona';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useDataStore, useCharacters, bumpUpdateTime } from '../store';
 import type { CharacterData, RegionData } from '../types';
@@ -291,6 +292,8 @@ import {
   stageItem,
 } from '../utils/editCartFlow';
 import { normalizeOpenAiUrl } from '../utils/openaiUrl';
+import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
+import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
 
 interface GeneratedRule {
   id: string;
@@ -838,6 +841,7 @@ async function confirmApplyFromDialog() {
     const { submitAddWorldRule, submitAddRegionalRule, submitAddPersonalRule } =
       await import('../utils/dialogAndVariable');
 
+    const statBeforeApply = klona(store.data);
     let messageText = '';
 
     switch (ctx.type) {
@@ -886,6 +890,10 @@ async function confirmApplyFromDialog() {
 
     randomRulesSessionMarkApplied(ctx.id);
     bumpUpdateTime();
+    const patches = diffValueToJsonPatches('', statBeforeApply, klona(store.data));
+    if (patches.length > 0) {
+      appendPendingUpdateVariablePatches(patches);
+    }
     toastr.success(`已应用规则：${title}`);
     closeEditDialog();
   } catch (e) {

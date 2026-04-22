@@ -922,7 +922,9 @@ import {
   isProbablyTruncatedJsonArray,
   runTacticalMapSecondaryGenerate,
 } from '../utils/tacticalMapSecondaryGenerate';
+import { useEditCartStore } from '../stores/editCart';
 import { appendPendingTacticalMapPatches } from '../utils/pendingTacticalMapUpdateVariable';
+import { buildTacticalMapCartItem, isEditCartEnabled } from '../utils/editCartFlow';
 import { applyJsonPatch, extractJsonPatchFromTacticalAiBlock } from '../utils/jsonPatchStat';
 import {
   parseTacticalAiPatchPreview,
@@ -1353,6 +1355,23 @@ function confirmMapDraft(): boolean {
       toastr.error('当前楼层变量不可写，无法将地图语义写入变量');
       return false;
     }
+  }
+
+  if (isEditCartEnabled()) {
+    if (patches.length > 0) {
+      useEditCartStore().addOrReplaceItem(buildTacticalMapCartItem(patches, '战术地图变量'));
+      toastr.success(
+        '地图变更已加入编辑暂存；请在购物车中确认后，于本界面下次发送消息时一并写入玩家楼层',
+      );
+    } else if (semanticsWouldChange) {
+      toastr.error('检测到地图语义变化但未能生成变量补丁，请先「从变量同步到地图」后重试');
+      return false;
+    } else {
+      toastr.success('已确认本地地图布局与视图（与变量语义一致，无需 Patch）');
+    }
+    committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+    flushPersistCurrentScopeToBrowser();
+    return true;
   }
 
   if (patches.length > 0) {
@@ -2071,6 +2090,38 @@ function confirmPendingTacticalAiInsert() {
     return;
   }
 
+  const patchOps = buildTacticalMapJsonPatchesForMvuCommit(beforeTriple, afterTriple);
+
+  if (isEditCartEnabled()) {
+    const tripleChanged =
+      !isEqual(beforeTriple.区域数据, afterTriple.区域数据) ||
+      !isEqual(beforeTriple.建筑数据, afterTriple.建筑数据) ||
+      !isEqual(beforeTriple.活动数据, afterTriple.活动数据);
+    if (patchOps.length === 0) {
+      if (tripleChanged) {
+        toastr.error('地图语义已变但未能生成变量补丁，无法加入编辑暂存');
+        return;
+      }
+      pendingTacticalAiInsert.value = null;
+      flushPersistCurrentScopeToBrowser();
+      toastr.info('补丁未改变地图变量语义');
+      return;
+    }
+    useEditCartStore().addOrReplaceItem(buildTacticalMapCartItem(patchOps, '战术地图 AI 补丁'));
+    mapWorld.value = normalizeWorld(
+      syncWorldFromMvu(normalizeWorld(klona(mapWorld.value)), next, {
+        repositionAssignedBuildingsIntoRegion: true,
+      }),
+    );
+    committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
+    pendingTacticalAiInsert.value = null;
+    flushPersistCurrentScopeToBrowser();
+    toastr.success(
+      '已将 AI 地图补丁加入编辑暂存；地图已按预览更新。请在购物车确认后写入变量，并于本界面发送时附上 UpdateVariable',
+    );
+    return;
+  }
+
   store.data.区域数据 = afterTriple.区域数据;
   store.data.建筑数据 = afterTriple.建筑数据;
   store.data.活动数据 = afterTriple.活动数据;
@@ -2083,7 +2134,6 @@ function confirmPendingTacticalAiInsert() {
   );
   committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
 
-  const patchOps = buildTacticalMapJsonPatchesForMvuCommit(beforeTriple, afterTriple);
   if (patchOps.length > 0) {
     appendPendingTacticalMapPatches(patchOps);
   }

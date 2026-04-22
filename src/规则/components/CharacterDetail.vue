@@ -378,9 +378,7 @@
         <div class="appearance-content">
           <div class="appearance-block">
             <span class="section-label">服装槽位</span>
-            <p class="clothing-slot-hint">
-              每槽可多件，<strong>服装名</strong>为 MVU 对象键（<code>服装状态.&lt;槽位&gt;.&lt;服装名&gt;</code>）；点服装名编辑，或点「添加」。
-            </p>
+            <p class="clothing-slot-hint">点击添加添加服装，点击服装修改服装。</p>
             <div class="clothing-slot-stack">
               <div
                 v-for="slotKey in appearanceSlotKeys"
@@ -574,6 +572,7 @@
 </template>
 
 <script setup lang="ts">
+import { klona } from 'klona';
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useIntervalFn } from '@vueuse/core';
 import Swal from 'sweetalert2';
@@ -607,6 +606,8 @@ import { tagFieldToBadgeLines } from '../utils/tagMap';
 import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
 import { formatMvuBuildingOccupantsLine } from '../utils/mvuOccupantValue';
 import { getRulesMergedStatSnapshotForDisplay } from '../utils/rulesMvuDisplaySnapshot';
+import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
+import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
 
 const props = defineProps<{
   characterId: string;
@@ -1438,7 +1439,12 @@ async function onFinishEditBasic() {
       return;
     }
     const { submitEditCharacterBasic } = await import('../utils/dialogAndVariable');
+    const statBefore = klona(dataStore.data);
     const messageText = await submitEditCharacterBasic(props.characterId, data);
+    const patches = diffValueToJsonPatches('', statBefore, klona(dataStore.data));
+    if (patches.length > 0) {
+      appendPendingUpdateVariablePatches(patches);
+    }
     Object.assign(savedForm.value, editForm.value);
     isEditingBasic.value = false;
     if (messageText) emit('copyToInput', messageText);
@@ -1473,7 +1479,12 @@ async function onDeleteCharacter() {
       return;
     }
     const { submitDeleteCharacter } = await import('../utils/dialogAndVariable');
+    const statBefore = klona(dataStore.data);
     const messageText = await submitDeleteCharacter(props.characterId, name.value);
+    const patches = diffValueToJsonPatches('', statBefore, klona(dataStore.data));
+    if (patches.length > 0) {
+      appendPendingUpdateVariablePatches(patches);
+    }
 
     emit('back');
     if (messageText) emit('copyToInput', messageText);

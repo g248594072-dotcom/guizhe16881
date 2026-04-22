@@ -137,6 +137,24 @@
               <textarea v-model="draft.action.detail" class="eci-textarea" rows="5" />
             </template>
 
+            <template v-else-if="draft.action.kind === 'meta_world_info'">
+              <label class="eci-label">世界类型</label>
+              <input
+                v-model="draft.action.世界类型"
+                type="text"
+                class="eci-input"
+                maxlength="64"
+                placeholder="如：现代、西幻"
+              />
+              <label class="eci-label">世界简介</label>
+              <textarea
+                v-model="draft.action.世界简介"
+                class="eci-textarea"
+                rows="6"
+                maxlength="2000"
+                placeholder="世界观补充说明"
+              />
+            </template>
             <template v-else-if="draft.action.kind === 'modal_commit'">
               <ModalCommitFields :modal-type="draft.action.modalType" :form="draft.action.form" />
             </template>

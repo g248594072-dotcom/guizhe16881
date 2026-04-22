@@ -40,17 +40,72 @@ import {
 import { generateWorldTrend } from './worldLifeGenerator';
 import { markResidentLifePendingPersonalRule } from './residentLifePending';
 import { allocateNextChrId } from './chrId';
+import { getOtherSettings } from './otherSettings';
+import { appendStagingSummaryForNextPendingUvBlock } from './pendingUpdateVariableQueue';
 
 /**
- * 将文本写入前端对话框输入区（不创建新楼层）
+ * 将文本写入前端输入区（经 `th:copy-to-input` → App `copyToInput`）。
+ * 当「修改是否写入对话框」关闭时：不触发写入输入框，仅把说明并入待发 `<UpdateVariable>` 摘要（与发送时变量块合并）。
+ * @param bypassCopyToInputGate 为 true 时忽略上述开关（例如恢复误删的用户发言，须仍填入输入框）。
  */
-export async function sendToDialog(message: string): Promise<void> {
+export async function sendToDialog(message: string, bypassCopyToInputGate = false): Promise<void> {
+  const msg = String(message ?? '').trim();
+  if (!msg) return;
+
+  if (!bypassCopyToInputGate && getOtherSettings().copyStagingChangeHintsToInput === false) {
+    appendStagingSummaryForNextPendingUvBlock(msg);
+    console.info(
+      '✅ [dialogAndVariable] 修改说明未写入输入框，已并入待发变量块摘要:',
+      msg.substring(0, 80) + (msg.length > 80 ? '...' : ''),
+    );
+    return;
+  }
+
   try {
-    window.dispatchEvent(new CustomEvent('th:copy-to-input', { detail: { message } }));
-    console.log('✅ [dialogAndVariable] 已写入前端对话框输入区:', message.substring(0, 80) + (message.length > 80 ? '...' : ''));
+    window.dispatchEvent(
+      new CustomEvent('th:copy-to-input', {
+        detail: { message: msg, bypassVariableHintGate: bypassCopyToInputGate },
+      }),
+    );
+    console.log('✅ [dialogAndVariable] 已写入前端对话框输入区:', msg.substring(0, 80) + (msg.length > 80 ? '...' : ''));
   } catch (e) {
     console.warn('⚠️ [dialogAndVariable] 写入前端对话框输入区失败:', e);
   }
+}
+
+function deliveryHintForToast(): string {
+  return getOtherSettings().copyStagingChangeHintsToInput !== false
+    ? '并写入对话框'
+    : '；说明将在发送时并入变量块';
+}
+
+/**
+ * 写入 MVU `元信息.世界类型` / `元信息.世界简介`（与 schema 截断规则一致）
+ */
+export function updateMetaWorldInfo(世界类型: string, 世界简介: string): void {
+  if (!tryRulesMvuWritable()) return;
+  const store = useDataStore();
+  const t = String(世界类型 ?? '')
+    .trim()
+    .slice(0, 64);
+  const wType = t || '现代';
+  const intro = String(世界简介 ?? '').slice(0, 2000);
+  const root = store.data as Record<string, unknown>;
+  if (!root.元信息 || typeof root.元信息 !== 'object' || Array.isArray(root.元信息)) {
+    root.元信息 = {};
+  }
+  const meta = root.元信息 as Record<string, unknown>;
+  meta.世界类型 = wType;
+  meta.世界简介 = intro;
+  meta.最近更新时间 = Date.now();
+  bumpUpdateTime();
+}
+
+/** 与「其他规则」一致：可追加进输入框或待发变量块摘要的说明 */
+export function formatMetaWorldInfoMessage(世界类型: string, 世界简介: string): string {
+  const t = String(世界类型 ?? '').trim().slice(0, 64) || '现代';
+  const i = String(世界简介 ?? '').slice(0, 2000);
+  return `【元信息】\n世界类型：${t}\n世界简介：${i}`;
 }
 
 /** 状态转换：active/inactive → 生效中/已归档 */
@@ -949,7 +1004,7 @@ export async function submitArchiveWorldRule(name: string): Promise<void> {
   const message = formatWorldRuleMessage('archive', name);
   await sendToDialog(message);
   archiveWorldRuleInVariables(name);
-  toastr.success(`已归档世界规则「${name}」并写入对话框`);
+  toastr.success(`已归档世界规则「${name}」${deliveryHintForToast()}`);
 }
 
 export async function submitRestoreWorldRule(name: string): Promise<void> {
@@ -957,7 +1012,7 @@ export async function submitRestoreWorldRule(name: string): Promise<void> {
   const message = formatWorldRuleMessage('restore', name);
   await sendToDialog(message);
   restoreWorldRuleInVariables(name);
-  toastr.success(`已复原世界规则「${name}」并写入对话框`);
+  toastr.success(`已复原世界规则「${name}」${deliveryHintForToast()}`);
 }
 
 export async function submitDeleteWorldRule(name: string): Promise<void> {
@@ -965,7 +1020,7 @@ export async function submitDeleteWorldRule(name: string): Promise<void> {
   const message = formatWorldRuleMessage('delete', name);
   await sendToDialog(message);
   deleteWorldRuleInVariables(name);
-  toastr.success(`已删除世界规则「${name}」并写入对话框`);
+  toastr.success(`已删除世界规则「${name}」${deliveryHintForToast()}`);
 }
 
 // ---------- 区域规则 ----------
@@ -1401,7 +1456,7 @@ export async function submitArchiveRegion(name: string): Promise<void> {
   const message = formatRegionRuleMessage('archive', name);
   await sendToDialog(message);
   archiveRegionInVariables(name);
-  toastr.success(`已归档区域「${name}」并写入对话框`);
+  toastr.success(`已归档区域「${name}」${deliveryHintForToast()}`);
 }
 
 export async function submitRestoreRegion(name: string): Promise<void> {
@@ -1409,7 +1464,7 @@ export async function submitRestoreRegion(name: string): Promise<void> {
   const message = formatRegionRuleMessage('restore', name);
   await sendToDialog(message);
   restoreRegionInVariables(name);
-  toastr.success(`已复原区域「${name}」并写入对话框`);
+  toastr.success(`已复原区域「${name}」${deliveryHintForToast()}`);
 }
 
 export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
@@ -1417,7 +1472,7 @@ export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitl
   const message = formatRegionRuleMessage('archive', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
   archiveRegionalRuleInVariables(regionName, ruleIdOrTitle);
-  toastr.success(`已归档「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}并写入对话框`);
+  toastr.success(`已归档「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}${deliveryHintForToast()}`);
 }
 
 export async function submitRestoreRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
@@ -1425,7 +1480,7 @@ export async function submitRestoreRegionalRule(regionName: string, ruleIdOrTitl
   const message = formatRegionRuleMessage('restore', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
   restoreRegionalRuleInVariables(regionName, ruleIdOrTitle);
-  toastr.success(`已复原「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}并写入对话框`);
+  toastr.success(`已复原「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}${deliveryHintForToast()}`);
 }
 
 export async function submitDeleteRegion(name: string): Promise<void> {
@@ -1433,7 +1488,7 @@ export async function submitDeleteRegion(name: string): Promise<void> {
   const message = formatDeleteRegionMessage(name);
   await sendToDialog(message);
   deleteRegionFromVariables(name);
-  toastr.success(`已删除区域「${name}」并写入对话框`);
+  toastr.success(`已删除区域「${name}」${deliveryHintForToast()}`);
 }
 
 export async function submitDeleteRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
@@ -1442,7 +1497,7 @@ export async function submitDeleteRegionalRule(regionName: string, ruleIdOrTitle
   const message = formatDeleteRegionalSubRuleMessage(regionName, summary);
   await sendToDialog(message);
   deleteRegionalRuleFromVariables(regionName, ruleIdOrTitle);
-  toastr.success(`已删除「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}并写入对话框`);
+  toastr.success(`已删除「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}${deliveryHintForToast()}`);
 }
 
 // ---------- 个人规则 ----------
@@ -1637,7 +1692,7 @@ export async function submitArchivePersonalRule(idOrTitle: string, characterName
   await sendToDialog(message);
   archivePersonalRuleInVariables(idOrTitle);
   markResidentLifePendingPersonalRule();
-  toastr.success(`已归档「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
+  toastr.success(`已归档「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}${deliveryHintForToast()}`);
 }
 
 export async function submitRestorePersonalRule(idOrTitle: string, characterName?: string, ruleSummary?: string): Promise<void> {
@@ -1647,7 +1702,7 @@ export async function submitRestorePersonalRule(idOrTitle: string, characterName
   await sendToDialog(message);
   restorePersonalRuleInVariables(idOrTitle);
   markResidentLifePendingPersonalRule();
-  toastr.success(`已复原「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
+  toastr.success(`已复原「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}${deliveryHintForToast()}`);
 }
 
 export async function submitDeletePersonalRule(
@@ -1661,7 +1716,7 @@ export async function submitDeletePersonalRule(
   await sendToDialog(message);
   deletePersonalRuleInVariables(idOrTitle);
   markResidentLifePendingPersonalRule();
-  toastr.success(`已删除「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}并写入对话框`);
+  toastr.success(`已删除「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}${deliveryHintForToast()}`);
 }
 
 export async function submitArchivePersonalRulesForGroup(groupName: string): Promise<void> {
@@ -1682,7 +1737,7 @@ export async function submitArchivePersonalRulesForGroup(groupName: string): Pro
     archivePersonalRuleInVariables(k);
   }
   markResidentLifePendingPersonalRule();
-  toastr.success(`已归档对象「${groupName}」下 ${keys.length} 条个人规则并写入对话框`);
+  toastr.success(`已归档对象「${groupName}」下 ${keys.length} 条个人规则${deliveryHintForToast()}`);
 }
 
 export async function submitDeletePersonalRulesForGroup(groupName: string): Promise<void> {
@@ -1703,7 +1758,7 @@ export async function submitDeletePersonalRulesForGroup(groupName: string): Prom
     deletePersonalRuleInVariables(k);
   }
   markResidentLifePendingPersonalRule();
-  toastr.success(`已删除对象「${groupName}」下 ${keys.length} 条个人规则并写入对话框`);
+  toastr.success(`已删除对象「${groupName}」下 ${keys.length} 条个人规则${deliveryHintForToast()}`);
 }
 
 /**

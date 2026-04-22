@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia';
+import { klona } from 'klona';
 import { ref, computed } from 'vue';
 import type { EditCartItem } from '../types/editCart';
+import { useDataStore } from '../store';
 import { applyEditCartAction } from '../utils/editCartApply';
+import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
+import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
+import { buildStagingHintsFromCartItems } from '../utils/stagingChangeHint';
 
 const CAT_ORDER = ['world', 'region', 'character', 'personal', 'avatar'] as const;
 
@@ -45,18 +50,17 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
   }
 
   /**
-   * 按分区顺序执行；全部成功后清空购物车并合并说明写入输入框。
+   * 按分区顺序执行；全部成功后清空购物车，合并说明经 App 的 copyToInput（写入输入框或待发变量块摘要）。
    * 中途失败：已执行项已从购物车移除，未执行项保留。
    */
   async function applyAll(copyToInput: (text: string, mode: 'append' | 'replace') => void): Promise<boolean> {
     const list = sortedItems();
-    const fragments: string[] = [];
+    const hintText = buildStagingHintsFromCartItems(list);
+    const store = useDataStore();
+    const statBefore = klona(store.data);
     for (let i = 0; i < list.length; i++) {
       try {
-        const t = (await applyEditCartAction(list[i].action)).trim();
-        if (t) {
-          fragments.push(t);
-        }
+        await applyEditCartAction(list[i].action);
       } catch (e) {
         console.error('[editCart] applyAll 在第', i + 1, '项失败:', e);
         const keepIds = new Set(list.slice(i).map(x => x.id));
@@ -65,10 +69,15 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
         return false;
       }
     }
-    clear();
-    if (fragments.length > 0) {
-      copyToInput(fragments.join('\n\n---\n\n'), 'append');
+    const statAfter = klona(store.data);
+    const batchPatches = diffValueToJsonPatches('', statBefore, statAfter);
+    if (batchPatches.length > 0) {
+      appendPendingUpdateVariablePatches(batchPatches);
     }
+    if (hintText) {
+      copyToInput(hintText, 'append');
+    }
+    clear();
     return true;
   }
 

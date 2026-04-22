@@ -4,6 +4,7 @@
 import { klona } from 'klona';
 import { useEditCartStore } from '../stores/editCart';
 import type { EditCartCategory, EditCartItem, EditCartModalForm } from '../types/editCart';
+import type { TacticalMapCommitPatchOp } from './tacticalMapCommitSendBox';
 import { getOtherSettings } from './otherSettings';
 
 export function isEditCartEnabled(): boolean {
@@ -257,6 +258,32 @@ export function stageItem(item: EditCartItem): void {
   toastr.info(`已加入暂存（共 ${cart.pendingCount} 项），请打开购物车统一提交`);
 }
 
+/** 战术地图「确认应用」在开启购物车时入队；dedupeKey 固定以便多次确认覆盖为最新一批 Patch */
+export function buildTacticalMapCartItem(patches: TacticalMapCommitPatchOp[], label: string): EditCartItem {
+  return {
+    id: newId(),
+    dedupeKey: 'tactical_map_commit:latest',
+    label: label.trim() || '战术地图变量',
+    category: 'world',
+    action: { kind: 'tactical_map_commit', patches, label: label.trim() || '战术地图变量' },
+  };
+}
+
+/** 元信息.世界类型 / 世界简介；同键覆盖为最新一次编辑 */
+export function buildMetaWorldInfoCartItem(世界类型: string, 世界简介: string): EditCartItem {
+  const t = String(世界类型 ?? '')
+    .trim()
+    .slice(0, 64) || '现代';
+  const intro = String(世界简介 ?? '').slice(0, 2000);
+  return {
+    id: newId(),
+    dedupeKey: 'meta:world_info',
+    label: `世界元信息：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
+    category: 'world',
+    action: { kind: 'meta_world_info', 世界类型: t, 世界简介: intro },
+  };
+}
+
 /**
  * 根据 action 内容重算 label / dedupeKey / category（编辑暂存项保存时调用，保留 item.id）
  */
@@ -405,6 +432,27 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
           form: a.form,
           payload: a.payload,
         },
+      };
+    }
+    case 'tactical_map_commit':
+      return {
+        ...item,
+        dedupeKey: 'tactical_map_commit:latest',
+        label: a.label,
+        category: 'world',
+        action: { kind: 'tactical_map_commit', patches: [...a.patches], label: a.label },
+      };
+    case 'meta_world_info': {
+      const t = String(a.世界类型 ?? '')
+        .trim()
+        .slice(0, 64) || '现代';
+      const intro = String(a.世界简介 ?? '').slice(0, 2000);
+      return {
+        ...item,
+        dedupeKey: 'meta:world_info',
+        label: `世界元信息：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
+        category: 'world',
+        action: { kind: 'meta_world_info', 世界类型: t, 世界简介: intro },
       };
     }
     default:

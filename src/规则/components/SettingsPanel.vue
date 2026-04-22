@@ -362,14 +362,14 @@
               type="checkbox"
               @change="persistSecondaryApi"
             />
-            <span class="secondary-extra-task-label secondary-extra-streamer">世界演化</span>
+            <span class="secondary-extra-task-label secondary-extra-streamer">世界演化(用处不大)</span>
           </label>
           <div class="secondary-task-info-anchor" data-extra-info-key="evolution">
             <button
               type="button"
               class="secondary-task-info-btn"
               :aria-expanded="extraInfoOpen === 'evolution'"
-              aria-label="世界演化说明"
+              aria-label="世界演化(用处不大)说明"
               @click.stop="toggleExtraInfo('evolution')"
             >
               !
@@ -413,20 +413,51 @@
           <div class="shujuku-master-section-titles">
             <span class="shujuku-master-section-title">编辑暂存（购物车）</span>
             <p class="shujuku-master-section-lead">
-              <strong>默认开启。</strong>开启后修改世界/区域/个人规则与角色等先入队，在侧栏「暂存」统一检视后再写入变量；关闭后每次操作立即生效。
+              所有的修改暂存购物车，可以统一检视和二次编辑，确认。：建议开启否则修改没有容错。
             </p>
           </div>
         </div>
         <div class="shujuku-toggle-row">
           <div class="shujuku-toggle-label">
             <span class="shujuku-toggle-title">启用编辑暂存</span>
-            <span class="shujuku-toggle-hint">关闭时若购物车非空将询问是否清空暂存</span>
+            <span class="shujuku-toggle-hint">关闭前会弹窗确认；若购物车非空会先清空暂存</span>
           </div>
           <label class="toggle-switch">
             <input
               type="checkbox"
               v-model="enableEditStagingCart"
-              @change="persistEnableEditStagingCart"
+              @change="() => void persistEnableEditStagingCart()"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 修改是否写入对话框：仅保留两行说明 + 开关 -->
+      <div
+        class="edit-staging-cart-toggle staging-summary-settings-card"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="shujuku-master-section-head">
+          <div class="shujuku-master-icon staging-summary-settings-card__icon">
+            <i class="fa-solid fa-file-lines"></i>
+          </div>
+          <div class="shujuku-master-section-titles">
+            <span class="shujuku-master-section-title">修改是否写入对话框</span>
+          </div>
+        </div>
+        <div class="shujuku-toggle-row">
+          <div class="shujuku-toggle-label">
+            <span class="shujuku-toggle-hint">
+              开启：前端编辑，修改，添加之后写入对话框。<br />
+              关闭：前端编辑，修改，添加之后不写入对话框。
+            </span>
+          </div>
+          <label class="toggle-switch">
+            <input
+              type="checkbox"
+              v-model="copyStagingChangeHintsToInput"
+              @change="persistCopyStagingChangeHintsToInput"
             />
             <span class="toggle-slider"></span>
           </label>
@@ -653,7 +684,7 @@
             主 API 一次 → 第二 API 仅变量一次 → 第二 API 附加任务一次（共三调用）。
           </p>
           <p class="secondary-task-popover-text">
-            开启后：首轮第二 API 只生成「纯变量」Patch（不含游戏状态/地图等）；再单独调用第二 API，按下方勾选执行正文美化、NPC生活、世界演化，并把 Patch 与正文合并进本回合结果。关闭时附加任务与变量同轮或并行（与旧版一致）。
+            开启后：首轮第二 API 只生成「纯变量」Patch（不含游戏状态/地图等）；再单独调用第二 API，按下方勾选执行正文美化、NPC生活、世界演化(用处不大)，并把 Patch 与正文合并进本回合结果。关闭时附加任务与变量同轮或并行（与旧版一致）。
           </p>
         </template>
         <template v-else-if="extraInfoOpen === 'beautify'">
@@ -723,6 +754,7 @@ import { applySpeechIntentWorldbookMode } from '../utils/speechIntentWorldbook';
 import { injectBundledTavernDbTemplate } from '../utils/shujukuBridge';
 /** 内置注入用表格模板：与 `src/规则/data/tavernDbBundledTemplate.json` 同源，构建时打包；改表后请同步该文件并重建前端。 */
 import tavernDbBundledTemplate from '../data/tavernDbBundledTemplate.json';
+import Swal from 'sweetalert2';
 import { useEditCartStore } from '../stores/editCart';
 import {
   loadFontSettings,
@@ -759,6 +791,9 @@ const enableShujukuManualUpdateAfterConfirm = ref(true);
 
 /** 编辑暂存（购物车）：先入队再统一提交（默认开启，与 OtherSettings 一致） */
 const enableEditStagingCart = ref(true);
+
+/** 「修改是否写入对话框」：是否把修改说明写入本界面输入框（与是否启用购物车无关） */
+const copyStagingChangeHintsToInput = ref(true);
 
 /** 主界面顶部游戏时间条（默认显示） */
 const showGameTimeHud = ref(true);
@@ -1034,6 +1069,7 @@ function loadSettings() {
     enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
     enableShujukuManualUpdateAfterConfirm.value = other.enableShujukuManualUpdateAfterConfirm;
     enableEditStagingCart.value = other.enableEditStagingCart;
+    copyStagingChangeHintsToInput.value = other.copyStagingChangeHintsToInput;
     showGameTimeHud.value = other.showGameTimeHud;
     speechIntentWorldbookMode.value = other.speechIntentWorldbookMode;
     fontSettings.value = loadFontSettings();
@@ -1128,6 +1164,7 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
       enableShujukuPlotAdvance: enableShujukuPlotAdvance.value,
       enableShujukuManualUpdateAfterConfirm: enableShujukuManualUpdateAfterConfirm.value,
       enableEditStagingCart: enableEditStagingCart.value,
+      copyStagingChangeHintsToInput: copyStagingChangeHintsToInput.value,
       showGameTimeHud: showGameTimeHud.value,
       speechIntentWorldbookMode: speechIntentWorldbookMode.value,
     });
@@ -1194,27 +1231,57 @@ function persistShowGameTimeHud() {
   toastr.success(showGameTimeHud.value ? '已开启：主界面游戏时间条' : '已关闭：主界面游戏时间条');
 }
 
-function persistEnableEditStagingCart() {
+function persistCopyStagingChangeHintsToInput() {
+  saveOtherSettings({ copyStagingChangeHintsToInput: copyStagingChangeHintsToInput.value });
+  showSaveSuccess.value = true;
+  setTimeout(() => {
+    showSaveSuccess.value = false;
+  }, 2000);
+  toastr.success(
+    copyStagingChangeHintsToInput.value
+      ? '已开启：修改说明将写入本界面对话框'
+      : '已关闭：修改说明仅在发送时写入玩家楼（与变量块合并）',
+  );
+}
+
+async function persistEnableEditStagingCart() {
   if (!enableEditStagingCart.value) {
     const cart = useEditCartStore();
-    if (cart.pendingCount > 0) {
-      const ok = window.confirm(
-        '购物车中有未提交的修改。确定将清空暂存并关闭「编辑暂存」吗？点「取消」可保留开关与购物车。',
-      );
-      if (!ok) {
-        enableEditStagingCart.value = true;
-        return;
-      }
+    const n = cart.pendingCount;
+    const html =
+      n > 0
+        ? `<p>购物车中有 <strong>${n}</strong> 条未提交项，确认关闭后将<strong>清空暂存</strong>。</p><p>关闭「编辑暂存」后：<strong>本界面所有修改会立即写入变量</strong>，且<strong>无法再通过侧栏暂存统一检视或撤回</strong>（只能逐项改回）。</p>`
+        : `<p>关闭「编辑暂存」后：<strong>本界面所有修改会立即写入变量</strong>，且<strong>无法再通过侧栏暂存统一检视或撤回</strong>（只能逐项改回）。</p>`;
+
+    const result = await Swal.fire({
+      title: '关闭「编辑暂存（购物车）」？',
+      html,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: '确认关闭',
+      cancelButtonText: '保留开启',
+      confirmButtonColor: '#ca8a04',
+      cancelButtonColor: '#6b7280',
+      reverseButtons: true,
+      focusCancel: true,
+    });
+
+    if (!result.isConfirmed) {
+      enableEditStagingCart.value = true;
+      return;
+    }
+    if (n > 0) {
       cart.clear();
     }
   }
+
   saveOtherSettings({ enableEditStagingCart: enableEditStagingCart.value });
   showSaveSuccess.value = true;
   setTimeout(() => {
     showSaveSuccess.value = false;
   }, 2000);
   toastr.success(
-    enableEditStagingCart.value ? '已开启：编辑暂存（购物车）' : '已关闭：编辑暂存（立即生效）',
+    enableEditStagingCart.value ? '已开启：编辑暂存（购物车）' : '已关闭：编辑暂存（立即生效，无法再经暂存撤回）',
   );
 }
 
@@ -1440,6 +1507,23 @@ async function selectMode(mode: OutputMode) {
 
 .edit-staging-cart-toggle .shujuku-master-icon {
   background: linear-gradient(135deg, #ca8a04, #eab308);
+}
+
+/* 与购物车卡片区分：「修改是否写入对话框」独立成块 */
+.staging-summary-settings-card {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.dark .staging-summary-settings-card {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.light .staging-summary-settings-card {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.staging-summary-settings-card__icon {
+  background: linear-gradient(135deg, #2563eb, #60a5fa) !important;
 }
 
 .shujuku-toggle-row {

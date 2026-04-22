@@ -483,9 +483,14 @@ export interface OtherSettings {
    */
   enableShujukuManualUpdateAfterConfirm: boolean;
   /**
-   * 编辑暂存（购物车）：规则/角色等先入队，统一检视后再写入 MVU。
+   * 编辑暂存（购物车）：默认开启；先入侧栏暂存再确认写入 MVU。关闭则本界面修改立即写入且不再经暂存队列。
    */
   enableEditStagingCart: boolean;
+  /**
+   * 「修改是否写入对话框」：是否将修改说明写入本界面下方输入框。
+   * 关闭时说明不进入输入框，暂存至发送并与 JSON Patch 同处一条 UpdateVariable。
+   */
+  copyStagingChangeHintsToInput: boolean;
   /** 主界面正文区顶部是否显示游戏时间条 */
   showGameTimeHud: boolean;
   /** 抢话/防抢话：世界书中四选一；默认一般防抢话 */
@@ -497,6 +502,7 @@ export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   enableShujukuPlotAdvance: true,
   enableShujukuManualUpdateAfterConfirm: true,
   enableEditStagingCart: true,
+  copyStagingChangeHintsToInput: true,
   showGameTimeHud: true,
   speechIntentWorldbookMode: 'anti_soft',
 };
