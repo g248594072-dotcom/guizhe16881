@@ -113,7 +113,7 @@ export function getRelationshipBetween(
  * @param viewerId - 查看者角色ID（当 isMainCharacter 为 true 时，此参数可为空或特殊值）
  * @param moment - 动态对象
  * @param allArchives - 所有角色档案
- * @param isMainCharacter - 是否主角（玩家视角），主角有特权看到 main_character 类型的动态
+ * @param isMainCharacter - 是否主角（玩家视角）
  * @param currentViewerArchive - 当前查看者的档案（用于关系验证）
  */
 export function canViewMoment(
@@ -123,28 +123,16 @@ export function canViewMoment(
   isMainCharacter: boolean = true,
   currentViewerArchive?: PhoneCharacterArchive
 ): boolean {
-  const { visibility, characterId: authorId } = moment;
+  const { visibility: rawVisibility, characterId: authorId } = moment;
+  /** 旧数据中的 main_character 已按好友可见规则处理 */
+  const visibility = rawVisibility === 'main_character' ? 'friends_only' : rawVisibility;
 
   // 1. 公开内容 -> 所有人可见
   if (visibility === 'public') {
     return true;
   }
 
-  // 2. 仅本人可见 (main_character) ->
-  //    - 主角（玩家）总是可以看到（特权视角）
-  //    - 作者本人可以看到（这是角色自己发的"仅本人可见"朋友圈）
-  //    - 其他角色看不到
-  if (visibility === 'main_character') {
-    if (isMainCharacter) {
-      return true; // 主角特权
-    }
-    if (viewerId === authorId) {
-      return true; // 作者本人
-    }
-    return false;
-  }
-
-  // 3. 好友可见 (friends_only) -> 检查查看者和作者的关系
+  // 2. 好友可见 (friends_only) -> 检查查看者和作者的关系
   if (visibility === 'friends_only') {
     if (isMainCharacter) {
       return true; // 主角可以看到所有好友可见内容
@@ -174,9 +162,8 @@ export function canViewMoment(
 
 /** 检查某角色是否有权评论某动态
  * 评论权限规则：
- * 1. 仅本人可见的动态：只有作者自己可以评论（其他角色根本不知道这条动态存在）
- * 2. 好友可见的动态：只有与作者认识的角色可以评论
- * 3. 主角（玩家）可以评论任何动态（特权）
+ * 1. 好友可见的动态：只有与作者认识的角色可以评论
+ * 2. 主角（玩家）可以评论任何动态（特权）
  */
 export function canCommentOnMoment(
   commenterId: string,
@@ -185,16 +172,12 @@ export function canCommentOnMoment(
   isMainCharacter: boolean = false,
   commenterArchive?: PhoneCharacterArchive
 ): boolean {
-  const { visibility, characterId: authorId } = moment;
+  const { visibility: rawVisibility, characterId: authorId } = moment;
+  const visibility = rawVisibility === 'main_character' ? 'friends_only' : rawVisibility;
 
   // 主角（玩家）特权：可以评论任何动态
   if (isMainCharacter) {
     return true;
-  }
-
-  // 仅本人可见的动态：只有作者自己可以评论
-  if (visibility === 'main_character') {
-    return commenterId === authorId;
   }
 
   // 公开或好友可见：评论者必须和作者认识
@@ -229,7 +212,7 @@ export function getVisibilityLabel(visibility: MomentVisibility): string {
     case 'friends_only':
       return '好友可见';
     case 'main_character':
-      return '仅本人可见';
+      return '好友可见';
     default:
       return '';
   }

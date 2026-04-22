@@ -9,6 +9,9 @@ import { requestCharacterArchiveFromShell, syncCharacterAnalysisToWorldbook } fr
 import { loadWeChatThreadForScope } from '../weChatStorage';
 import { getChatScopeId } from '../tavernPhoneBridge';
 import { getTavernContextForAnalysis } from '../chatContext';
+import { getMomentsByCharacter } from '../momentsIndexedDb';
+import { extractMomentContentForDisplay } from '../utils/momentContentDisplay';
+import type { Moment } from '../types/moments';
 
 /** 分析结果（写入 MVU 变量）- 完整角色档案 */
 export interface CharacterAnalysisResult {
@@ -79,6 +82,9 @@ interface CharacterListItem {
   updatedAt: string;
 }
 
+/** 写入分析/动态提示词时，每位角色最多带几条朋友圈（新→旧） */
+const MOMENTS_CONTEXT_LIMIT = 15;
+
 /** 角色分析器单例 */
 class CharacterAnalyzer {
   private callApi: CallAPI | null = null;
@@ -130,8 +136,10 @@ class CharacterAnalyzer {
       const tavernContext = getTavernContextForAnalysis(2);
       console.log(`[analyzer] 读取到 ${tavernContext.length} 层酒馆正文用于分析`);
 
+      const { promptBlock: momentsPromptBlock } = await this.loadMomentsContextForCharacter(characterId);
+
       // 构建分析提示词（包含聊天记录上下文）
-      const prompt = this.buildAnalysisPrompt(characterName, profile, recentMessages, tavernContext);
+      const prompt = this.buildAnalysisPrompt(characterName, profile, recentMessages, tavernContext, momentsPromptBlock);
       const raw = await this.callApi(prompt, {
         apiBaseUrl: (window as unknown as Record<string, string>).__PHONE_API_BASE__ || '',
         apiKey: (window as unknown as Record<string, string>).__PHONE_API_KEY__ || '',
@@ -246,12 +254,15 @@ class CharacterAnalyzer {
       const tavernContext = getTavernContextForAnalysis(3);
       console.log(`[analyzer] 读取到 ${tavernContext.length} 层酒馆正文用于动态分析`);
 
+      const { promptBlock: momentsPromptBlock, worldbookAppend: momentsWorldbookAppend } =
+        await this.loadMomentsContextForCharacter(characterId);
+
       // 使用预计算的关键词（从角色档案分析传入），如果没有则自行提取
       const keywords = precomputedKeywords ?? this.extractCharacterKeywords(profile, characterName);
       console.log(`[analyzer] 使用关键词: ${keywords}`);
 
       // 构建动态分析提示词
-      const prompt = this.buildDynamicsPrompt(characterName, profile, recentMessages, tavernContext);
+      const prompt = this.buildDynamicsPrompt(characterName, profile, recentMessages, tavernContext, momentsPromptBlock);
       console.log('[analyzer] 动态分析提示词长度:', prompt.length);
       console.log('[analyzer] 动态分析提示词前200字符:', prompt.substring(0, 200));
 
@@ -272,8 +283,8 @@ class CharacterAnalyzer {
       }
       console.log('[analyzer] 动态分析结果解析成功:', result);
 
-      // 同步到世界书 - 动态报告
-      const dynamicsContent = this.formatDynamicsForWorldbook(result);
+      // 同步到世界书 - 动态报告（底部附带朋友圈摘录）
+      const dynamicsContent = this.formatDynamicsForWorldbook(result, momentsWorldbookAppend);
       const wbResult = await syncCharacterAnalysisToWorldbook(
         `${characterId}_dynamics`,
         {
@@ -429,12 +440,48 @@ class CharacterAnalyzer {
     return cleanKeywords.join(',');
   }
 
+  /** 读取该角色朋友圈：注入分析提示词，并可选写入世界书「近期动态」条目底部 */
+  private async loadMomentsContextForCharacter(characterId: string): Promise<{
+    promptBlock: string;
+    worldbookAppend: string;
+  }> {
+    try {
+      const list = await getMomentsByCharacter(characterId);
+      const recent = list.slice(0, MOMENTS_CONTEXT_LIMIT);
+      if (recent.length === 0) {
+        return {
+          promptBlock: '（暂无该角色的朋友圈动态）',
+          worldbookAppend: '',
+        };
+      }
+      console.info(`[analyzer] 已加载 ${recent.length} 条朋友圈用于分析与世界书摘录`);
+      const block = recent.map((m, i) => this.formatMomentLineForContext(m, i + 1)).join('\n\n');
+      return { promptBlock: block, worldbookAppend: block };
+    } catch (e) {
+      console.warn('[analyzer] 读取朋友圈失败:', e);
+      return {
+        promptBlock: '（读取朋友圈失败，分析时可忽略此项）',
+        worldbookAppend: '',
+      };
+    }
+  }
+
+  private formatMomentLineForContext(m: Moment, index: number): string {
+    const text = extractMomentContentForDisplay(m.content).trim() || '（无正文）';
+    const timeParts = [m.gameDate, m.gameTime].filter(Boolean);
+    const timeLabel = timeParts.length ? `（${timeParts.join(' ')}）` : '';
+    const loc = m.location?.trim() ? `｜定位：${m.location.trim()}` : '';
+    const sup = m.selfJustification?.trim() ? `\n  补充：${m.selfJustification.trim()}` : '';
+    return `【${index}】${timeLabel}类型 ${m.contentType}${loc}\n正文：${text}${sup}`;
+  }
+
   /** 构建动态分析提示词 */
   private buildDynamicsPrompt(
     characterName: string,
     profile: Record<string, unknown>,
     chatHistory: Array<{ role: string; content: string; time?: number }> = [],
-    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = []
+    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = [],
+    momentsContext: string = '（暂无该角色的朋友圈动态）',
   ): string {
     const profileJson = JSON.stringify(profile, null, 2);
 
@@ -472,8 +519,13 @@ ${chatContext}
 ${tavernContextStr}
 \`\`\`
 
+## 该角色近期朋友圈动态（半公开社交，新→旧节选）
+\`\`\`
+${momentsContext}
+\`\`\`
+
 ## 任务
-请结合角色档案和近期互动记录，分析该角色在最近一段时间内的动态变化。输出符合以下 JSON 格式的动态分析报告：
+请结合角色档案、微信聊天、酒馆正文与**朋友圈**中的语气与事件，分析该角色在最近一段时间内的动态变化。若朋友圈与聊天/正文有情绪或话题上的呼应或反差，请在分析中体现。输出符合以下 JSON 格式的动态分析报告：
 
 \`\`\`json
 {
@@ -489,7 +541,7 @@ ${tavernContextStr}
 注意：
 - 只输出 JSON，不要有其他内容
 - 分析要具体、有细节，不要泛泛而谈
-- 要结合聊天记录和酒馆正文中发生的具体事件
+- 要结合聊天记录、酒馆正文与朋友圈中可观察到的具体表达
 - 体现角色的成长、变化或心理转折
 - 语言风格要符合角色的性格设定`;
   }
@@ -571,8 +623,13 @@ ${tavernContextStr}
     }
   }
 
-  /** 格式化动态报告为世界书内容 */
-  private formatDynamicsForWorldbook(result: CharacterDynamicsResult): string {
+  /** 格式化动态报告为世界书内容（朋友圈摘录固定附在条目最下方） */
+  private formatDynamicsForWorldbook(result: CharacterDynamicsResult, momentsWorldbookAppend: string): string {
+    const momentsTail =
+      momentsWorldbookAppend.trim().length > 0
+        ? `\n\n---\n【朋友圈摘录】（角色自发动态，新→旧节选）\n${momentsWorldbookAppend.trim()}`
+        : '';
+
     return `【${result.characterName}的近期动态】
 
 行为变化：
@@ -588,7 +645,7 @@ ${result.languageStyle || '（暂无变化记录）'}
 ${result.personalGoal || '（暂无目标记录）'}
 
 ---
-生成时间：${new Date(result.generatedAt).toLocaleString('zh-CN')}`;
+生成时间：${new Date(result.generatedAt).toLocaleString('zh-CN')}${momentsTail}`;
   }
 
   /** 获取角色基础档案 */
@@ -608,7 +665,8 @@ ${result.personalGoal || '（暂无目标记录）'}
     characterName: string,
     profile: Record<string, unknown>,
     chatHistory: Array<{ role: string; content: string; time?: number }> = [],
-    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = []
+    tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = [],
+    momentsContext: string = '（暂无该角色的朋友圈动态）',
   ): string {
     const profileJson = JSON.stringify(profile, null, 2);
 
@@ -646,8 +704,13 @@ ${chatContext}
 ${tavernContextStr}
 \`\`\`
 
+## 该角色近期朋友圈动态（半公开社交，新→旧节选）
+\`\`\`
+${momentsContext}
+\`\`\`
+
 ## 任务
-请结合角色档案和聊天记录，分析该角色的完整画像。输出符合以下 JSON 格式的完整角色档案。如果是首次分析，生成完整的档案内容；如果是后续分析，更新"当前状态"部分：
+请结合角色档案、微信聊天、酒馆正文与**朋友圈**中的表达，分析该角色的完整画像（朋友圈可反映对外人设、情绪发泄、阴阳吐槽、定位与自我辩解等）。输出符合以下 JSON 格式的完整角色档案。如果是首次分析，生成完整的档案内容；如果是后续分析，更新"当前状态"部分：
 
 \`\`\`json
 {
@@ -706,7 +769,8 @@ ${tavernContextStr}
 - 性格要分表面和内在两层描述
 - 背景故事要交代清楚角色的出身和当前处境
 - 说话风格要具体，并给出3-5个日常对话示例
-- 性癖和敏感点开发的描述要足够详细（参考档案中的风格；**敏感点开发**与旧键「敏感部位」同义）`;
+- 性癖和敏感点开发的描述要足够详细（参考档案中的风格；**敏感点开发**与旧键「敏感部位」同义）
+- 若朋友圈与档案/聊天有反差（如表面乖巧、票圈带刺），应在性格或说话风格中有所体现`;
   }
 
   /** 解析分析结果 - 支持完整档案格式 */

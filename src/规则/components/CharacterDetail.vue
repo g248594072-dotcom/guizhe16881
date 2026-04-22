@@ -47,10 +47,6 @@
             <i class="fa-solid fa-trash"></i>
             <span>删除角色</span>
           </button>
-          <button id="btn-edit-basic" class="edit-btn" @click="startEditBasic">
-            <i class="fa-solid fa-pen"></i>
-            <span>编辑基础信息</span>
-          </button>
         </div>
       </div>
     </div>
@@ -61,6 +57,15 @@
         <div class="card-title">
           <i class="fa-solid fa-chart-line"></i>
           <h3>生理指标</h3>
+          <button
+            v-if="!isEditingBasic"
+            id="btn-edit-basic"
+            type="button"
+            class="edit-mini-btn"
+            @click="startEditBasic"
+          >
+            编辑
+          </button>
         </div>
         <div v-if="isEditingBasic" class="stats-list edit-stats">
           <div class="stat-row edit">
@@ -1728,35 +1733,6 @@ const emit = defineEmits<{
 
   .profile-info .name-row h2 {
     color: #18181b;
-  }
-}
-
-.edit-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-  background: rgba(255, 255, 255, 0.05);
-  color: #e4e4e7;
-  white-space: nowrap;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-}
-
-:global(.light) .edit-btn {
-  background: rgba(0, 0, 0, 0.05);
-  color: #27272a;
-
-  &:hover {
-    background: rgba(0, 0, 0, 0.1);
   }
 }
 

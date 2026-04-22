@@ -49,15 +49,15 @@ const LIGHT_INSPIRATIONS: Inspiration[] = [
 ];
 
 const DARK_INSPIRATIONS: Inspiration[] = [
-  { title: '嫉妒与掩饰', hint: '具体嫉妒什么、表面如何装没事；内心独白。', dark: true },
-  { title: '报复幻想', hint: '想象报复但不会真做；合理化自己的恶意。', dark: true },
-  { title: '隐藏欲望', hint: '压抑了什么、为什么不敢说。', dark: true },
+  { title: '嫉妒与掩饰', hint: '具体嫉妒什么、票圈用自嘲或泛吐槽带过，别写成点名训话。', dark: true },
+  { title: '报复幻想', hint: '想象报复但不会真做；好友可见的冷幽默一句。', dark: true },
+  { title: '隐藏欲望', hint: '压抑了什么；用暗示、自嘲或歌词体，仍像发圈。', dark: true },
   { title: '愤世一小句', hint: '对现象的不爽，别写成论文。', dark: true },
-  { title: '自我怀疑', hint: '对自己哪一点不满意；私密语气。', dark: true },
+  { title: '自我怀疑', hint: '对自己哪一点不满意；丧得短、像票圈而非日记。', dark: true },
   { title: '隐秘厌恶', hint: '表面友好内心翻白眼；带一点幽默的毒。', dark: true },
-  { title: '未说出口的好感', hint: '为什么不敢承认；别扭心理。', dark: true },
+  { title: '未说出口的好感', hint: '为什么不敢承认；别扭心理，话里有话。', dark: true },
   { title: '腹黑玩笑', hint: '元气人设也可：带刺的玩笑、阴阳怪气但不颓废长文。', dark: true },
-  { title: '恶意小念头', hint: '一闪而过的坏心思与自我辩解。', dark: true },
+  { title: '恶意小念头', hint: '一闪而过的坏心思；发完自己都想删那种。', dark: true },
   { title: '独处阴暗面', hint: '只想一个人烂在床上/谁也别理；短促有力。', dark: true, skipIfUpbeat: true },
 ];
 

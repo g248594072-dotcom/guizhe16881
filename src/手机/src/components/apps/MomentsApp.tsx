@@ -1,12 +1,10 @@
 /**
  * 朋友圈应用组件
- * 【角色朋友圈】私密社交媒体，支持双重视图：
+ * 【角色朋友圈】模拟微信朋友圈，支持双重视图：
  * 1. 全局动态流（Global Feed）- 类似微信朋友圈首页
  * 2. 角色个人主页（Character Profile）- 单个角色的动态主页
  *
- * 特殊功能：
- * - 主角（玩家）特权视角：可以看到所有"仅本人可见"的阴暗想法
- * - 基于角色关系的评论权限：只有认识的角色才能评论
+ * - 动态均为好友圈可见规则（含腹黑/阴阳类语气）；基于角色关系的查看与评论权限
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -83,7 +81,7 @@ function CharacterSelectorModal({
             </div>
             <div className="flex-1 text-left">
               <p className="font-semibold text-gray-900">主角（玩家）视角</p>
-              <p className="text-xs text-gray-500">可以看到所有动态，包括"仅本人可见"的阴暗想法</p>
+              <p className="text-xs text-gray-500">可以看到所有动态（含按关系过滤时他人不可见的条目）</p>
             </div>
             {selectedId === null && <Sparkles size={20} className="text-blue-500" />}
           </button>
@@ -443,7 +441,6 @@ function CommentInput({
 function MomentCard({
   moment,
   currentViewerId,
-  isMainCharacter,
   allCharacters,
   onLike,
   onAddComment,
@@ -454,7 +451,6 @@ function MomentCard({
 }: {
   moment: Moment;
   currentViewerId: string | null;
-  isMainCharacter: boolean;
   allCharacters: PhoneCharacterArchive[];
   onLike: (momentId: string) => void;
   onAddComment: (momentId: string, content: string) => void;
@@ -504,9 +500,6 @@ function MomentCard({
     setShowActions(false);
   };
 
-  // 判断是否是"仅本人可见"的动态且主角在查看（特权视角）
-  const isPrivilegedView = isMainCharacter && moment.visibility === 'main_character';
-
   // 获取角色头像
   const authorChar = allCharacters.find(c => c.id === moment.characterId);
   const displayContent = extractMomentContentForDisplay(moment.content);
@@ -545,13 +538,6 @@ function MomentCard({
             {moment.characterName}
           </button>
 
-          {/* 特权标识（仅主角可见） */}
-          {isPrivilegedView && (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded">
-              私密
-            </span>
-          )}
-
           {/* 动态内容：展示层剥离误存的 JSON 外壳，避免截断 JSON 整段显示 */}
           <div className="mt-1 text-[15px] text-gray-800 leading-relaxed">
             <span className={`whitespace-pre-wrap wrap-break-word ${!expanded && displayContent.length > 150 ? 'line-clamp-3' : ''}`}>
@@ -568,11 +554,11 @@ function MomentCard({
             )}
           </div>
 
-          {/* 自我辩解（仅主角可见） */}
-          {isMainCharacter && moment.selfJustification && expanded && (
-            <div className="mt-2 p-2 bg-purple-50 rounded text-sm">
-              <span className="text-purple-600 font-medium">内心独白：</span>
-              <span className="text-purple-800 italic">{moment.selfJustification}</span>
+          {/* 生成侧可选的补充旁白（展开后可见） */}
+          {moment.selfJustification && expanded && (
+            <div className="mt-2 p-2 bg-gray-50 rounded text-sm">
+              <span className="text-gray-500 font-medium">补充：</span>
+              <span className="text-gray-700 italic">{moment.selfJustification}</span>
             </div>
           )}
 
@@ -1052,7 +1038,6 @@ export default function MomentsApp({
                     key={moment.id}
                     moment={moment}
                     currentViewerId={selectedCharacterId}
-                    isMainCharacter={selectedCharacterId === null}
                     allCharacters={characters}
                     onLike={handleLike}
                     onAddComment={handleAddComment}

@@ -1,18 +1,18 @@
 /**
  * 朋友圈类型定义
- * 模拟角色的私密社交媒体动态
+ * 模拟角色的社交媒体动态（好友圈可见为主）
  */
 
 /** 可见性类型 */
 export type MomentVisibility =
   | 'public'           // 公开 - 所有人可见
   | 'friends_only'     // 好友可见 - 基于角色关系
-  | 'main_character';  // 仅本人可见（但主角也有权限看到）- 显示"仅本人可见"标签
+  | 'main_character';  // 兼容旧存档：历史上「仅本人可见」，现按好友可见规则展示
 
-/** 动态内容类型（决定可见性和风格） - 扩展更多样化类型 */
+/** 动态内容类型（决定生成风格；可见性统一为好友圈） */
 export type MomentContentType =
-  | 'daily_life'      // 日常生活 - 好友可见
-  | 'dark_thought'    // 阴暗想法 - 仅本人可见（但主角特权可窥探）
+  | 'daily_life'      // 日常生活
+  | 'dark_thought'    // 腹黑/阴阳/带刺等语气（仍好友圈可见）
   | 'venting'         // 吐槽抱怨 - 好友可见
   | 'location_checkin' // 定位打卡 - 好友可见
   | 'mood_share'      // 心情分享 - 好友可见
