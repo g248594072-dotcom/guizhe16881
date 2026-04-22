@@ -16,6 +16,7 @@ import type {
   MomentVisibility,
 } from './types/moments';
 import { areCharactersConnected, getRelationshipBetween } from './relationshipValidator';
+import { pickMomentInspirationBlock } from './momentThemeCatalog';
 
 /** 解析后朋友圈「content」正文字符上限（超出由程序截断；与 API max_tokens 无关） */
 const MOMENT_PARSED_CONTENT_MAX_CHARS = 200;
@@ -188,6 +189,11 @@ function buildMomentPrompt(
 
   const visibility = getVisibilityByContentType(contentType);
   const subtypeDesc = getSubtypeDescription(contentType);
+  const inspirationBlock = pickMomentInspirationBlock(archive, contentType);
+  const contentAudienceNote =
+    contentType === 'dark_thought'
+      ? '本条为「仅本人可见」内心碎片/独白口吻，不是对外公开展示。'
+      : '读起来须像**好友圈可见的配文**，而非私聊。';
 
   const contentTypeDescriptions: Record<MomentContentType, string> = {
     daily_life: '日常生活分享 - 记录普通日常、生活感悟、轻松的吐槽。多样性：美食、运动、购物、工作学习、宠物、天气、小确幸、周末计划、深夜感慨等',
@@ -256,6 +262,7 @@ ${safePersonality}
 **当前状态**：
 - 内心想法：${safeThought}
 - 生理状态：${safePhysio}
+- **内心想法用法**：仅供情绪与表达欲参考，**禁止**当剧本逐句抄进朋友圈正文；请从分享/炫耀/吐槽/求助等动机出发自己组织题材。
 
 **人设符合性检查清单**（生成前必须确认）：
 1. 这条动态是否符合上述性格特点？
@@ -285,6 +292,20 @@ ${context}
 
 ${todayEvents ? `【今日发生的事件】\n${todayEvents}` : ''}
 ${specificGuidance}
+
+【朋友圈创作重心】
+- 正文核心是 ${safeName} **当下想分享、想表达** 的内容；常见社交动机包括 **分享、炫耀、吐槽、求助**（可单独或组合），请择一二作为本条主情绪，**用符合人设的方式**写出来。
+- 下列动机仅为帮助打开思路，**题材与具体话题可自由**，不必落在任何示例的字面场景上。
+
+【灵感参考（随机示例）】
+${inspirationBlock}
+
+【反套路与内心想法】
+- **禁止**把每条都写成「下课—老师—天台—便当—某些人」的换皮；若 \`todayEvents\` 空泛，不要硬编连续约会通牒梗。
+- 内心想法 = **表达欲与情绪的来源之一**，不是正文剧本；若与灵感示例不一致，**以角色此刻更自然想发的那条朋友圈为准**。
+
+【人设与语气一致】
+- \`content\` 的语气、梗的类型须符合档案：多愁善感型避免强励志鸡汤、强行正能量口号体；元气开朗型避免长篇伤感颓废文学体；在**不违背人设语气**的前提下话题可自由。
 
 【生成要求 - 确保多样性】
 1. **内容类型**：${contentType} - ${contentTypeDescriptions[contentType]}
@@ -325,7 +346,7 @@ ${specificGuidance}
 【输出格式 — 硬性要求】
 1. **直接输出合法 JSON 对象**：第一个字符必须是「{」，最后一个字符必须是「}」。**不要使用** markdown 的 \`\`\`json 代码围栏包裹（避免截断时无法解析）；不要输出围栏或说明文字。
 2. **JSON 必须完整、可被严格解析**：所有双引号成对；字符串内禁止未转义的裸换行，换行一律写成 \\n；所有键名拼写正确；必须以「}」收尾，**禁止**半截 JSON、未闭合的引号、缺尾的括号。
-3. **「content」朋友圈正文**：约 **50～200 字**（宁短勿超长），必须是 ${safeName} 的口吻；读起来须像**好友圈可见的配文**，而非私聊；**必须在上述字数规定范围内写完本条动态的全部意思**，可多句，但每句须完结；**禁止**写到一半、戛然而止、悬空引号、以「其实」「那个谁」等吊胃口却未收束、或明显因长度被掐断；若篇幅紧张，请缩短用词，**优先保证 JSON 与 \`content\` 字符串的引号完整闭合**。
+3. **「content」朋友圈正文**：约 **50～200 字**（宁短勿超长），必须是 ${safeName} 的口吻；${contentAudienceNote}**必须在上述字数规定范围内写完本条动态的全部意思**，可多句，但每句须完结；**禁止**写到一半、戛然而止、悬空引号、以「其实」「那个谁」等吊胃口却未收束、或明显因长度被掐断；若篇幅紧张，请缩短用词，**优先保证 JSON 与 \`content\` 字符串的引号完整闭合**。
 4. **提取用键名必须字面齐全**（程序按字段名解析）：\`content\`、\`contentType\`、\`visibility\`、\`location\`、\`selfJustification\` 五个键缺一不可，拼写与大小写须与下述骨架一致。无定位时 \`location\` 填 \`""\`；无自我辩解时 \`selfJustification\` 填 \`""\`。
 
 骨架（替换省略号为实际内容）：
@@ -383,7 +404,10 @@ export async function generateMoment(
         { role: 'system', content: prompt },
         {
           role: 'user',
-          content: `请为 ${characterName} 生成一条朋友圈动态，游戏日期：${gameDate}。严格遵守 system：正文约50～200字、像发给好友圈看的展示/心情而非私聊点名；JSON 须合法完整、仅输出一段 JSON。`,
+          content:
+            contentType === 'dark_thought'
+              ? `请为 ${characterName} 生成一条「仅本人可见」的朋友圈内心动态，游戏日期：${gameDate}。严格遵守 system：正文约50～200字、内心独白口吻；JSON 须合法完整、仅输出一段 JSON。`
+              : `请为 ${characterName} 生成一条朋友圈动态，游戏日期：${gameDate}。严格遵守 system：正文约50～200字、像发给好友圈看的分享/炫耀/吐槽/求助动机，非私聊点名；可参考灵感示例但不套用字面；JSON 须合法完整、仅输出一段 JSON。`,
         },
       ],
       temperature: 0.85,
