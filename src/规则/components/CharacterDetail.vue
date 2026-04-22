@@ -636,6 +636,36 @@ const mergedDisplayStat = computed(() => {
   return getRulesMergedStatSnapshotForDisplay();
 });
 
+/**
+ * 名称解析用快照：`getRulesMergedStatSnapshotForDisplay` 以 `getVariables` 为准，
+ * 与 Pinia 内 `data` 在极少数时机可能不一致；本界面又以 store 为展示真源，故对
+ * 「区域/建筑/活动/区域规则」与 store 再 **浅层合并**（同 id 以 store 覆盖），
+ * 保证 REG/BLD/ACT 能映射到 `名称` / `活动名称`，不会一直回退成裸 id。
+ */
+function mvuShallowMergeRecordLayer(a: unknown, b: unknown): Record<string, unknown> {
+  const oa = a != null && typeof a === 'object' && !Array.isArray(a) ? (a as Record<string, unknown>) : {};
+  const ob = b != null && typeof b === 'object' && !Array.isArray(b) ? (b as Record<string, unknown>) : {};
+  if (Object.keys(oa).length === 0) {
+    return { ...ob };
+  }
+  if (Object.keys(ob).length === 0) {
+    return { ...oa };
+  }
+  return { ...oa, ...ob };
+}
+
+const statSnapForDictionaries = computed((): Record<string, unknown> => {
+  const live = mergedDisplayStat.value;
+  const st = dataStore.data as unknown as Record<string, unknown>;
+  return {
+    ...live,
+    区域数据: mvuShallowMergeRecordLayer(live['区域数据'], st['区域数据']),
+    建筑数据: mvuShallowMergeRecordLayer(live['建筑数据'], st['建筑数据']),
+    活动数据: mvuShallowMergeRecordLayer(live['活动数据'], st['活动数据']),
+    区域规则: mvuShallowMergeRecordLayer(live['区域规则'], st['区域规则']),
+  };
+});
+
 /** 与名称解析同源：从合并快照取当前角色的「当前位置」「参与活动记录」 */
 function getCharacterRecordFromSnap(
   snap: Record<string, unknown>,
@@ -787,7 +817,7 @@ watch(
 );
 
 const locationLine = computed(() => {
-  const snap = mergedDisplayStat.value;
+  const snap = statSnapForDictionaries.value;
   const fromSnap = locationParticipationFromSnap.value;
   const a = fromSnap ?? {
     区域ID: displayLocation.value.区域ID,
@@ -805,7 +835,7 @@ const locationLine = computed(() => {
 });
 
 const participationRows = computed(() => {
-  const snap = mergedDisplayStat.value;
+  const snap = statSnapForDictionaries.value;
   const fromSnap = locationParticipationFromSnap.value;
   const map =
     fromSnap && Object.keys(fromSnap.参与活动记录).length > 0
@@ -827,7 +857,7 @@ const participationRows = computed(() => {
 /** 自 MVU「建筑数据.<建筑ID>.当前角色」读取在场标识（兼容 true / "在场" / 1） */
 const buildingOccupantsSummary = computed(() => {
   void stUserNameDisplayRev.value;
-  const snap = mergedDisplayStat.value;
+  const snap = statSnapForDictionaries.value;
   const fromSnap = locationParticipationFromSnap.value;
   const bid = String(fromSnap?.建筑ID ?? displayLocation.value.建筑ID ?? '').trim();
   if (!bid) return '';
