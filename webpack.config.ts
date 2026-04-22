@@ -3,7 +3,11 @@ import HtmlInlineScriptWebpackPlugin from 'html-inline-script-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import _ from 'lodash';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
+<<<<<<< HEAD
 import { ChildProcess, exec, execSync, spawn } from 'node:child_process';
+=======
+import { ChildProcess, exec, spawn } from 'node:child_process';
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -20,6 +24,7 @@ import WebpackObfuscator from 'webpack-obfuscator';
 const require = createRequire(import.meta.url);
 const HTMLInlineCSSWebpackPlugin = require('html-inline-css-webpack-plugin').default;
 
+<<<<<<< HEAD
 const WEBPACK_ROOT = import.meta.dirname;
 
 /** 供前端角标：优先展示 Git 标签（git describe），避免用分支名 master/main 盖住 tag */
@@ -52,6 +57,8 @@ function getBuildVersion(): string {
 
 const BUILD_VERSION = getBuildVersion();
 
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
 interface Config {
   port: number;
   entries: Entry[];
@@ -84,11 +91,14 @@ function glob_script_files() {
   const results: string[] = [];
 
   fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
+<<<<<<< HEAD
     .filter(file => {
       const n = file.replace(/\\/g, '/');
       // 勿匹配 node_modules 内包的 index.js；勿匹配 Vite 子项目 src/手机（由 pnpm build:phone 单独构建）
       return !n.includes('/node_modules/') && !n.startsWith('src/手机/');
     })
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
     .filter(
       file => process.env.CI !== 'true' || !fs.readFileSync(path.join(import.meta.dirname, file)).includes('@no-ci'),
     )
@@ -229,6 +239,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
     experiments: {
       outputModule: true,
     },
+<<<<<<< HEAD
     // 开发勿用 eval-source-map：与 HtmlInlineScript 组合时会把巨量 inline map 写进 index.html（可达十 MB 级）。
     // 生产默认不产出 .map；需要排查生产问题时设置环境变量 TAVERN_HELPER_SOURCE_MAP=true 再构建。
     devtool:
@@ -239,6 +250,11 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         : 'eval-cheap-module-source-map',
     watchOptions: {
       ignored: ['**/dist', '**/node_modules', '**/src/手机/**'],
+=======
+    devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
+    watchOptions: {
+      ignored: ['**/dist', '**/node_modules'],
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
     },
     entry: path.join(import.meta.dirname, entry.script),
     target: 'browserslist',
@@ -343,11 +359,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             {
               resourceQuery: /url/,
               type: 'asset/inline',
+<<<<<<< HEAD
               exclude: [/(node_modules|\.ttf|\.otf|\.woff|\.woff2)$/],
             },
             {
               test: /\.(ttf|otf|woff|woff2)(\?url)?$/,
               type: 'asset/inline',
+=======
+              exclude: /node_modules/,
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
             },
             {
               test: /\.tsx?$/,
@@ -393,6 +413,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               test: /\.ya?ml$/,
               loader: 'yaml-loader',
             },
+<<<<<<< HEAD
             {
               test: /\.(ttf|otf|woff|woff2)$/,
               type: 'asset/resource',
@@ -400,6 +421,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 filename: 'fonts/[name][ext]',
               },
             },
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
           ].concat(
             entry.html === undefined
               ? ([
@@ -481,11 +504,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             filename: path.parse(entry.html).base,
             scriptLoading: 'module',
             cache: false,
+<<<<<<< HEAD
             // 仅收 HTML 模板里的空白与注释；不 minify 内联 JS/CSS，避免破坏 ESM / Tailwind
             minify:
               argv.mode === 'production'
                 ? { collapseWhitespace: true, removeComments: true, minifyCSS: false, minifyJS: false }
                 : false,
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
           }),
           new HtmlInlineScriptWebpackPlugin(),
           new MiniCssExtractPlugin(),
@@ -523,9 +549,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
         new webpack.DefinePlugin({
           __VUE_OPTIONS_API__: false,
+<<<<<<< HEAD
           __VUE_PROD_DEVTOOLS__: argv.mode === 'production' ? false : process.env.CI !== 'true',
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
           __APP_VERSION__: JSON.stringify(BUILD_VERSION),
+=======
+          __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
+          __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
         }),
       )
       .concat(
@@ -543,11 +574,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           : [],
       ),
     optimization: {
+<<<<<<< HEAD
       usedExports: true,
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
       minimize: true,
       minimizer: [
         argv.mode === 'production'
           ? new TerserPlugin({
+<<<<<<< HEAD
               extractComments: false,
               terserOptions: {
                 ecma: 2020,
@@ -559,6 +594,9 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                   pure_funcs: ['console.log', 'console.debug', 'console.trace'],
                 },
               },
+=======
+              terserOptions: { format: { quote_style: 1 }, mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] } },
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
             })
           : new TerserPlugin({
               extractComments: false,
@@ -629,6 +667,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       if (request in global) {
         return callback(null, 'var ' + global[request as keyof typeof global]);
       }
+<<<<<<< HEAD
 
       // 处理 @types/ 开头的类型定义模块
       // 这些是 TypeScript 类型声明，运行时不需要，返回空对象即可
@@ -636,6 +675,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         return callback(null, 'var {}');
       }
 
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
       const cdn = {
         sass: 'https://jspm.dev/sass',
       };

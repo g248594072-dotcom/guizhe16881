@@ -2,6 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
+<<<<<<< HEAD
       "name": "编译代码并调试酒馆网页 (Chrome，含手机)",
       "type": "chrome",
       "request": "launch",
@@ -19,6 +20,8 @@
       "skipFiles": ["**/jquery*.min.js", "**/node_modules/**"]
     },
     {
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
         "name": "编译代码并调试酒馆网页 (Chrome)",
       "type": "chrome",
       "request": "launch",
@@ -39,6 +42,7 @@
       ],
     },
     {
+<<<<<<< HEAD
       "name": "编译代码并调试酒馆网页 (Edge，含手机)",
       "type": "msedge",
       "request": "launch",
@@ -56,6 +60,8 @@
       "skipFiles": ["**/jquery*.min.js", "**/node_modules/**"]
     },
     {
+=======
+>>>>>>> 4e7451805c5655a416233e7632d1b0693b9cade6
       "name": "编译代码并调试酒馆网页 (Edge)",
       "type": "msedge",
       "request": "launch",
