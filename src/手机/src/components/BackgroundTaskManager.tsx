@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Minimize2, Maximize2, ChevronDown, ChevronUp, X, Loader2, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen, Newspaper } from 'lucide-react';
+import { Minimize2, ChevronDown, ChevronUp, X, Loader2, Check, CheckCircle2, AlertCircle, FileText, MessageSquare, Users, BookOpen, Newspaper } from 'lucide-react';
 
 /** 任务类型 */
 export type TaskType = 'character_analysis' | 'diary_generation' | 'forum_generation' | 'chat_generation' | 'moment_generation' | 'news_generation';
@@ -198,6 +198,9 @@ export default function BackgroundTaskManager() {
   const runningCount = tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
   const completedCount = tasks.filter(t => t.status === 'completed').length;
   const errorCount = tasks.filter(t => t.status === 'error').length;
+  /** 队列中已全部成功结束（无进行中、无失败）— 最小化条仅显示绿色圆 ✓ */
+  const allCompletedSuccessfully =
+    tasks.length > 0 && runningCount === 0 && errorCount === 0 && tasks.every(t => t.status === 'completed');
 
   // 如果没有任务，不显示
   if (tasks.length === 0) return null;
@@ -209,30 +212,42 @@ export default function BackgroundTaskManager() {
         <div className="fixed bottom-4 left-4 z-50 max-w-[calc(100%-2rem)]">
           <button
             onClick={() => setIsMinimized(false)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-all hover:scale-105 min-w-0 ${
-              runningCount > 0
-                ? 'bg-[#007AFF] text-white animate-pulse'
-                : 'bg-white text-gray-700'
-            }`}
-            title={`${runningCount}个进行中, ${completedCount}个已完成, ${errorCount}个错误`}
+            className={
+              allCompletedSuccessfully
+                ? 'flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-500 text-white shadow-lg transition-transform hover:scale-105 active:scale-95'
+                : `flex items-center gap-2 px-3 py-2 rounded-full shadow-lg transition-all hover:scale-105 min-w-0 ${
+                    runningCount > 0
+                      ? 'bg-[#007AFF] text-white animate-pulse'
+                      : 'bg-white text-gray-700'
+                  }`
+            }
+            title={
+              allCompletedSuccessfully
+                ? '全部任务已完成'
+                : `${runningCount}个进行中, ${completedCount}个已完成, ${errorCount}个错误`
+            }
+            type="button"
+            aria-label={allCompletedSuccessfully ? '全部任务已完成，点击查看' : '后台任务'}
           >
-            {runningCount > 0 ? (
-              <Loader2 size={18} className="animate-spin" />
+            {allCompletedSuccessfully ? (
+              <Check size={22} strokeWidth={2.75} className="text-white" aria-hidden />
             ) : (
-              <CheckCircle2 size={18} className="text-green-500" />
-            )}
-            <span className="text-sm font-medium truncate max-w-44">
-              {runningCount > 0 ? `${runningCount}进行中` : `${tasks.length}个任务`}
-            </span>
-            {completedCount > 0 && !runningCount && (
-              <span className="shrink-0 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
-                完成
-              </span>
-            )}
-            {errorCount > 0 && (
-              <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">
-                {errorCount}错误
-              </span>
+              <>
+                {runningCount > 0 ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={18} className="text-green-500" />
+                )}
+                <span className="text-sm font-medium truncate max-w-44">
+                  {runningCount > 0 ? `${runningCount}进行中` : `${tasks.length}个任务`}
+                </span>
+                {completedCount > 0 && !runningCount && !allCompletedSuccessfully && (
+                  <span className="shrink-0 text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">完成</span>
+                )}
+                {errorCount > 0 && (
+                  <span className="ml-1 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">{errorCount}错误</span>
+                )}
+              </>
             )}
           </button>
         </div>

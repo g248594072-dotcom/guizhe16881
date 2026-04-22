@@ -158,6 +158,7 @@ import {
   type WeChatMeProfile,
 } from '../../weChatMeProfile';
 import {
+  PHONE_WECHAT_PINNED_CHANGED,
   addPinnedContact,
   loadPinnedContacts,
   mergePinnedWithContextAvatars,
@@ -439,6 +440,12 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     void initWeChatStorage();
+  }, []);
+
+  useEffect(() => {
+    const bump = () => setPinnedRev(r => r + 1);
+    window.addEventListener(PHONE_WECHAT_PINNED_CHANGED, bump);
+    return () => window.removeEventListener(PHONE_WECHAT_PINNED_CHANGED, bump);
   }, []);
 
   // 初始化微信线程导出监听（供壳脚本世界书同步使用）
@@ -948,7 +955,7 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
     void (async () => {
       try {
         const archive = await loadCharacterArchiveById(c.id);
-        if (archive) {
+        if (!archive) {
           const scheduler = getAnalysisScheduler();
           scheduler.addTask({
             type: 'ANALYZE_CHARACTER',
@@ -956,7 +963,9 @@ export default function WeChatApp({ onClose }: { onClose: () => void }) {
             characterId: c.id,
             characterName: c.displayName,
           });
-          console.log('[WeChatApp] 为新添加的联系人触发分析:', c.displayName);
+          console.log('[WeChatApp] 档案中尚无该角色，已排队分析:', c.displayName);
+        } else {
+          console.info('[WeChatApp] 已有角色档案，跳过自动分析:', c.displayName);
         }
       } catch (e) {
         console.warn('[WeChatApp] 新联系人分析失败:', e);

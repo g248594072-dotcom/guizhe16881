@@ -1,5 +1,48 @@
 import type { TavernPhoneWeChatContact } from './tavernPhoneBridge';
+import type { PhoneCharacterArchive } from './characterArchive/bridge';
 import { resolveChatScopeId } from './weChatScope';
+
+/** 与微信「从变量添加」一致：供其它模块在分析完成后钉选联系人 */
+export const PHONE_WECHAT_PINNED_CHANGED = 'phone-wechat-pinned-changed';
+
+function personalityRecordToString(p: Record<string, string>): string {
+  return Object.entries(p)
+    .filter(([, v]) => typeof v === 'string' && String(v).trim())
+    .map(([k, v]) => `${k}: ${String(v).trim()}`)
+    .join('\n');
+}
+
+/** 将档案列表项转为微信联系人（不含壳侧 stCharacterName，与手动添加时一致由上下文合并） */
+export function phoneArchiveToWeChatContact(archive: PhoneCharacterArchive): TavernPhoneWeChatContact {
+  return {
+    id: archive.id,
+    displayName: archive.name,
+    avatarUrl: archive.avatarUrl?.trim() || undefined,
+    personality: personalityRecordToString(archive.personality),
+    thought: String(archive.currentThought ?? '').trim(),
+  };
+}
+
+/**
+ * 将尚未出现在钉选中的角色加入当前聊天的微信会话列表（不触发分析）。
+ * @returns 新钉选人数
+ */
+export function pinArchivesToWeChatIfMissing(chatScopeId: string, archives: PhoneCharacterArchive[]): number {
+  const scope = resolveChatScopeId(chatScopeId);
+  const cur = loadPinnedContacts(scope);
+  const existing = new Set(cur.map(c => c.id));
+  let n = 0;
+  for (const a of archives) {
+    if (existing.has(a.id)) continue;
+    addPinnedContact(scope, phoneArchiveToWeChatContact(a));
+    existing.add(a.id);
+    n++;
+  }
+  if (n > 0) {
+    window.dispatchEvent(new CustomEvent(PHONE_WECHAT_PINNED_CHANGED, { detail: { scope } }));
+  }
+  return n;
+}
 
 /** 升级前：全局钉选（无聊天隔离）；首次按作用域读取时迁入当前 scope 并删除旧键 */
 const LEGACY_PINNED_KEY = 'tavern-phone:wechat-pinned-contacts';

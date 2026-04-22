@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, Loader2, Smartphone } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, Loader2, Sliders, Smartphone } from 'lucide-react';
 import { TAVERN_PHONE_UI_LABEL, TAVERN_PHONE_UI_VERSION } from '../../tavernPhoneVersion';
 import {
   loadTavernPhoneApiConfig,
@@ -28,6 +28,11 @@ export default function SettingsApp({
   const [modelsError, setModelsError] = useState('');
   const [modelOptions, setModelOptions] = useState<string[]>([]);
 
+  const modelSelectBinding = useMemo(() => {
+    const m = String(cfg.model || '').trim();
+    return modelOptions.includes(m) ? m : '';
+  }, [cfg.model, modelOptions]);
+
   useEffect(() => {
     saveTavernPhoneApiConfig(cfg);
   }, [cfg]);
@@ -48,19 +53,18 @@ export default function SettingsApp({
   const handleTest = async () => {
     setTestState('loading');
     setTestMessage('');
-    const cfg = getTavernPhoneApiConfig();
-
-    if (!cfg.apiBaseUrl.trim()) {
+    const c = getTavernPhoneApiConfig();
+    if (!c.apiBaseUrl.trim()) {
       setTestMessage('请先填写 API URL');
       setTestState('error');
       return;
     }
-    if (!cfg.apiKey.trim()) {
+    if (!c.apiKey.trim()) {
       setTestMessage('请先填写 API Key');
       setTestState('error');
       return;
     }
-    const r = await testOpenAiCompatibleConnection(cfg.apiBaseUrl, cfg.apiKey, false);
+    const r = await testOpenAiCompatibleConnection(c.apiBaseUrl, c.apiKey, false);
     setTestMessage(r.message);
     setTestState(r.ok ? 'success' : 'error');
   };
@@ -70,15 +74,14 @@ export default function SettingsApp({
     setModelsError('');
     setModelOptions([]);
     try {
-      const cfg = getTavernPhoneApiConfig();
-
-      if (!cfg.apiBaseUrl.trim()) {
+      const c = getTavernPhoneApiConfig();
+      if (!c.apiBaseUrl.trim()) {
         throw new Error('请先填写 API URL');
       }
-      if (!cfg.apiKey.trim()) {
+      if (!c.apiKey.trim()) {
         throw new Error('请先填写 API Key');
       }
-      const ids = await fetchOpenAiCompatibleModelIds(cfg.apiBaseUrl, cfg.apiKey, false);
+      const ids = await fetchOpenAiCompatibleModelIds(c.apiBaseUrl, c.apiKey, false);
       setModelOptions(ids);
       if (ids.length === 0) {
         setModelsError('列表为空（接口返回 0 个模型）');
@@ -89,6 +92,19 @@ export default function SettingsApp({
     } finally {
       setModelsLoading(false);
     }
+  };
+
+  const handleSaveApi = () => {
+    saveTavernPhoneApiConfig(cfg);
+    setTestMessage('设置已保存');
+    setTestState('success');
+    setTimeout(() => setTestState('idle'), 2000);
+  };
+
+  const onModelSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = String(e.target.value || '').trim();
+    if (!v) return;
+    setField('model', v);
   };
 
 
@@ -110,17 +126,22 @@ export default function SettingsApp({
 
       <div className="flex-1 overflow-y-auto px-4 pb-6 min-h-0">
         <div className="rounded-[10px] overflow-hidden mb-4" style={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--card-shadow)' }}>
-          <div className="px-3 pt-3 pb-1">
-            <p className="text-[13px] font-medium uppercase tracking-wide" style={{ color: 'var(--settings-desc)' }}>API 配置</p>
+          <div className="px-3 pt-3 pb-2">
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold" style={{ color: 'var(--settings-title, #000)' }}>
+              <Sliders size={18} className="shrink-0 opacity-80" aria-hidden />
+              API 配置
+            </h2>
           </div>
           <div className="px-3 pb-3 space-y-3 border-t pt-3" style={{ borderColor: 'var(--card-border)' }}>
-            <label className="block">
-              <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>API URL</span>
+            <div>
+              <label className="block text-[13px] mb-1" style={{ color: 'var(--settings-desc)' }}>
+                API URL（OpenAI 兼容，可填根地址或 /v1 等）
+              </label>
               <input
                 type="url"
                 autoComplete="off"
                 placeholder="https://api.openai.com/v1"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
+                className="w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -129,14 +150,14 @@ export default function SettingsApp({
                 value={cfg.apiBaseUrl}
                 onChange={e => setField('apiBaseUrl', e.target.value)}
               />
-            </label>
-            <label className="block">
-              <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>API Key</span>
+            </div>
+            <div>
+              <label className="block text-[13px] mb-1" style={{ color: 'var(--settings-desc)' }}>API Key</label>
               <input
                 type="password"
                 autoComplete="off"
                 placeholder="sk-…"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
+                className="w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -145,15 +166,17 @@ export default function SettingsApp({
                 value={cfg.apiKey}
                 onChange={e => setField('apiKey', e.target.value)}
               />
-            </label>
-            <label className="block">
-              <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>模型</span>
+            </div>
+            <div>
+              <label className="block text-[13px] mb-1" style={{ color: 'var(--settings-desc)' }} htmlFor="phone-model-text">
+                输入模型名
+              </label>
               <input
+                id="phone-model-text"
                 type="text"
-                list="tavern-phone-model-datalist"
                 autoComplete="off"
-                placeholder="手动输入或先获取列表后选择"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
+                placeholder="可手动输入；或在下方「可用模型」中点选后自动填入"
+                className="w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
@@ -162,37 +185,64 @@ export default function SettingsApp({
                 value={cfg.model}
                 onChange={e => setField('model', e.target.value)}
               />
-              <datalist id="tavern-phone-model-datalist">
-                {modelOptions.map(id => (
-                  <option key={id} value={id} />
-                ))}
-              </datalist>
-            </label>
-            <label className="block">
-              <span className="text-[13px]" style={{ color: 'var(--settings-desc)' }}>最大重试次数（0–10）</span>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
+            </div>
+            <div>
+              <label className="block text-[13px] mb-1" style={{ color: 'var(--settings-desc)' }} htmlFor="phone-model-select">
+                可用模型
+              </label>
+              <select
+                id="phone-model-select"
+                className="w-full rounded-lg border px-3 py-2 text-[15px] outline-none focus:ring-2"
                 style={{
                   backgroundColor: 'var(--input-bg)',
                   borderColor: 'var(--input-border)',
                   color: 'var(--input-text)',
                 }}
-                value={cfg.maxRetries}
-                onChange={e => onMaxRetriesChange(e.target.value)}
-              />
-            </label>
+                value={modelSelectBinding}
+                onChange={onModelSelectChange}
+              >
+                <option value="">
+                  {modelOptions.length ? '— 从列表选择 —' : '— 请先点击「获取可用模型」—'}
+                </option>
+                {modelOptions.map(id => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            {/* 连接测试按钮 */}
+            <div>
+              <label className="block text-[13px] mb-1" style={{ color: 'var(--settings-desc)' }}>
+                最大重试次数（0–10，失败后的额外尝试次数）
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  className="w-18 rounded-lg border px-2 py-2 text-[15px] outline-none focus:ring-2"
+                  style={{
+                    backgroundColor: 'var(--input-bg)',
+                    borderColor: 'var(--input-border)',
+                    color: 'var(--input-text)',
+                  }}
+                  value={cfg.maxRetries}
+                  onChange={e => onMaxRetriesChange(e.target.value)}
+                />
+                <span className="text-[12px]" style={{ color: 'var(--settings-desc)' }}>
+                  总尝试次数 = 1 + 该值
+                </span>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-2 pt-1">
               <div className="flex gap-2">
                 <button
                   type="button"
                   disabled={testState === 'loading'}
                   onClick={() => void handleTest()}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-[15px] font-semibold text-white active:opacity-90 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold text-white active:opacity-90 disabled:opacity-50"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   {testState === 'loading' ? <Loader2 className="animate-spin" size={18} /> : null}
@@ -202,36 +252,33 @@ export default function SettingsApp({
                   type="button"
                   disabled={modelsLoading}
                   onClick={() => void handleFetchModels()}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-[15px] font-semibold text-white active:opacity-90 disabled:opacity-50"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold text-white active:opacity-90 disabled:opacity-50"
                   style={{ backgroundColor: 'var(--settings-title)' }}
                 >
                   {modelsLoading ? <Loader2 className="animate-spin" size={18} /> : null}
                   获取可用模型
                 </button>
               </div>
-              {testState !== 'idle' && testMessage && (
+              {testState !== 'idle' && testMessage ? (
                 <p
-                  className={`text-[13px] px-1 ${testState === 'success' ? 'text-green-600' : testState === 'error' ? 'text-red-600' : 'text-[#8E8E93]'}`}
+                  className={`text-[13px] px-0.5 ${testState === 'success' ? 'text-green-600' : testState === 'error' ? 'text-red-600' : ''}`}
+                  style={testState !== 'success' && testState !== 'error' ? { color: 'var(--settings-desc)' } : undefined}
                 >
                   {testMessage}
                 </p>
-              )}
-              {modelsError ? <p className="text-[13px] text-red-600 px-1">{modelsError}</p> : null}
-              {modelOptions.length > 0 && !modelsError && (
-                <p className="text-[12px] text-[#8E8E93] px-1">已载入 {modelOptions.length} 个模型，可在上方输入框中从列表选择</p>
-              )}
+              ) : null}
+              {modelsError ? <p className="text-[13px] text-red-600 px-0.5">{modelsError}</p> : null}
+              {modelOptions.length > 0 && !modelsError ? (
+                <p className="text-[12px] px-0.5" style={{ color: 'var(--settings-desc)' }}>
+                  已获取 {modelOptions.length} 个模型（可在「可用模型」下拉中选择）。
+                </p>
+              ) : null}
             </div>
 
-            {/* 绿色长条保存按钮 */}
             <button
               type="button"
-              onClick={() => {
-                saveTavernPhoneApiConfig(cfg);
-                setTestMessage('设置已保存');
-                setTestState('success');
-                setTimeout(() => setTestState('idle'), 2000);
-              }}
-              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[15px] font-semibold text-white active:opacity-90 bg-green-500 hover:bg-green-600 transition-colors"
+              onClick={handleSaveApi}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[15px] font-semibold text-white active:opacity-90 bg-green-600 hover:bg-green-700 transition-colors"
             >
               保存设置
             </button>
@@ -259,6 +306,24 @@ export default function SettingsApp({
                   style={{ accentColor: 'var(--accent)' }}
                   checked={cfg.phoneMemoryWrite}
                   onChange={e => setField('phoneMemoryWrite', e.target.checked)}
+                />
+              </label>
+
+              <label className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0 pr-2">
+                  <span className="text-[15px] block" style={{ color: 'var(--settings-title)' }}>
+                    AI 请求调试弹窗
+                  </span>
+                  <span className="text-[11px] leading-tight block mt-0.5" style={{ color: 'var(--settings-desc)' }}>
+                    开启后，每次经小手机直连 API 的请求结束都会弹窗展示发送内容与返回（含微信、朋友圈、角色分析等；不含 API Key）
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 shrink-0"
+                  style={{ accentColor: 'var(--accent)' }}
+                  checked={cfg.debugAiTraffic}
+                  onChange={e => setField('debugAiTraffic', e.target.checked)}
                 />
               </label>
             </div>

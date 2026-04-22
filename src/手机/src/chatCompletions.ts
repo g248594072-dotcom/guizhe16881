@@ -1,5 +1,6 @@
 import { normalizeApiBaseUrl } from './apiUrl';
-import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
+import { getTavernPhoneApiConfig, isPhoneOpenAiConfigured, loadTavernPhoneApiConfig } from './tavernPhoneApiConfig';
+import { emitPhoneAiDebugTraffic } from './phoneAiDebugTraffic';
 import type { TavernPhoneContextPayload } from './tavernPhoneBridge';
 import type { TavernPhoneWeChatContact } from './tavernPhoneBridge';
 
@@ -741,35 +742,93 @@ export function parseGroupChatReply(
 
 // ==================== API 调用 ====================
 
+/** OpenAI 兼容 chat/completions：使用设置页中的 URL / Key / 模型直连。 */
+export async function postPhoneOpenAiChatCompletions(body: {
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  temperature?: number;
+  max_tokens?: number;
+  model?: string;
+}): Promise<string> {
+  const cfg = getTavernPhoneApiConfig();
+  const model = String(body.model ?? cfg.model).trim();
+  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !model) {
+    throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
+  }
+  return fetchChatOnce(
+    { model, messages: body.messages, temperature: body.temperature, max_tokens: body.max_tokens },
+    cfg.apiBaseUrl,
+    cfg.apiKey,
+  );
+}
+
 async function fetchChatOnce(
   body: Record<string, unknown>,
   apiBaseUrl: string,
   apiKey: string,
 ): Promise<string> {
   const url = `${normalizeApiBaseUrl(apiBaseUrl)}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-  }
-  let data: unknown;
+  const debug = loadTavernPhoneApiConfig().debugAiTraffic;
+  let rawText = '';
+  let assistantContent = '';
+  let errorMessage: string | undefined;
+  let httpOk = false;
+  let httpStatus = 0;
   try {
-    data = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
-  } catch {
-    throw new Error('响应不是合法 JSON');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    httpStatus = res.status;
+    httpOk = res.ok;
+    rawText = await res.text();
+
+    if (!res.ok) {
+      errorMessage = rawText ? `${res.status}: ${rawText.slice(0, 400)}` : `HTTP ${res.status}`;
+      throw new Error(errorMessage);
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(rawText) as { choices?: Array<{ message?: { content?: string } }> };
+    } catch {
+      errorMessage = '响应不是合法 JSON';
+      throw new Error(errorMessage);
+    }
+    const content =
+      data && typeof data === 'object' && 'choices' in data ? data.choices?.[0]?.message?.content : undefined;
+    if (typeof content !== 'string') {
+      errorMessage = '响应中无 assistant 正文';
+      throw new Error(errorMessage);
+    }
+    assistantContent = content.trim();
+    return assistantContent;
+  } catch (e) {
+    if (!errorMessage) {
+      errorMessage = e instanceof Error ? e.message : String(e);
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  } finally {
+    if (debug) {
+      const maxRaw = 500_000;
+      const rawOut =
+        rawText.length > maxRaw
+          ? `${rawText.slice(0, maxRaw)}\n\n…[已截断，共 ${rawText.length} 字符]`
+          : rawText;
+      emitPhoneAiDebugTraffic({
+        at: Date.now(),
+        requestUrl: url,
+        requestPayload: { ...body } as Record<string, unknown>,
+        rawResponseText: rawOut,
+        assistantContent,
+        httpOk,
+        httpStatus,
+        errorMessage,
+      });
+    }
   }
-  const content = data && typeof data === 'object' && 'choices' in data ? data.choices?.[0]?.message?.content : undefined;
-  if (typeof content !== 'string') {
-    throw new Error('响应中无 assistant 正文');
-  }
-  return content.trim();
 }
 
 /**
@@ -782,7 +841,7 @@ export async function completeWeChatReply(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+  if (!isPhoneOpenAiConfigured()) {
     throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
   const messages = buildWeChatMessages(ctx, historyForApi, options);
@@ -796,7 +855,7 @@ export async function completeWeChatReply(
   const tries = Math.max(1, cfg.maxRetries + 1);
   for (let i = 0; i < tries; i++) {
     try {
-      return await fetchChatOnce(body, cfg.apiBaseUrl, cfg.apiKey);
+      return await postPhoneOpenAiChatCompletions(body);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }
@@ -823,7 +882,7 @@ export async function completeGroupChatReply(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+  if (!isPhoneOpenAiConfigured()) {
     throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
   const messages = buildGroupChatMessages(ctx, historyForApi, targetMember, options);
@@ -839,7 +898,7 @@ export async function completeGroupChatReply(
   const tries = Math.max(1, cfg.maxRetries + 1);
   for (let i = 0; i < tries; i++) {
     try {
-      return await fetchChatOnce(body, cfg.apiBaseUrl, cfg.apiKey);
+      return await postPhoneOpenAiChatCompletions(body);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }
@@ -855,7 +914,7 @@ export async function summarizePhoneExchangeForMemory(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+  if (!isPhoneOpenAiConfigured()) {
     throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
 
@@ -881,7 +940,7 @@ export async function summarizePhoneExchangeForMemory(
   const tries = Math.max(1, cfg.maxRetries + 1);
   for (let i = 0; i < tries; i++) {
     try {
-      return await fetchChatOnce(body, cfg.apiBaseUrl, cfg.apiKey);
+      return await postPhoneOpenAiChatCompletions(body);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }
@@ -899,7 +958,7 @@ export async function summarizeGroupChatForMemory(
 ): Promise<string> {
   const cfg = getTavernPhoneApiConfig();
 
-  if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
+  if (!isPhoneOpenAiConfigured()) {
     throw new Error('请先在「设置」中填写 API URL、API Key 与模型');
   }
 
@@ -925,7 +984,7 @@ export async function summarizeGroupChatForMemory(
   const tries = Math.max(1, cfg.maxRetries + 1);
   for (let i = 0; i < tries; i++) {
     try {
-      return await fetchChatOnce(body, cfg.apiBaseUrl, cfg.apiKey);
+      return await postPhoneOpenAiChatCompletions(body);
     } catch (e) {
       lastErr = e instanceof Error ? e : new Error(String(e));
     }

@@ -21,6 +21,8 @@ export interface TavernPhoneApiConfig {
   phoneMemoryWrite: boolean;
   /** 是否启用 3 层破限提示词 */
   enableNsfw: boolean;
+  /** 开启后每次直连 chat/completions 完成会弹窗展示请求与响应（含角色分析等所有经此 API 的生成） */
+  debugAiTraffic: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export interface ResolvedTavernPhoneApiConfig {
   injectMainStory: boolean;
   phoneMemoryWrite: boolean;
   enableNsfw: boolean;
+  debugAiTraffic: boolean;
 }
 
 export const defaultTavernPhoneApiConfig: TavernPhoneApiConfig = {
@@ -44,6 +47,7 @@ export const defaultTavernPhoneApiConfig: TavernPhoneApiConfig = {
   injectMainStory: true,
   phoneMemoryWrite: false,
   enableNsfw: false,
+  debugAiTraffic: false,
 };
 
 export function loadTavernPhoneApiConfig(): TavernPhoneApiConfig {
@@ -52,17 +56,23 @@ export function loadTavernPhoneApiConfig(): TavernPhoneApiConfig {
     if (!raw) {
       return { ...defaultTavernPhoneApiConfig };
     }
-    const parsed = JSON.parse(raw) as Partial<TavernPhoneApiConfig>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
     const mr = Number(parsed.maxRetries);
     return {
-      ...defaultTavernPhoneApiConfig,
-      ...parsed,
+      apiBaseUrl: typeof parsed.apiBaseUrl === 'string' ? parsed.apiBaseUrl : defaultTavernPhoneApiConfig.apiBaseUrl,
+      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : defaultTavernPhoneApiConfig.apiKey,
+      model: typeof parsed.model === 'string' ? parsed.model : defaultTavernPhoneApiConfig.model,
       maxRetries: Number.isFinite(mr) ? Math.max(0, Math.min(10, Math.floor(mr))) : defaultTavernPhoneApiConfig.maxRetries,
-      injectMainStory: typeof parsed.injectMainStory === 'boolean' ? parsed.injectMainStory : defaultTavernPhoneApiConfig.injectMainStory,
+      injectMainStory:
+        typeof parsed.injectMainStory === 'boolean' ? parsed.injectMainStory : defaultTavernPhoneApiConfig.injectMainStory,
       phoneMemoryWrite:
         typeof parsed.phoneMemoryWrite === 'boolean' ? parsed.phoneMemoryWrite : defaultTavernPhoneApiConfig.phoneMemoryWrite,
       enableNsfw:
         typeof parsed.enableNsfw === 'boolean' ? parsed.enableNsfw : defaultTavernPhoneApiConfig.enableNsfw,
+      debugAiTraffic:
+        typeof parsed.debugAiTraffic === 'boolean'
+          ? parsed.debugAiTraffic
+          : defaultTavernPhoneApiConfig.debugAiTraffic,
     };
   } catch {
     return { ...defaultTavernPhoneApiConfig };
@@ -76,4 +86,10 @@ export function saveTavernPhoneApiConfig(cfg: TavernPhoneApiConfig): void {
 /** 获取当前 API 配置 */
 export function getTavernPhoneApiConfig(): ResolvedTavernPhoneApiConfig {
   return loadTavernPhoneApiConfig();
+}
+
+/** 是否已填写 URL、Key 与模型（各功能生成前可据此判断） */
+export function isPhoneOpenAiConfigured(): boolean {
+  const c = loadTavernPhoneApiConfig();
+  return Boolean(String(c.apiBaseUrl).trim() && String(c.apiKey).trim() && String(c.model).trim());
 }

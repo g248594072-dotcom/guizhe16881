@@ -7,7 +7,7 @@ import { exportWeChatThreadsForScope } from './weChatWorldbookExport';
 import { getCharacterAnalyzer } from './characterArchive/characterAnalyzer';
 import { getAnalysisScheduler } from './characterArchive/analysisScheduler';
 import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
-import { normalizeApiBaseUrl } from './apiUrl';
+import { postPhoneOpenAiChatCompletions } from './chatCompletions';
 import { migrateLegacyPhoneCharacterAvatars } from './phoneCharacterAvatars';
 import {
   PHONE_CHARACTER_AVATAR_MIRROR_REQUEST,
@@ -70,31 +70,12 @@ async function initCharacterAnalyzer(): Promise<void> {
   const analyzer = getCharacterAnalyzer();
 
   analyzer.setApiCaller(async (prompt, opts) => {
-    const url = `${normalizeApiBaseUrl(opts.apiBaseUrl)}/chat/completions`;
-    const body = {
+    return postPhoneOpenAiChatCompletions({
       model: opts.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 4096,
-    };
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${opts.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      throw new Error('响应中无 assistant 正文');
-    }
-    return content.trim();
   });
 }
 

@@ -22,6 +22,7 @@ import { loadTheme, saveTheme, getThemeVars, injectThemeVars, THEME_LABELS } fro
 import type { PhoneTheme } from './theme';
 import TenantArchiveApp from './components/apps/TenantArchiveApp';
 import BackgroundTaskManager from './components/BackgroundTaskManager';
+import PhoneAiDebugOverlay from './components/PhoneAiDebugOverlay';
 
 // Import Apps
 import ForumApp from './components/apps/ForumApp';
@@ -366,6 +367,7 @@ export default function App() {
 
           {/* 后台任务管理器（左下角唯一任务浮层；角色分析队列不再单独悬浮） */}
           <BackgroundTaskManager />
+          <PhoneAiDebugOverlay />
           </div>
         </div>
       </div>

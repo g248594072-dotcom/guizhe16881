@@ -6,8 +6,8 @@
 
 import { loadCharacterArchiveById, loadCharacterArchive, type PhoneCharacterArchive } from './characterArchive/bridge';
 import { getTavernContextForAnalysis } from './chatContext';
-import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
-import { normalizeApiBaseUrl } from './apiUrl';
+import { getTavernPhoneApiConfig, isPhoneOpenAiConfigured } from './tavernPhoneApiConfig';
+import { postPhoneOpenAiChatCompletions } from './chatCompletions';
 import type {
   Moment,
   MomentComment,
@@ -16,6 +16,21 @@ import type {
   MomentVisibility,
 } from './types/moments';
 import { areCharactersConnected, getRelationshipBetween } from './relationshipValidator';
+
+/** 解析后朋友圈「content」正文字符上限（超出由程序截断；与 API max_tokens 无关） */
+const MOMENT_PARSED_CONTENT_MAX_CHARS = 200;
+/** 整段补全 token：需容纳完整 JSON，避免 finish_reason=length 截断在字符串中间 */
+const MOMENT_API_COMPLETION_MAX_TOKENS = 2048;
+/** 评论解析后正文字符上限 */
+const MOMENT_COMMENT_PARSED_MAX_CHARS = 200;
+const MOMENT_COMMENT_API_COMPLETION_MAX_TOKENS = 1024;
+
+function truncateParsedBody(s: string, maxChars: number): string {
+  if (s.length <= maxChars) {
+    return s;
+  }
+  return s.slice(0, maxChars);
+}
 
 /** 破限词 - 允许NSFW内容和真实内心想法 */
 const JAILBREAK_PROMPT = `
@@ -208,7 +223,7 @@ function buildMomentPrompt(
   if (contentType === 'daily_life') {
     specificGuidance = `
 【多样化日常类型】本次是：${subtypeDesc}
-- 如果美食：描述味道、氛围、和谁一起吃
+- 如果美食：描述味道、氛围、泛泛提到「约饭」「饭搭子」即可，不要写成对某一个人的点名私聊
 - 如果运动：记录运动状态、成就感、身体感受
 - 如果购物：分享买到的好物、开箱心情、推荐
 - 如果工作学习：吐槽或分享进展、压力、小成就
@@ -253,7 +268,13 @@ ${safePersonality}
 - 绝对禁止：说出角色不会说的话、关注角色不会关注的事
 - 必须体现：角色当前内心想法的影响（如内心焦虑则动态可能暗示不安）
 - 必须体现：性格特点中的至少1-2个核心特质
-- 语言风格必须与性格匹配（如傲娇角色可能口是心非，腹黑角色话里有话）`;
+- 语言风格必须与性格匹配（如傲娇角色可能口是心非，腹黑角色话里有话）
+
+【朋友圈媒介语境 — 必须遵守】
+- 朋友圈是**面向多名好友的半公开动态**，像晒生活、心情、小炫耀、小吐槽，让圈子里的人点赞或共鸣；**不是**微信私聊、**不是**对单一对象的即时喊话。
+- **禁止**作为主要表达方式：对某个具体读者使用「你」「你们」「笨蛋」「限你几分钟」「给我过来」等**一对一命令、约会通牒、训话式**口吻（读者会误以为在群发点名某人）。
+- 若剧情里确实想指向某人：只能用**隐晦、旁敲侧击**的方式——晒地点/便当/天气/心情、用「某些人」「懂的都懂」「有人刚才一直盯我」等**可多重解读**的说法，或自嘲/泛吐槽；**避免**一眼看出在命令或点名唯一对象。
+- 「仅本人可见」的阴暗类动态可以更像内心独白，但仍**避免**写成给某人的私信命令口吻。`;
 
   return `${JAILBREAK_PROMPT}
 
@@ -301,20 +322,25 @@ ${specificGuidance}
    `}
 5. **定位信息（可选）**：可以通过位置暗示${safeName}的秘密行踪或谎言
 
-【输出格式】
-必须返回严格的JSON格式：
+【输出格式 — 硬性要求】
+1. **直接输出合法 JSON 对象**：第一个字符必须是「{」，最后一个字符必须是「}」。**不要使用** markdown 的 \`\`\`json 代码围栏包裹（避免截断时无法解析）；不要输出围栏或说明文字。
+2. **JSON 必须完整、可被严格解析**：所有双引号成对；字符串内禁止未转义的裸换行，换行一律写成 \\n；所有键名拼写正确；必须以「}」收尾，**禁止**半截 JSON、未闭合的引号、缺尾的括号。
+3. **「content」朋友圈正文**：约 **50～200 字**（宁短勿超长），必须是 ${safeName} 的口吻；读起来须像**好友圈可见的配文**，而非私聊；**必须在上述字数规定范围内写完本条动态的全部意思**，可多句，但每句须完结；**禁止**写到一半、戛然而止、悬空引号、以「其实」「那个谁」等吊胃口却未收束、或明显因长度被掐断；若篇幅紧张，请缩短用词，**优先保证 JSON 与 \`content\` 字符串的引号完整闭合**。
+4. **提取用键名必须字面齐全**（程序按字段名解析）：\`content\`、\`contentType\`、\`visibility\`、\`location\`、\`selfJustification\` 五个键缺一不可，拼写与大小写须与下述骨架一致。无定位时 \`location\` 填 \`""\`；无自我辩解时 \`selfJustification\` 填 \`""\`。
+
+骨架（替换省略号为实际内容）：
 {
-  "content": "朋友圈文字内容（50-250字，必须是${safeName}的口吻）",
+  "content": "……",
   "contentType": "${contentType}",
   "visibility": "${visibility}",
-  "location": "定位信息（可选）",
-  "selfJustification": "${safeName}的自我辩解心理活动（可选）"
+  "location": "",
+  "selfJustification": ""
 }
 
 【人设符合性自检】（生成后确认）
 - 这条动态读起来像是${safeName}发的吗？
 - 用词习惯符合${safeName}的性格档案吗？
-- 如果${safeName}的朋友看到这条动态，会觉得"这很${safeName}"吗？
+- 如果${safeName}的朋友看到这条动态，会觉得"这很${safeName}"吗？（且不会觉得像在点名命令某一个好友）
 
 【多样性要求】
 - 每次生成必须是不同的子类型和角度
@@ -341,52 +367,35 @@ export async function generateMoment(
       return null;
     }
 
-    // 获取API配置
-    const apiConfig = getTavernPhoneApiConfig();
-    const apiUrl = normalizeApiBaseUrl(apiConfig.apiBaseUrl);
-
-    if (!apiUrl) {
-      console.warn('[momentsGenerator] 未配置API地址');
+    if (!isPhoneOpenAiConfigured()) {
+      console.warn('[momentsGenerator] 未配置 API（请在设置填写或开启酒馆插头）');
       return null;
     }
+
+    const apiConfig = getTavernPhoneApiConfig();
 
     // 构建提示词
     const prompt = buildMomentPrompt(archive, contentType, gameDate, todayEvents);
 
-    // 调用API
-    const response = await fetch(`${apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiConfig.apiKey || ''}`,
-      },
-      body: JSON.stringify({
-        model: apiConfig.model || 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: prompt },
-          { role: 'user', content: `请为 ${characterName} 生成一条朋友圈动态，游戏日期：${gameDate}` },
-        ],
-        temperature: 0.85,
-        max_tokens: 800,
-      }),
+    const content = await postPhoneOpenAiChatCompletions({
+      model: apiConfig.model || 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: prompt },
+        {
+          role: 'user',
+          content: `请为 ${characterName} 生成一条朋友圈动态，游戏日期：${gameDate}。严格遵守 system：正文约50～200字、像发给好友圈看的展示/心情而非私聊点名；JSON 须合法完整、仅输出一段 JSON。`,
+        },
+      ],
+      temperature: 0.85,
+      max_tokens: MOMENT_API_COMPLETION_MAX_TOKENS,
     });
-
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('API返回内容为空');
-    }
 
     // 解析JSON - 使用更健壮的解析逻辑
     const generated = parseMomentResult(content);
     if (!generated) {
       throw new Error('无法从API响应中提取JSON');
     }
+    generated.content = truncateParsedBody(generated.content, MOMENT_PARSED_CONTENT_MAX_CHARS);
 
     // 人设符合性检查日志
     const personalityKeys = Object.keys(archive?.personality || {});
@@ -476,10 +485,14 @@ ${relationship ? `评论者与作者的关系：${relationship}` : '关系未知
 - 如果是${safeName}的朋友看到，会觉得"这很${safeName}"吗？
 - 用词习惯符合${safeName}的性格档案吗？
 
-【输出格式】
-返回严格的JSON格式：
+【输出格式 — 硬性要求】
+1. **直接输出合法 JSON**：从「{」到「}」，**不要**使用 \`\`\`json 代码围栏；不要附加说明文字。
+2. **JSON 完整可解析**：仅含键名 \`content\`（字面拼写须一致，便于程序提取）；双引号成对；字符串内换行仅用 \\n；**禁止**半截 JSON 或未闭合引号。
+3. **评论正文**：约 **20～100 字**，必须是 ${safeName} 的口吻；**须在该字数范围内写完整条评论**，语气自然结束，**禁止**写到一半、未收尾、悬空引号或因长度被掐断。
+
+骨架：
 {
-  "content": "评论内容（20-100字，必须是${safeName}的口吻）"
+  "content": "……"
 }`;
 }
 
@@ -507,48 +520,35 @@ export async function generateMomentComment(
     // 获取关系
     const relationship = getRelationshipBetween(authorArchive, authorMomentArchive);
 
-    // 获取API配置
-    const apiConfig = getTavernPhoneApiConfig();
-    const apiUrl = normalizeApiBaseUrl(apiConfig.apiBaseUrl);
-
-    if (!apiUrl) {
+    if (!isPhoneOpenAiConfigured()) {
       return null;
     }
+
+    const apiConfig = getTavernPhoneApiConfig();
 
     // 构建提示词
     const prompt = buildCommentPrompt(moment, authorArchive, relationship);
 
-    // 调用API
-    const response = await fetch(`${apiUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiConfig.apiKey || ''}`,
-      },
-      body: JSON.stringify({
-        model: apiConfig.model || 'gpt-3.5-turbo',
-        messages: [
-          { role: 'system', content: prompt },
-          { role: 'user', content: `请为 ${authorName} 生成一条对 ${moment.characterName} 朋友圈的评论` },
-        ],
-        temperature: 0.8,
-        max_tokens: 200,
-      }),
+    const content = await postPhoneOpenAiChatCompletions({
+      model: apiConfig.model || 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: prompt },
+        {
+          role: 'user',
+          content: `请为 ${authorName} 生成一条对 ${moment.characterName} 朋友圈的评论。严格遵守 system：约20～100字内写完整、仅输出合法 JSON 且键名仅为 content。`,
+        },
+      ],
+      temperature: 0.8,
+      max_tokens: MOMENT_COMMENT_API_COMPLETION_MAX_TOKENS,
     });
-
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
       return null;
     }
 
     // 解析JSON - 使用更健壮的解析
-    const commentContent = parseCommentResult(content);
+    const commentRaw = parseCommentResult(content);
+    const commentContent = commentRaw ? truncateParsedBody(commentRaw, MOMENT_COMMENT_PARSED_MAX_CHARS) : null;
     if (commentContent) {
       // 人设符合性检查日志
       const commenterPersonality = Object.keys(authorArchive?.personality || {});

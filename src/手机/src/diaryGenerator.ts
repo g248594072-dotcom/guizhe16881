@@ -7,7 +7,19 @@
 import { loadCharacterArchiveById, type PhoneCharacterArchive } from './characterArchive/bridge';
 import { getTavernContextForAnalysis } from './chatContext';
 import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
-import { normalizeApiBaseUrl } from './apiUrl';
+import { postPhoneOpenAiChatCompletions } from './chatCompletions';
+
+/** 解析后日记「content」正文字符上限（程序侧兜底；提示词要求模型在范围内写完整） */
+const DIARY_PARSED_CONTENT_MAX_CHARS = 800;
+/** 整段补全 token：须容纳 title、content、moodTags 等完整 JSON */
+const DIARY_API_COMPLETION_MAX_TOKENS = 4096;
+
+function truncateDiaryBody(s: string, maxChars: number): string {
+  if (s.length <= maxChars) {
+    return s;
+  }
+  return s.slice(0, maxChars);
+}
 
 export interface DiaryGenerationParams {
   characterId: string;
@@ -91,22 +103,23 @@ ${extraPromptStr}
 
 3. **情绪标签**：3-5个描述今日主要情绪的关键词（如"孤独、渴望、羞耻、期待"）
 
-## 输出格式
-请以以下 JSON 格式输出，不要包含任何其他内容：
+## 输出格式 — 硬性要求
+1. **直接输出合法 JSON 对象**：第一个字符为「{」，最后一个为「}」。**不要使用** \`\`\`json 代码围栏；不要输出任何 JSON 以外的文字。
+2. **JSON 必须完整、可被严格解析**：双引号、方括号、花括号全部配对闭合；\`content\` 字符串内禁止未转义裸换行，换行一律写成 \\n；**禁止**半截 JSON、未闭合引号、缺尾的 \`]\` 或 \`}\`。
+3. **「content」日记正文**：约 **300～800 字**（以汉字计，宁短勿超长）；**必须在该字数规定范围内写完本篇日记的全部段落与情绪收束**，禁止写到一半、戛然而止、明显因长度被掐断；若担心超长，请精简段落，**优先保证 JSON 与 \`content\` 字符串的引号完整闭合**。
+4. **提取用键名必须字面齐全**：\`title\`、\`content\`、\`moodTags\` 三个键缺一不可，拼写须与下例一致；\`moodTags\` 为字符串数组，至少 3 个元素。
 
-\`\`\`json
+示例结构（替换为实际内容）：
 {
-  "title": "日记标题",
-  "content": "日记正文内容...",
+  "title": "日记标题（建议10字以内）",
+  "content": "日记正文……",
   "moodTags": ["情绪标签1", "情绪标签2", "情绪标签3"]
 }
-\`\`\`
 
 **注意事项**：
 - 内容必须体现角色"不知道这篇日记会被看到"的私密感
 - 使用第一人称，语气自然私密，像真正的日记
 - 可以包含露骨的性幻想、扭曲的欲望、羞耻的想法
-- 长度控制在300-800字
 - 不要有任何"汇报"或"表演"的感觉，要真实、私密、裸露心灵`;
 }
 
@@ -260,41 +273,21 @@ export async function generateDiary(
 
     console.log(`[diaryGenerator] 开始为 ${params.characterName} 生成日记...`);
 
-    // 与微信/群聊一致：使用小手机「设置」里保存的 API
     const cfg = getTavernPhoneApiConfig();
-    if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-      throw new Error('请先在「小手机 → 设置」中填写 API URL、API Key 与模型');
-    }
-
-    const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          { role: 'system', content: '你是一个专门生成私密日记的AI助手，擅长以第一人称写出真实、私密、毫无掩饰的内心独白。' },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.85,
-        max_tokens: 1500,
-      }),
+    const raw = await postPhoneOpenAiChatCompletions({
+      model: cfg.model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            '你是一个专门生成私密日记的AI助手，擅长以第一人称写出真实、私密、毫无掩饰的内心独白。用户消息中的「输出格式 — 硬性要求」必须严格遵守：仅输出一段合法 JSON，正文约300～800字内写完整、禁止半截，键名 title、content、moodTags 齐全。',
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.85,
+      max_tokens: DIARY_API_COMPLETION_MAX_TOKENS,
     });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-    let data: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      data = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
-    } catch {
-      throw new Error('API 响应不是合法 JSON');
-    }
-    const raw = data.choices?.[0]?.message?.content;
-    if (typeof raw !== 'string' || !raw.trim()) {
+    if (!raw.trim()) {
       console.warn('[diaryGenerator] API 返回为空');
       return null;
     }
@@ -304,6 +297,7 @@ export async function generateDiary(
       console.warn('[diaryGenerator] 无法解析生成的日记');
       return null;
     }
+    result.content = truncateDiaryBody(result.content, DIARY_PARSED_CONTENT_MAX_CHARS);
 
     console.log(`[diaryGenerator] ✅ 日记生成成功: ${result.title}`);
     return result;

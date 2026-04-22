@@ -7,7 +7,7 @@
 
 import { getTavernContextForAnalysis } from './chatContext';
 import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
-import { normalizeApiBaseUrl } from './apiUrl';
+import { postPhoneOpenAiChatCompletions } from './chatCompletions';
 import type {
   NewsArticle,
   NewsCategory,
@@ -152,49 +152,23 @@ export async function generateNewsArticle(
   try {
     console.log(`[newsGenerator] 开始生成新闻，分类: ${params.category}...`);
 
-    // 使用小手机「设置」里保存的 API
     const cfg = getTavernPhoneApiConfig();
-    if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-      throw new Error('请先在「小手机 → 设置」中填写 API URL、API Key 与模型');
-    }
 
     // 构建提示词
     const prompt = buildNewsPrompt(params);
 
-    const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          {
-            role: 'system',
-            content: `${JAILBREAK_PROMPT}\n\n${REPORTER_PERSONA}\n\n你是一个专门撰写调查报道的记者，擅长用现代法律视角审视荒诞事件。`,
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.85,
-        max_tokens: 1500,
-      }),
+    const raw = await postPhoneOpenAiChatCompletions({
+      model: cfg.model,
+      messages: [
+        {
+          role: 'system',
+          content: `${JAILBREAK_PROMPT}\n\n${REPORTER_PERSONA}\n\n你是一个专门撰写调查报道的记者，擅长用现代法律视角审视荒诞事件。`,
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.85,
+      max_tokens: 1500,
     });
-
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-
-    let data: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error(`返回的不是有效 JSON: ${text.slice(0, 200)}`);
-    }
-
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
     if (!raw) {
       throw new Error('AI 返回了空内容');
     }

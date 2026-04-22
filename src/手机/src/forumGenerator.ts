@@ -8,7 +8,7 @@
 import { loadCharacterArchiveById, loadCharacterArchive, type PhoneCharacterArchive } from './characterArchive/bridge';
 import { getTavernContextForAnalysis } from './chatContext';
 import { getTavernPhoneApiConfig } from './tavernPhoneApiConfig';
-import { normalizeApiBaseUrl } from './apiUrl';
+import { postPhoneOpenAiChatCompletions } from './chatCompletions';
 import { updateDefaultUsername, saveForumPost, addForumComment, type ForumPost, type ForumComment } from './forumIndexedDb';
 import type {
   ForumGenerationParams,
@@ -604,44 +604,20 @@ export async function generateRandomUserPost(
 
     console.log(`[forumGenerator] 开始生成随机网友帖子，风格: ${style}...`);
 
-    // 使用小手机「设置」里保存的 API
     const cfg = getTavernPhoneApiConfig();
-    if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-      throw new Error('请先在「小手机 → 设置」中填写 API URL、API Key 与模型');
-    }
-
-    const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          {
-            role: 'system',
-            content: `${JAILBREAK_PROMPT}\n\n你是一个专门生成论坛帖子的AI助手，擅长模仿各种网络平台（贴吧、小红书、微博、知乎、抖音）的语言风格。帖子内容必须与提供的剧情相关，允许NSFW内容。`,
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.9,
-        max_tokens: 1200,
-      }),
+    const raw = await postPhoneOpenAiChatCompletions({
+      model: cfg.model,
+      messages: [
+        {
+          role: 'system',
+          content: `${JAILBREAK_PROMPT}\n\n你是一个专门生成论坛帖子的AI助手，擅长模仿各种网络平台（贴吧、小红书、微博、知乎、抖音）的语言风格。帖子内容必须与提供的剧情相关，允许NSFW内容。`,
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.9,
+      max_tokens: 1200,
     });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-    let data: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      data = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
-    } catch {
-      throw new Error('API 响应不是合法 JSON');
-    }
-    const raw = data.choices?.[0]?.message?.content;
-    if (typeof raw !== 'string' || !raw.trim()) {
+    if (!raw.trim()) {
       console.warn('[forumGenerator] API 返回为空');
       return null;
     }
@@ -695,44 +671,20 @@ export async function generateForumPost(
 
     console.log(`[forumGenerator] 开始为 ${params.characterName} 生成帖子，风格: ${style}...`);
 
-    // 使用小手机「设置」里保存的 API
     const cfg = getTavernPhoneApiConfig();
-    if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-      throw new Error('请先在「小手机 → 设置」中填写 API URL、API Key 与模型');
-    }
-
-    const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          {
-            role: 'system',
-            content: `${JAILBREAK_PROMPT}\n\n你是一个专门生成论坛帖子的AI助手，擅长模仿各种网络平台（贴吧、小红书、微博、知乎、抖音）的语言风格。帖子内容必须与提供的剧情相关，允许NSFW内容。`,
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.9,
-        max_tokens: 1500,
-      }),
+    const raw = await postPhoneOpenAiChatCompletions({
+      model: cfg.model,
+      messages: [
+        {
+          role: 'system',
+          content: `${JAILBREAK_PROMPT}\n\n你是一个专门生成论坛帖子的AI助手，擅长模仿各种网络平台（贴吧、小红书、微博、知乎、抖音）的语言风格。帖子内容必须与提供的剧情相关，允许NSFW内容。`,
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.9,
+      max_tokens: 1500,
     });
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-    let data: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      data = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
-    } catch {
-      throw new Error('API 响应不是合法 JSON');
-    }
-    const raw = data.choices?.[0]?.message?.content;
-    if (typeof raw !== 'string' || !raw.trim()) {
+    if (!raw.trim()) {
       console.warn('[forumGenerator] API 返回为空');
       return null;
     }
@@ -972,45 +924,19 @@ export async function generateForumComment(
     console.log(`[forumGenerator] 开始为 ${params.characterName} 生成评论，风格: ${style}...`);
 
     const cfg = getTavernPhoneApiConfig();
-    if (!cfg.apiBaseUrl.trim() || !cfg.apiKey.trim() || !cfg.model.trim()) {
-      throw new Error('请先在「小手机 → 设置」中填写 API URL、API Key 与模型');
-    }
-
-    const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          {
-            role: 'system',
-            content: '你是一个专门生成论坛评论的AI助手，擅长模仿各种网络平台的语言风格。',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.85,
-        max_tokens: 400,
-      }),
+    const raw = await postPhoneOpenAiChatCompletions({
+      model: cfg.model,
+      messages: [
+        {
+          role: 'system',
+          content: '你是一个专门生成论坛评论的AI助手，擅长模仿各种网络平台的语言风格。',
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.85,
+      max_tokens: 400,
     });
-
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(text ? `${res.status}: ${text.slice(0, 400)}` : `HTTP ${res.status}`);
-    }
-
-    let data: { choices?: Array<{ message?: { content?: string } }> };
-    try {
-      data = JSON.parse(text) as { choices?: Array<{ message?: { content?: string } }> };
-    } catch {
-      throw new Error('API 响应不是合法 JSON');
-    }
-
-    const raw = data.choices?.[0]?.message?.content;
-    if (typeof raw !== 'string' || !raw.trim()) {
+    if (!raw.trim()) {
       console.warn('[forumGenerator] API 返回为空');
       return null;
     }
@@ -1055,35 +981,18 @@ export async function generateRandomUserComment(
   const prompt = buildRandomUserCommentPrompt(post, gameDate, style);
 
   const cfg = getTavernPhoneApiConfig();
-  const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${cfg.apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个专门生成论坛评论的AI助手。',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.9,
-      max_tokens: 300,
-    }),
+  const raw = await postPhoneOpenAiChatCompletions({
+    model: cfg.model,
+    messages: [
+      {
+        role: 'system',
+        content: '你是一个专门生成论坛评论的AI助手。',
+      },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.9,
+    max_tokens: 300,
   });
-
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(text);
-  }
-
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const raw = data.choices?.[0]?.message?.content;
 
   const result = parseCommentResult(raw || '');
   if (!result) {
@@ -1207,14 +1116,9 @@ async function generateCommentsForPost(
         const prompt = buildCommentPromptForGeneratedPost(post, character, gameDate, commentStyle);
 
         const cfg = getTavernPhoneApiConfig();
-        const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${cfg.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        let raw: string;
+        try {
+          raw = await postPhoneOpenAiChatCompletions({
             model: cfg.model,
             messages: [
               {
@@ -1225,13 +1129,10 @@ async function generateCommentsForPost(
             ],
             temperature: 0.85,
             max_tokens: 300,
-          }),
-        });
-
-        if (!res.ok) continue;
-
-        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const raw = data.choices?.[0]?.message?.content;
+          });
+        } catch {
+          continue;
+        }
         const result = parseCommentResult(raw || '');
 
         if (result) {
@@ -1249,14 +1150,9 @@ async function generateCommentsForPost(
         const prompt = buildRandomUserCommentPromptForGeneratedPost(post, gameDate, commentStyle);
 
         const cfg = getTavernPhoneApiConfig();
-        const url = `${normalizeApiBaseUrl(cfg.apiBaseUrl)}/chat/completions`;
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${cfg.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+        let raw: string;
+        try {
+          raw = await postPhoneOpenAiChatCompletions({
             model: cfg.model,
             messages: [
               {
@@ -1267,13 +1163,10 @@ async function generateCommentsForPost(
             ],
             temperature: 0.9,
             max_tokens: 250,
-          }),
-        });
-
-        if (!res.ok) continue;
-
-        const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-        const raw = data.choices?.[0]?.message?.content;
+          });
+        } catch {
+          continue;
+        }
         const result = parseCommentResult(raw || '');
 
         if (result) {

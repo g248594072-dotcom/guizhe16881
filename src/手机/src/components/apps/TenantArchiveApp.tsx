@@ -20,7 +20,9 @@ import {
 import { loadCharacterArchive, type PhoneCharacterArchive } from '../../characterArchive/bridge';
 import { getAnalysisScheduler } from '../../characterArchive/analysisScheduler';
 import { getCharacterAnalyzer } from '../../characterArchive/characterAnalyzer';
-import { saveAutoAnalyzeInterval, subscribeAutoAnalyzeAll } from '../../tavernPhoneBridge';
+import { requestTavernPhoneContext, saveAutoAnalyzeInterval, subscribeAutoAnalyzeAll } from '../../tavernPhoneBridge';
+import { resolveChatScopeId } from '../../weChatScope';
+import { pinArchivesToWeChatIfMissing } from '../../weChatPinnedContacts';
 import {
   resolveCharacterAvatarFromBrowserOnly,
   setCharacterAvatarOverride,
@@ -195,6 +197,8 @@ export default function TenantArchiveApp({
 
   const archiveAvatarPickRef = useRef<{ id: string; name: string } | null>(null);
   const archiveAvatarFileRef = useRef<HTMLInputElement>(null);
+  /** 「分析全部」本次新入队的角色 id；队列清空前消费，用于完成后自动钉选到微信 */
+  const bulkPinIdsAfterQueueRef = useRef<string[] | null>(null);
 
   const startArchiveAvatarPick = useCallback((id: string, name: string) => {
     archiveAvatarPickRef.current = { id, name };
@@ -281,11 +285,33 @@ export default function TenantArchiveApp({
       console.log(`[TenantArchive] 队列状态: 总计=${total}, 完成=${done}, 进行中=${hasActive ? '是' : '否'}, 错误=${hasError ? '是' : '否'}`);
 
       if (!hasActive && total > 0) {
-        // 所有任务已完成（或有错误）
+        // 所有任务已完成（或有错误）；此时队列仍为「全 done」快照，随后 scheduler 会清空队列
         console.log('[TenantArchive] 所有分析任务已完成');
         setAnalyzing(false);
-        // 完成后刷新角色列表
-        void load();
+        const bulkPinIds = bulkPinIdsAfterQueueRef.current;
+        bulkPinIdsAfterQueueRef.current = null;
+        void (async () => {
+          try {
+            const data = await loadCharacterArchive();
+            setCharacters(data);
+            if (bulkPinIds?.length) {
+              let scope = resolveChatScopeId(null);
+              try {
+                const c = await requestTavernPhoneContext();
+                scope = resolveChatScopeId(c.chatScopeId);
+              } catch {
+                /* 与微信一致：无 CONTEXT 时用 offline scope */
+              }
+              const toPin = data.filter(a => bulkPinIds.includes(a.id));
+              const added = pinArchivesToWeChatIfMissing(scope, toPin);
+              if (added > 0) {
+                console.info(`[TenantArchive] 分析全部完成，已将 ${added} 位角色加入当前聊天的微信会话列表`);
+              }
+            }
+          } catch (e) {
+            console.warn('[TenantArchive] 完成后刷新/钉选微信失败', e);
+          }
+        })();
       }
     };
     const unsub = scheduler.on(update);
@@ -321,7 +347,6 @@ export default function TenantArchiveApp({
   const handleAnalyzeAll = useCallback(() => {
     if (characters.length === 0) return;
     console.log(`[TenantArchive] 开始批量分析 ${characters.length} 个角色`);
-    setAnalyzing(true);
     const scheduler = getAnalysisScheduler();
 
     // 检查队列中是否已有这些角色的任务，避免重复添加
@@ -330,6 +355,7 @@ export default function TenantArchiveApp({
 
     // 只添加尚未在队列中的角色
     let addedCount = 0;
+    const newIds: string[] = [];
     for (const char of characters) {
       if (existingIds.has(char.id)) {
         console.log(`[TenantArchive] 跳过已在队列中的角色: ${char.name}`);
@@ -342,12 +368,17 @@ export default function TenantArchiveApp({
         characterId: char.id,
         characterName: char.name,
       });
+      newIds.push(char.id);
       addedCount++;
     }
 
     if (addedCount === 0) {
       console.log('[TenantArchive] 所有角色都已在分析队列中');
+      setAnalyzing(false);
+      bulkPinIdsAfterQueueRef.current = null;
     } else {
+      setAnalyzing(true);
+      bulkPinIdsAfterQueueRef.current = newIds;
       console.log(`[TenantArchive] 已添加 ${addedCount} 个新分析任务到队列`);
     }
   }, [characters]);
