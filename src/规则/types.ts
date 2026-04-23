@@ -396,9 +396,9 @@ export interface SecondaryApiConfig {
   /** 为 true 时运行时从 SillyTavern 当前聊天补全（插头）读取 URL / 密钥 / 模型，不保存密钥到变量 */
   useTavernMainConnection?: boolean;
   /**
-   * 为 true 时：第二 API 先**仅**跑一轮变量 Patch（不含正文美化 / NPC生活 / 世界演化），再**单独**第二轮
+   * 为 true 时：第二 API 先**仅**跑一轮变量 Patch（不含正文美化 / NPC生活），再**单独**第二轮
    * 合并处理已勾选的附加任务（各任务仍按原逻辑，Patch 会拼进同一条 &lt;UpdateVariable&gt;）。
-   * 关闭时保持旧行为（变量与正文美化可并行；世界演化仍在变量轮后内联等）。
+   * 关闭时保持旧行为（变量与正文美化可并行）。
    */
   splitSecondaryVariablePassAndExtras?: boolean;
   /**
@@ -414,12 +414,6 @@ export interface SecondaryApiConfig {
      * 旧版 `includeWorldTrend` / `includeResidentLife` 在加载配置时会合并为该开关。
      */
     includeWorldChanges: boolean;
-    /**
-     * 世界演化：在第二 API 变量更新之后，再据正文与 stat 中多源上下文（世界大势、角色内心与位置、
-     * 已有区域/建筑等）推断地图语义增量，生成仅含 /区域数据、/建筑数据、/活动数据 的 JSON Patch，
-     * 与本轮变量 Patch 合并为同一 &lt;UpdateVariable&gt; 内数组。
-     */
-    includeWorldEvolution: boolean;
   };
 }
 

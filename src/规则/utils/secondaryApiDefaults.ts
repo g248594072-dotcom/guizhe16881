@@ -15,7 +15,6 @@ export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
   tasks: {
     includeMaintextBeautification: false,
     includeWorldChanges: false,
-    includeWorldEvolution: false,
   },
 };
 
@@ -31,9 +30,5 @@ export function normalizeSecondaryApiTasks(raw: unknown): SecondaryApiConfig['ta
         ? t.includeMaintextBeautification
         : DEFAULT_SECONDARY_API_CONFIG.tasks.includeMaintextBeautification,
     includeWorldChanges,
-    includeWorldEvolution:
-      typeof t.includeWorldEvolution === 'boolean'
-        ? t.includeWorldEvolution
-        : DEFAULT_SECONDARY_API_CONFIG.tasks.includeWorldEvolution,
   };
 }

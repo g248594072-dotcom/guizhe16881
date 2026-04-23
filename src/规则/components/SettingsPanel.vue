@@ -265,6 +265,25 @@
         <span class="retry-note">总尝试次数 = 1 + 该值</span>
       </div>
 
+      <div v-if="!secondaryApi.useTavernMainConnection" class="api-actions">
+        <button type="button" class="btn-api" @click="saveSecondaryApiManual">
+          <i class="fa-solid fa-floppy-disk"></i>
+          保存
+        </button>
+        <button
+          type="button"
+          class="btn-api btn-api-secondary"
+          :disabled="secondaryModelsLoading"
+          @click="runFetchModels"
+        >
+          <i class="fa-solid fa-list"></i>
+          {{ secondaryModelsLoading ? '获取中…' : '获取可用模型' }}
+        </button>
+      </div>
+      <p v-if="secondaryTestMessage" class="api-status" :class="secondaryTestOk ? 'ok' : 'err'">
+        {{ secondaryTestMessage }}
+      </p>
+
       <div class="secondary-api-extra-head">
         <div class="secondary-api-extra-head-left">
           <span class="secondary-api-extra-head-title secondary-extra-streamer">第二 API 额外任务</span>
@@ -374,49 +393,6 @@
           </div>
         </div>
       </div>
-      <div class="field-row checkbox-row secondary-extra-task-row">
-        <div class="secondary-extra-task-main">
-          <label class="secondary-extra-task-check">
-            <input
-              v-model="secondaryApi.tasks.includeWorldEvolution"
-              class="secondary-extra-task-checkbox"
-              type="checkbox"
-              @change="persistSecondaryApi"
-            />
-            <span class="secondary-extra-task-label secondary-extra-streamer">世界演化(用处不大)</span>
-          </label>
-          <div class="secondary-task-info-anchor" data-extra-info-key="evolution">
-            <button
-              type="button"
-              class="secondary-task-info-btn"
-              :aria-expanded="extraInfoOpen === 'evolution'"
-              aria-label="世界演化(用处不大)说明"
-              @click.stop="toggleExtraInfo('evolution')"
-            >
-              !
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="!secondaryApi.useTavernMainConnection" class="api-actions">
-        <button type="button" class="btn-api" @click="saveSecondaryApiManual">
-          <i class="fa-solid fa-floppy-disk"></i>
-          保存
-        </button>
-        <button
-          type="button"
-          class="btn-api btn-api-secondary"
-          :disabled="secondaryModelsLoading"
-          @click="runFetchModels"
-        >
-          <i class="fa-solid fa-list"></i>
-          {{ secondaryModelsLoading ? '获取中…' : '获取可用模型' }}
-        </button>
-      </div>
-      <p v-if="secondaryTestMessage" class="api-status" :class="secondaryTestOk ? 'ok' : 'err'">
-        {{ secondaryTestMessage }}
-      </p>
     </div>
     </div>
 
@@ -734,7 +710,7 @@
             主 API 一次 → 第二 API 仅变量一次 → 第二 API 附加任务一次（共三调用）。
           </p>
           <p class="secondary-task-popover-text">
-            开启后：首轮第二 API 只生成「纯变量」Patch（不含游戏状态/地图等）；再单独调用第二 API，按下方勾选执行正文美化、NPC生活、世界演化(用处不大)，并把 Patch 与正文合并进本回合结果。关闭时附加任务与变量同轮或并行（与旧版一致）。
+            开启后：首轮第二 API 只生成「纯变量」Patch（不含游戏状态/地图等）；再单独调用第二 API，按下方勾选执行正文美化、NPC生活，并把 Patch 与正文合并进本回合结果。关闭时附加任务与变量同轮或并行（与旧版一致）。
           </p>
         </template>
         <template v-else-if="extraInfoOpen === 'beautify'">
@@ -748,14 +724,6 @@
         <template v-else-if="extraInfoOpen === 'world'">
           <p class="secondary-task-popover-text">
             「NPC生活」含世界大势与居民生活 / NPC 状态相关说明，一并生成。
-          </p>
-        </template>
-        <template v-else-if="extraInfoOpen === 'evolution'">
-          <p class="secondary-task-popover-text">演化地图中的世界。</p>
-          <p class="secondary-task-popover-text">
-            开启后，第二 API 在本回合「变量更新」生成结束后会再跑一路短上下文：综合正文、元信息、游戏状态（含世界大势等）、角色内心与位置、已有区域/建筑/活动，推断是否需新增或调整地图语义；若有，则生成仅针对
-            <strong>区域数据 / 建筑数据 / 活动数据</strong> 的 JSON Patch，并<strong>追加合并</strong>到同一轮
-            <code>&lt;UpdateVariable&gt;</code> 的 Patch 数组中（不单独多一轮用户可见延迟）。
           </p>
         </template>
       </div>

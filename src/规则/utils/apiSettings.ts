@@ -16,7 +16,7 @@ import {
 } from './variableUpdatePromptExtras';
 import { processMaintextBeautification } from './maintextBeautify';
 import { extractFilteredContent, parseMaintext, replaceLastMaintextInnerContent } from './messageParser';
-import { mergeVariableUpdateJsonPatchInners } from './worldEvolutionSecondaryApi';
+import { mergeVariableUpdateJsonPatchInners } from './variablePatchMerge';
 import { traceWrappedGenerateRaw } from './generationTrace';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
@@ -556,7 +556,7 @@ export type ProcessWithSecondaryApiOptions = {
 
 /**
  * 在 {@link SecondaryApiConfig.splitSecondaryVariablePassAndExtras} 开启时，于「纯变量」轮之后执行：
- * 已勾选的「正文美化」「NPC生活」「世界演化」，Patch 类结果会合并为一段 `updateVariableFragment`。
+ * 已勾选的「正文美化」「NPC生活」，Patch 类结果会合并为一段 `updateVariableFragment`。
  */
 export async function processSecondaryApiExtraTasksPass(
   maintext: string,
@@ -568,8 +568,7 @@ export async function processSecondaryApiExtraTasksPass(
   }
   const hasBeautify = config.tasks?.includeMaintextBeautification === true;
   const hasWorldChanges = config.tasks?.includeWorldChanges === true;
-  const hasWorldEvolution = config.tasks?.includeWorldEvolution === true;
-  if (!hasBeautify && !hasWorldChanges && !hasWorldEvolution) {
+  if (!hasBeautify && !hasWorldChanges) {
     return { updateVariableFragment: null, beautifiedMaintextInner: null };
   }
 
@@ -605,18 +604,6 @@ export async function processSecondaryApiExtraTasksPass(
     const wc = await processWorldChangesSecondaryApi(maintext, config, currentVariables, worldbookContents, statMid);
     if (wc?.trim()) {
       patchAccum = patchAccum ? mergeVariableUpdateJsonPatchInners(patchAccum, wc.trim()) : wc.trim();
-    }
-  }
-
-  if (hasWorldEvolution) {
-    try {
-      const { runWorldEvolutionSecondaryApi } = await import('./worldEvolutionSecondaryApi');
-      const evo = await runWorldEvolutionSecondaryApi(maintext, config, currentVariables);
-      if (evo?.trim()) {
-        patchAccum = patchAccum ? mergeVariableUpdateJsonPatchInners(patchAccum, evo.trim()) : evo.trim();
-      }
-    } catch (e) {
-      console.warn('⚠️ [apiSettings] 附加任务路：世界演化失败:', e);
     }
   }
 
@@ -821,22 +808,7 @@ export async function processWithSecondaryApi(
 
       if (updateVariable) {
         console.log('✅ [apiSettings] 第二API返回有效变量更新');
-        let merged = updateVariable;
-        if (config.splitSecondaryVariablePassAndExtras !== true && config.tasks?.includeWorldEvolution === true) {
-          try {
-            const { mergeVariableUpdateJsonPatchInners, runWorldEvolutionSecondaryApi } = await import(
-              './worldEvolutionSecondaryApi'
-            );
-            const evoInner = await runWorldEvolutionSecondaryApi(maintext, config, currentVariables);
-            if (evoInner) {
-              merged = mergeVariableUpdateJsonPatchInners(merged, evoInner);
-              console.log('✅ [apiSettings] 世界演化 Patch 已并入本轮变量更新');
-            }
-          } catch (evoErr) {
-            console.warn('⚠️ [apiSettings] 世界演化失败，仅使用变量更新结果:', evoErr);
-          }
-        }
-        return merged;
+        return updateVariable;
       }
 
       throw new Error('响应中未找到 <UpdateVariable> 标签');
@@ -959,7 +931,7 @@ function buildSecondaryApiPrompt(
 
   const variablesOnlyScopeSection = variablesOnly
     ? `## ⚠️ 本轮为「纯变量」路（与附加任务路分离）
-- **禁止**在 Patch 中使用以下 path 前缀：\`/游戏状态\`、\`/区域数据\`、\`/建筑数据\`、\`/活动数据\`（世界大势、居民生活、地图演化由下一轮第二 API 处理）。
+- **禁止**在 Patch 中使用以下 path 前缀：\`/游戏状态\`、\`/区域数据\`、\`/建筑数据\`、\`/活动数据\`（世界大势、居民生活等综合说明与地图相关变更由下一轮第二 API 附加任务处理）。
 - 仍须正常维护 \`/角色档案\`、\`/元信息\`、\`/世界规则\`、\`/区域规则\`、\`/个人规则\` 等与角色、规则、进度相关的路径；**当前位置** 等字段请使用**已有**区域/建筑 id，勿新建地图条目。
 
 `
@@ -1100,7 +1072,7 @@ export async function generatePrimaryRawOrderedPrompts(
 }
 
 /**
- * 短上下文第二 API：`ordered_prompts` 使用调用方自定义 system + user（地图、世界演化等）。
+ * 短上下文第二 API：`ordered_prompts` 使用调用方自定义 system + user（地图等）。
  * 与变量更新路不同，不注入 {@link SECONDARY_SYSTEM_PROMPT}。
  */
 export async function generateSecondaryRawOrderedPrompts(
@@ -1111,7 +1083,7 @@ export async function generateSecondaryRawOrderedPrompts(
     maxTokens?: number;
     bannerMessage?: string;
     bannerAttempt?: number;
-    /** 为 true 时不派发顶栏第二 API 横幅（例如嵌套在变量更新流程内的世界演化） */
+    /** 为 true 时不派发顶栏第二 API 横幅（例如嵌套在变量更新流程内的子调用） */
     skipBanner?: boolean;
   },
 ): Promise<string> {

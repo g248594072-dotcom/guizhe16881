@@ -334,7 +334,7 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
     return mainResult;
   }
 
-  // 4. 第二 API：变量（及可选内联世界演化）与正文美化；若开启「分两轮」则先变量再附加任务
+  // 4. 第二 API：变量与正文美化等附加任务；若开启「分两轮」则先变量再附加任务
   try {
     const { variableUpdate, beautifiedInner } = await runSecondaryApiForMaintextPipeline(maintext, secondaryConfig);
 
