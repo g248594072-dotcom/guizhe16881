@@ -95,6 +95,17 @@
             {{ injectTemplateLoading ? '注入中…' : '注入内置表格模板' }}
           </button>
         </div>
+
+        <div class="shujuku-inject-actions trace-download-row">
+          <button type="button" class="btn-api btn-api-secondary" @click="emit('downloadGenerationTrace')">
+            <i class="fa-solid fa-file-arrow-down"></i>
+            下载上一轮 AI 调用追踪（txt）
+          </button>
+          <p class="trace-download-hint">
+            记录本界面发起的 <code>generate</code> / <code>generateRaw</code>：传入参数摘要与模型返回；不含酒馆主进程拼好的完整
+            messages。
+          </p>
+        </div>
       </div>
 
       <!-- API 模式选择卡片 -->
@@ -180,8 +191,17 @@
       </h3>
 
       <label class="field-row checkbox-row">
-        <input v-model="secondaryApi.useTavernMainConnection" type="checkbox" @change="persistSecondaryApi" />
-        <span>使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效）</span>
+        <input
+          v-model="secondaryApi.useTavernMainConnection"
+          type="checkbox"
+          :disabled="!secondaryApiUrlTrimmed"
+          @change="onSecondaryTavernPlugChange"
+        />
+        <span
+          >使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效）<template v-if="!secondaryApiUrlTrimmed"
+            >— <strong class="secondary-plug-need-url">须先填写下方 API URL</strong> 才可开启</template
+          ></span
+        >
       </label>
 
       <template v-if="!secondaryApi.useTavernMainConnection">
@@ -264,19 +284,20 @@
         <div class="secondary-api-extra-head-right">
           <label class="secondary-api-split-inline">
             <input
-              v-model="secondaryApi.splitSecondaryVariablePassAndExtras"
+              :checked="false"
               class="secondary-extra-task-checkbox"
               type="checkbox"
-              @change="persistSecondaryApi"
+              disabled
             />
-            <span class="secondary-split-label secondary-extra-streamer secondary-extra-streamer--soft">额外API执行额外任务</span>
+            <span class="secondary-split-label secondary-extra-streamer secondary-extra-streamer--soft"
+              >额外API执行额外任务（更新中）</span>
           </label>
           <div class="secondary-task-info-anchor" data-extra-info-key="split">
             <button
               type="button"
               class="secondary-task-info-btn"
               :aria-expanded="extraInfoOpen === 'split'"
-              aria-label="额外API执行额外任务说明"
+              aria-label="额外API执行额外任务说明（更新中）"
               @click.stop="toggleExtraInfo('split')"
             >
               !
@@ -606,6 +627,35 @@
 
       <div class="layout-field-block">
         <div class="layout-field-head">
+          <span class="field-label layout-field-label">标签卡全屏 / 半屏</span>
+        </div>
+        <div class="tab-panel-span-segmented" role="group" aria-label="侧栏标签与游戏正文的布局">
+          <button
+            type="button"
+            class="tab-panel-span-btn"
+            :class="{ 'tab-panel-span-btn--active': layoutTabPanelSpan === 'split' }"
+            @click="setTabPanelSpan('split')"
+          >
+            半屏
+          </button>
+          <button
+            type="button"
+            class="tab-panel-span-btn"
+            :class="{ 'tab-panel-span-btn--active': layoutTabPanelSpan === 'full' }"
+            @click="setTabPanelSpan('full')"
+          >
+            全屏
+          </button>
+        </div>
+        <p class="layout-field-note">
+          <strong>半屏</strong>：打开人物/规则/设置等标签时，侧栏为固定宽，右侧仍显示游戏正文。
+          <strong>全屏</strong>：打开上述标签时占满主区域，游戏正文区暂时隐藏，关闭标签后恢复。与下方宽高一样变更后立即生效。
+          <strong>手机无效</strong>（窄屏下侧栏为全幅抽屉，不区分全屏/半屏）。
+        </p>
+      </div>
+
+      <div class="layout-field-block">
+        <div class="layout-field-head">
           <label class="field-label layout-field-label" for="ui-scale-range">界面缩放</label>
           <span class="layout-value-pill">{{ layoutScaleDisplay }}</span>
         </div>
@@ -722,7 +772,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick, onBeforeUnmount } from 'vue';
+import { ref, onMounted, computed, nextTick, onBeforeUnmount, watch } from 'vue';
 import type { OutputMode, SecondaryApiConfig, InputActionMode, SpeechIntentWorldbookMode } from '../types';
 import {
   SPEECH_INTENT_WORLD_MODES,
@@ -733,7 +783,7 @@ import {
   fetchSecondaryApiModelList,
   clampSecondaryApiRetries,
 } from '../utils/apiSettings';
-import type { UiLayoutSettings } from '../utils/uiLayoutLimits';
+import type { TabPanelSpan, UiLayoutSettings } from '../utils/uiLayoutLimits';
 import {
   UI_MAIN_HEIGHT_MIN_PX,
   UI_MAIN_HEIGHT_MAX_PX,
@@ -775,6 +825,7 @@ const emit = defineEmits<{
   (e: 'modeChange', mode: OutputMode): void;
   (e: 'updateWorldbook', mode: OutputMode): void;
   (e: 'layoutChange', layout: UiLayoutSettings): void;
+  (e: 'downloadGenerationTrace'): void;
 }>();
 
 const settingsTab = ref<'output' | 'options' | 'layout'>('output');
@@ -808,6 +859,51 @@ function speechIntentOptionLabel(mode: SpeechIntentWorldbookMode): string {
 }
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
+
+/** 有非空 API URL 时才允许勾选「使用酒馆当前聊天补全」；随机规则等也依赖填写地址的直连 */
+const secondaryApiUrlTrimmed = computed(() => String(secondaryApi.value.url || '').trim().length > 0);
+
+function onSecondaryTavernPlugChange() {
+  if (!secondaryApiUrlTrimmed.value) {
+    secondaryApi.value.useTavernMainConnection = false;
+  }
+  persistSecondaryApi();
+}
+
+watch(
+  () => String(secondaryApi.value.url ?? '').trim(),
+  trimmed => {
+    if (!trimmed && secondaryApi.value.useTavernMainConnection) {
+      secondaryApi.value.useTavernMainConnection = false;
+      persistSecondaryApi();
+    }
+  },
+);
+
+const SECONDARY_API_SYNC_EVENT = 'rule-modifier-secondary-api-updated';
+const OUTPUT_MODE_SYNC_EVENT = 'rule-modifier-output-mode-updated';
+
+function reloadOutputModeFromStorage() {
+  try {
+    outputMode.value = loadOutputMode();
+  } catch (e) {
+    console.warn('[SettingsPanel] reloadOutputModeFromStorage failed:', e);
+  }
+}
+
+function reloadSecondaryApiFromStorage() {
+  try {
+    const loaded = loadSecondaryApiConfig();
+    loaded.maxRetries = clampSecondaryApiRetries(loaded.maxRetries);
+    secondaryApi.value = loaded;
+    if (!String(secondaryApi.value.url || '').trim() && secondaryApi.value.useTavernMainConnection) {
+      secondaryApi.value.useTavernMainConnection = false;
+      saveSecondaryApiConfig(secondaryApi.value);
+    }
+  } catch (e) {
+    console.warn('[SettingsPanel] reloadSecondaryApiFromStorage failed:', e);
+  }
+}
 
 /** 「第二 API 额外任务」区：说明气泡当前打开的 key（内容 Teleport 到 body + fixed） */
 const extraInfoOpen = ref<string | null>(null);
@@ -950,6 +1046,10 @@ function toggleExtraInfo(key: string) {
 
 onBeforeUnmount(() => {
   closeExtraInfoPopover();
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(SECONDARY_API_SYNC_EVENT, reloadSecondaryApiFromStorage);
+    window.removeEventListener(OUTPUT_MODE_SYNC_EVENT, reloadOutputModeFromStorage);
+  }
 });
 
 /** 小前端生成几率 0–100（展示用，与 persist 时 clamp 一致） */
@@ -989,6 +1089,7 @@ function normalizedLayout(): UiLayoutSettings {
     maxWidth: clampMainUiWidthPx(props.uiLayout.maxWidth ?? 900),
     maxHeight: clampMainUiHeightPx(props.uiLayout.maxHeight ?? 600),
     heightMode: props.uiLayout.heightMode === 'custom' ? 'custom' : 'fit',
+    tabPanelSpan: props.uiLayout.tabPanelSpan === 'full' ? 'full' : 'split',
   };
 }
 
@@ -1006,6 +1107,9 @@ function commitLayout(patch: Partial<UiLayoutSettings>) {
   }
   if (patch.heightMode !== undefined) {
     next.heightMode = patch.heightMode === 'custom' ? 'custom' : 'fit';
+  }
+  if (patch.tabPanelSpan !== undefined) {
+    next.tabPanelSpan = patch.tabPanelSpan === 'full' ? 'full' : 'split';
   }
   emit('layoutChange', next);
   saveUiLayout(next);
@@ -1046,6 +1150,13 @@ function onLayoutMaxHeightInput(e: Event) {
   commitLayout({ maxHeight: v });
 }
 
+const layoutTabPanelSpan = computed<TabPanelSpan>(() => normalizedLayout().tabPanelSpan);
+
+function setTabPanelSpan(mode: TabPanelSpan) {
+  if (layoutTabPanelSpan.value === mode) return;
+  commitLayout({ tabPanelSpan: mode });
+}
+
 function throttledErrorToast(message: string) {
   const now = Date.now();
   if (now - lastErrorToastTime.value >= ERROR_TOAST_THROTTLE) {
@@ -1056,6 +1167,10 @@ function throttledErrorToast(message: string) {
 
 onMounted(() => {
   loadSettings();
+  if (typeof window !== 'undefined') {
+    window.addEventListener(SECONDARY_API_SYNC_EVENT, reloadSecondaryApiFromStorage);
+    window.addEventListener(OUTPUT_MODE_SYNC_EVENT, reloadOutputModeFromStorage);
+  }
 });
 
 function loadSettings() {
@@ -1064,6 +1179,10 @@ function loadSettings() {
     const loaded = loadSecondaryApiConfig();
     loaded.maxRetries = clampSecondaryApiRetries(loaded.maxRetries);
     secondaryApi.value = loaded;
+    if (!String(secondaryApi.value.url || '').trim() && secondaryApi.value.useTavernMainConnection) {
+      secondaryApi.value.useTavernMainConnection = false;
+      saveSecondaryApiConfig(secondaryApi.value);
+    }
     const other = getOtherSettings();
     inputActionMode.value = other.inputActionMode;
     enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
@@ -1088,6 +1207,7 @@ function loadSettings() {
 }
 
 function persistSecondaryApi() {
+  secondaryApi.value.splitSecondaryVariablePassAndExtras = false;
   secondaryApi.value.maxRetries = clampSecondaryApiRetries(secondaryApi.value.maxRetries);
   let c = Math.round(Number(secondaryApi.value.maintextBeautifyHtmlcontentChance));
   if (Number.isNaN(c)) {
@@ -1153,7 +1273,7 @@ async function runInjectBundledTemplate() {
 }
 
 function saveSettings(layoutSnapshot?: UiLayoutSettings) {
-  const layout = layoutSnapshot ?? props.uiLayout;
+  const layout = layoutSnapshot ?? normalizedLayout();
   try {
     saveOutputMode(outputMode.value);
     secondaryApi.value.maxRetries = clampSecondaryApiRetries(secondaryApi.value.maxRetries);
@@ -1578,6 +1698,31 @@ async function selectMode(mode: OutputMode) {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.trace-download-row {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.trace-download-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 42rem;
+  opacity: 0.9;
+}
+
+.trace-download-hint code {
+  font-size: 11px;
+}
+
+.dark .trace-download-hint {
+  color: #a1a1aa;
+}
+
+.light .trace-download-hint {
+  color: #52525b;
 }
 
 .shujuku-options-hint {
@@ -2519,12 +2664,89 @@ input:checked + .toggle-slider:before {
   margin-bottom: 4px;
 }
 
+/* 「界面与布局」：每项独立背景框，层次更清晰 */
+.settings-panel.dark .settings-tab-panel--layout .layout-field-block {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 2px 10px rgba(0, 0, 0, 0.25);
+}
+
+.settings-panel.light .settings-tab-panel--layout .layout-field-block {
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  background: #fafafa;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.settings-panel .settings-tab-panel--layout .layout-field-block .layout-field-note:last-child {
+  margin-bottom: 0;
+}
+
 .layout-field-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.tab-panel-span-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tab-panel-span-btn {
+  flex: 1 1 120px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #a1a1aa;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-panel-span-btn:hover {
+  color: #e4e4e7;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab-panel-span-btn--active {
+  color: #fff;
+  border-color: rgba(6, 182, 212, 0.55);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(168, 85, 247, 0.15));
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.15);
+}
+
+.light .tab-panel-span-btn {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: #f4f4f5;
+  color: #71717a;
+}
+
+.light .tab-panel-span-btn:hover {
+  color: #18181b;
+  background: #e4e4e7;
+}
+
+.light .tab-panel-span-btn--active {
+  color: #18181b;
+  border-color: rgba(6, 182, 212, 0.45);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(168, 85, 247, 0.1));
 }
 
 .layout-field-label {
@@ -2593,6 +2815,26 @@ input:checked + .toggle-slider:before {
 
 .light .layout-field-note--footer {
   border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+/* 底部说明：同页内单独一框，与上方选项块一致 */
+.settings-panel.dark .settings-tab-panel--layout .layout-field-note--footer {
+  margin-top: 4px;
+  margin-bottom: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+
+.settings-panel.light .settings-tab-panel--layout .layout-field-note--footer {
+  margin-top: 4px;
+  margin-bottom: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #f4f4f5;
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .settings-tab-panel--layout .field-label:first-of-type {

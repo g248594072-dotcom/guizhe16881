@@ -8,6 +8,7 @@
 import type { SecondaryApiConfig } from '../types';
 import { normalizeOpenAiUrl } from './openaiUrl';
 import { VARIABLE_JSON_PATCH_RUNTIME_RULES } from './variableUpdatePromptExtras';
+import { traceWrappedGenerateRaw } from './generationTrace';
 
 declare function generateRaw(config: unknown): Promise<string | undefined | null>;
 
@@ -39,7 +40,13 @@ async function generateWorldEvolutionRawOrdered(
         max_tokens: cap,
       },
     };
-    return String((await generateRaw(genConfig)) ?? '');
+    return String(
+      (await traceWrappedGenerateRaw(
+        '第二API·世界演化·generateRaw（酒馆插头）',
+        genConfig as unknown as Record<string, unknown>,
+        () => generateRaw(genConfig),
+      )) ?? '',
+    );
   }
   if (!String(config.key || '').trim()) {
     throw new Error('第二 API Key 未配置');
@@ -66,7 +73,13 @@ async function generateWorldEvolutionRawOrdered(
   if (modelTrim) {
     (genConfig.custom_api as Record<string, unknown>).model = modelTrim;
   }
-  return String((await generateRaw(genConfig)) ?? '');
+  return String(
+    (await traceWrappedGenerateRaw(
+      '第二API·世界演化·generateRaw（自定义URL）',
+      genConfig as unknown as Record<string, unknown>,
+      () => generateRaw(genConfig),
+    )) ?? '',
+  );
 }
 
 const WORLD_EVOLUTION_SYSTEM = `你是「世界演化 → 地图变量」协助模型，与「逐字段修角色数值」的常规变量更新**分工不同**。

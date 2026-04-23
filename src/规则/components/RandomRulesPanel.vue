@@ -208,6 +208,45 @@
     </Transition>
   </Teleport>
 
+  <!-- 无第二 API 地址时：全屏前挡说明（与 toastr 区分） -->
+  <Teleport to="body">
+    <Transition name="modal">
+      <div
+        v-if="showRandomRulesAddressModal"
+        class="theme-dialog-overlay"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+        @click.self="closeRandomRulesAddressModal"
+      >
+        <div
+          class="theme-dialog-modal random-rules-api-modal"
+          :class="{ dark: isDarkMode, light: !isDarkMode }"
+          role="alertdialog"
+          aria-labelledby="random-rules-api-modal-title"
+          aria-describedby="random-rules-api-modal-desc"
+        >
+          <div class="theme-dialog-header">
+            <h2 id="random-rules-api-modal-title">
+              <i class="fa-solid fa-plug-circle-xmark"></i>
+              无法生成随机规则
+            </h2>
+            <button type="button" class="close-btn" @click="closeRandomRulesAddressModal" aria-label="关闭">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <div class="theme-dialog-body">
+            <p id="random-rules-api-modal-desc" class="random-rules-api-modal__text">
+              必须去第二 API 填写地址才能生成随机规则喵！
+            </p>
+            <p class="random-rules-api-modal__hint">请打开<strong>系统设置</strong> → 双 API 模式下的 <strong>第二 API 配置</strong>，填写「API URL」（以及 Key）；填写后可再勾选「使用酒馆当前聊天补全」。</p>
+          </div>
+          <div class="theme-dialog-actions">
+            <button type="button" class="btn-confirm" @click="closeRandomRulesAddressModal">知道了</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
+
   <!-- 应用前编辑弹窗 -->
   <Teleport to="body">
     <Transition name="modal">
@@ -291,6 +330,8 @@ import {
   isEditCartEnabled,
   stageItem,
 } from '../utils/editCartFlow';
+import { getSecondaryApiConfig } from '../utils/apiSettings';
+import { loadSecondaryApiConfig, saveSecondaryApiConfig } from '../utils/localSettings';
 import { normalizeOpenAiUrl } from '../utils/openaiUrl';
 import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
 import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
@@ -329,6 +370,11 @@ const errorMessage = ref('');
 // 主题输入相关
 const showThemeDialog = ref(false);
 const themeInput = ref('');
+
+/** 与 SettingsPanel 同步：第二 API 从 localStorage 更新后通知侧栏刷新 */
+const SECONDARY_API_SYNC_EVENT = 'rule-modifier-secondary-api-updated';
+
+const showRandomRulesAddressModal = ref(false);
 
 /** 与模板中 isRuleApplied(rule.id) 对应，读取会话级已应用 id */
 function isRuleApplied(id: string): boolean {
@@ -400,8 +446,41 @@ function getActiveRegions(): Array<{ name: string; data: RegionData }> {
     .map(([name, data]) => ({ name: data.名称 || name, data }));
 }
 
+/**
+ * 无第二 API 地址时：关回「使用插头」、通知系统设置侧栏、弹出说明（随机规则仅支持填写 URL 的直连）。
+ */
+function turnOffTavernPlugIfNeededAndSyncSettings() {
+  const c = loadSecondaryApiConfig();
+  if (c.useTavernMainConnection) {
+    c.useTavernMainConnection = false;
+    saveSecondaryApiConfig(c);
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SECONDARY_API_SYNC_EVENT));
+  }
+}
+
+function openRandomRulesAddressRequiredModal() {
+  turnOffTavernPlugIfNeededAndSyncSettings();
+  showRandomRulesAddressModal.value = true;
+}
+
+function closeRandomRulesAddressModal() {
+  showRandomRulesAddressModal.value = false;
+}
+
+/** 有非空第二 API 地址才允许走直连生成；否则弹窗提示去设置填写 */
+function ensureRandomRulesSecondaryAddress(): boolean {
+  if (String(getSecondaryApiConfig().url || '').trim()) {
+    return true;
+  }
+  openRandomRulesAddressRequiredModal();
+  return false;
+}
+
 // 打开主题输入弹窗
 function openThemeDialog() {
+  if (!ensureRandomRulesSecondaryAddress()) return;
   showThemeDialog.value = true;
   // 保留上次输入的主题
   themeInput.value = currentTheme.value;
@@ -729,6 +808,7 @@ function parseGeneratedRules(content: string): GeneratedRule[] {
 // 生成规则主函数
 async function handleGenerate() {
   if (isGenerating.value) return;
+  if (!ensureRandomRulesSecondaryAddress()) return;
 
   isGenerating.value = true;
   errorMessage.value = '';
@@ -757,8 +837,15 @@ async function handleGenerate() {
     toastr.success(`已追加 ${rules.length} 条随机规则${themeText}（共 ${generatedRules.value.length} 条）`);
   } catch (e) {
     console.error('生成规则失败:', e);
-    errorMessage.value = e instanceof Error ? e.message : '生成失败，请检查 API 配置';
-    toastr.error(errorMessage.value);
+    const msg = e instanceof Error ? e.message : '生成失败，请检查 API 配置';
+    const isNoApi = msg === '未找到可用的 API 配置' || msg.includes('未找到可用的 API');
+    if (isNoApi) {
+      errorMessage.value = '';
+      openRandomRulesAddressRequiredModal();
+    } else {
+      errorMessage.value = msg;
+      toastr.error(msg);
+    }
   } finally {
     isGenerating.value = false;
   }
@@ -1338,6 +1425,30 @@ async function confirmApplyFromDialog() {
 
 .theme-dialog-modal--wide {
   max-width: 560px;
+}
+
+.random-rules-api-modal {
+  max-width: 440px;
+}
+.random-rules-api-modal__text {
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.55;
+  margin: 0 0 14px;
+  color: inherit;
+}
+.random-rules-api-modal__hint {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  opacity: 0.9;
+  color: inherit;
+  strong {
+    color: #a78bfa;
+  }
+}
+:global(.light) .random-rules-api-modal__hint strong {
+  color: #6d28d9;
 }
 
 @keyframes modalSlideIn {

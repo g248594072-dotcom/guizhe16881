@@ -10,6 +10,7 @@ import {
   isSecondaryApiConfigured,
   runSecondaryApiForMaintextPipeline,
 } from './apiSettings';
+import { beginTraceRound, commitTraceRound, traceWrappedGenerate } from './generationTrace';
 
 // 生成状态
 let isGenerating = false;
@@ -213,6 +214,8 @@ export async function playTurn(prompt: string, useDualApi?: boolean): Promise<bo
 
     console.log(`🎮 [gameFlow] 输出模式: ${isDualMode ? '双API' : '单API'}`);
 
+    beginTraceRound({ source: 'gameFlow.playTurn', userPreview: prompt });
+
     // 1. 构建完整的提示词
     const fullPrompt = buildPrompt(prompt, isDualMode);
     console.log('🎮 [gameFlow] 开始回合:', generationId, '提示词:', prompt);
@@ -227,12 +230,15 @@ export async function playTurn(prompt: string, useDualApi?: boolean): Promise<bo
       result = await executeDualApiFlow(fullPrompt, generationId);
     } else {
       // 单API模式流程
-      result = await generate({
+      const genPayload = {
         user_input: fullPrompt,
         should_stream: false,
         should_silence: true,
         generation_id: generationId,
-      });
+      };
+      result = (await traceWrappedGenerate('gameFlow·主对话 generate（单API）', genPayload, () =>
+        generate(genPayload),
+      )) as string;
     }
 
     console.log('📝 [gameFlow] 生成完成，验证格式...');
@@ -285,6 +291,7 @@ export async function playTurn(prompt: string, useDualApi?: boolean): Promise<bo
     });
     return false;
   } finally {
+    commitTraceRound();
     isGenerating = false;
     currentGenerationId = null;
   }
@@ -299,12 +306,15 @@ export async function playTurn(prompt: string, useDualApi?: boolean): Promise<bo
 async function executeDualApiFlow(prompt: string, generationId: string): Promise<string> {
   // 1. 调用主API生成正文
   console.log('🎯 [gameFlow] 调用主API生成正文...');
-  const mainResult = await generate({
+  const mainGen = {
     user_input: prompt,
     should_stream: false,
     should_silence: true,
     generation_id: generationId,
-  });
+  };
+  const mainResult = (await traceWrappedGenerate('gameFlow·主对话 generate（双API·主模型）', mainGen, () =>
+    generate(mainGen),
+  )) as string;
 
   // 2. 提取 maintext、option、sum 标签
   const maintext = extractMaintext(mainResult);

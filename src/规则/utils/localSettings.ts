@@ -34,6 +34,7 @@ const DEFAULT_UI_LAYOUT: UiLayoutSettings = {
   maxWidth: 900,
   maxHeight: 600,
   heightMode: 'fit',
+  tabPanelSpan: 'split',
 };
 
 /**
@@ -67,7 +68,8 @@ export function loadOutputMode(): OutputMode {
  */
 export function saveSecondaryApiConfig(config: SecondaryApiConfig): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.secondaryApi, JSON.stringify(config));
+    const normalized: SecondaryApiConfig = { ...config, splitSecondaryVariablePassAndExtras: false };
+    localStorage.setItem(STORAGE_KEYS.secondaryApi, JSON.stringify(normalized));
   } catch (error) {
     console.warn('⚠️ [localSettings] 保存第二API配置失败:', error);
   }
@@ -88,10 +90,8 @@ export function loadSecondaryApiConfig(): SecondaryApiConfig {
         model: parsed.model ?? DEFAULT_SECONDARY_API_CONFIG.model,
         maxRetries: clampSecondaryRetriesLoaded(parsed.maxRetries ?? DEFAULT_SECONDARY_API_CONFIG.maxRetries),
         useTavernMainConnection: parsed.useTavernMainConnection ?? DEFAULT_SECONDARY_API_CONFIG.useTavernMainConnection,
-        splitSecondaryVariablePassAndExtras:
-          typeof parsed.splitSecondaryVariablePassAndExtras === 'boolean'
-            ? parsed.splitSecondaryVariablePassAndExtras
-            : DEFAULT_SECONDARY_API_CONFIG.splitSecondaryVariablePassAndExtras,
+        /** 曾由设置项控制；现统一关闭，待功能恢复后再从存储读取 */
+        splitSecondaryVariablePassAndExtras: false,
         maintextBeautifyHtmlcontentChance: clampHtmlcontentChanceLoaded(
           parsed.maintextBeautifyHtmlcontentChance ?? DEFAULT_SECONDARY_API_CONFIG.maintextBeautifyHtmlcontentChance,
         ),
@@ -128,6 +128,7 @@ export function loadUiLayout(): UiLayoutSettings {
         maxWidth: Number(parsed.maxWidth) || DEFAULT_UI_LAYOUT.maxWidth,
         maxHeight: Number(parsed.maxHeight) || DEFAULT_UI_LAYOUT.maxHeight,
         heightMode: parsed.heightMode || DEFAULT_UI_LAYOUT.heightMode,
+        tabPanelSpan: parsed.tabPanelSpan === 'full' ? 'full' : 'split',
       };
     }
   } catch (error) {

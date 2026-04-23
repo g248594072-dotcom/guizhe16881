@@ -4,6 +4,7 @@
 import type { SecondaryApiConfig } from '../types';
 import { MAIN_TEXT_BEAUTIFY_RULES } from './maintextBeautifyPrompt';
 import { normalizeOpenAiUrl } from './openaiUrl';
+import { traceWrappedGenerateRaw } from './generationTrace';
 
 /** 与 apiSettings 中横幅事件名一致，便于 App.vue 统一监听 */
 export const SECONDARY_API_BEAUTIFY_START_EVENT = 'rule-modifier-secondary-api-start' as const;
@@ -112,7 +113,11 @@ async function callBeautifyGenerateRawCustom(
   if (modelTrim) {
     genConfig.custom_api!.model = modelTrim;
   }
-  const result = await generateRaw(genConfig);
+  const result = await traceWrappedGenerateRaw(
+    '第二API·正文美化·generateRaw（自定义URL）',
+    genConfig as unknown as Record<string, unknown>,
+    () => generateRaw(genConfig),
+  );
   return String(result ?? '');
 }
 
@@ -132,7 +137,11 @@ async function callBeautifyViaTavernPlug(userPrompt: string, _config: SecondaryA
     ],
   };
   // 不设置 custom_api.model：与主插头当前模型一致
-  const result = await generateRaw(genConfig);
+  const result = await traceWrappedGenerateRaw(
+    '第二API·正文美化·generateRaw（酒馆插头）',
+    genConfig as unknown as Record<string, unknown>,
+    () => generateRaw(genConfig),
+  );
   return String(result ?? '');
 }
 

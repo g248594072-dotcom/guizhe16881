@@ -9,6 +9,7 @@ export const DEFAULT_SECONDARY_API_CONFIG: SecondaryApiConfig = {
   model: '',
   maxRetries: 2,
   useTavernMainConnection: true,
+  /** 设置里暂锁为关，见 `SettingsPanel`「额外API执行额外任务（更新中）」 */
   splitSecondaryVariablePassAndExtras: false,
   maintextBeautifyHtmlcontentChance: 50,
   tasks: {

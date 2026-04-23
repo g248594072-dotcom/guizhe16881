@@ -31,6 +31,12 @@ export function getPendingUpdateVariablePatchCount(): number {
   return mergedOps.length;
 }
 
+/** 是否有待合并的 `<UpdateVariable>`（`take` 前调用，不消耗队列） */
+export function hasPendingUpdateVariableToMerge(): boolean {
+  if (mergedOps.length > 0) return true;
+  return Boolean(stagingSummaryForNextTake.trim());
+}
+
 export function clearPendingUpdateVariablePatches(): void {
   mergedOps = [];
   stagingSummaryForNextTake = '';

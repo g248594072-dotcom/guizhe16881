@@ -131,6 +131,7 @@
           @mode-change="onOutputModeChange"
           @update-worldbook="onUpdateWorldbook"
           @layout-change="onLayoutChange"
+          @download-generation-trace="onDownloadGenerationTrace"
         />
       </div>
     </div>
@@ -148,6 +149,7 @@
       'animate-shake': isShaking,
       'has-mvu-missing-tip': showMvuMissingTip,
       'layout-regional-map-bleed': regionalMapFullBleed,
+      'layout-tab-panel-full': tabPanelLayoutFull,
     }"
     :style="rootStyle"
   >
@@ -282,6 +284,7 @@
                 @mode-change="onOutputModeChange"
                 @update-worldbook="onUpdateWorldbook"
                 @layout-change="onLayoutChange"
+                @download-generation-trace="onDownloadGenerationTrace"
               />
               <WorldLifePanel
                 v-else-if="activeTab === 'world_life'"
@@ -1139,6 +1142,37 @@
       </div>
     </Transition>
 
+    <Transition name="modal">
+      <div
+        v-if="showDualApiBrokenModal"
+        class="modal-overlay"
+        @click.self="closeDualApiBrokenModal"
+      >
+        <div
+          class="modal-content rule-modal-content dual-api-broken-modal"
+          :class="{ dark: isDarkMode, light: !isDarkMode }"
+        >
+          <div class="modal-header rule-modal-header">
+            <h2>第二 API 不可用</h2>
+            <button type="button" class="btn-cancel" aria-label="关闭" @click="closeDualApiBrokenModal">
+              <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p class="dual-api-broken-text">
+              第二API设置异常，无法正常使用喵！检查是否开启开关或者填写正确的地址！
+            </p>
+            <div class="dual-api-broken-actions">
+              <button type="button" class="btn-secondary" @click="closeDualApiBrokenModal">取消</button>
+              <button type="button" class="btn-primary" @click="void onDualApiBrokenSwitchToSingleAndResend()">
+                切换到单 API 并发送
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- 长按正文：上下文菜单 -->
     <Teleport to="body">
       <div
@@ -1578,6 +1612,7 @@ import {
   appendStagingSummaryForNextPendingUvBlock,
   setStagingSummaryForNextPendingUvBlock,
   takePendingUpdateVariableBlock,
+  hasPendingUpdateVariableToMerge,
 } from './utils/pendingUpdateVariableQueue';
 import { diffValueToJsonPatches } from './utils/tacticalMapCommitSendBox';
 import {
@@ -1613,6 +1648,13 @@ import type { UiLayoutSettings } from './utils/uiLayoutLimits';
 import { clampMainUiHeightPx, clampMainUiWidthPx } from './utils/uiLayoutLimits';
 import { loadUiLayout } from './utils/localSettings';
 import { runShujukuManualUpdateAfterAssistantSaved } from './utils/shujukuBridge';
+import {
+  beginTraceRound,
+  commitTraceRound,
+  traceWrappedGenerate,
+  downloadLastTraceRoundTxt,
+  getLastTraceRound,
+} from './utils/generationTrace';
 import { isRulesMvuLiveHostAtInit, useDataStore } from './store';
 import { useEditCartStore } from './stores/editCart';
 import { getOtherSettings } from './utils/otherSettings';
@@ -1741,11 +1783,13 @@ function hideSecondaryApiBanner() {
 }
 
 const isModalOpen = ref(false);
+const showDualApiBrokenModal = ref(false);
 const modalType = ref('');
 const modalPayload = ref<Record<string, any> | null>(null);
 /** 编辑头像弹窗内隐藏的 file input */
 const avatarFileInputRef = ref<HTMLInputElement | null>(null);
 const UI_DARK_STORAGE_KEY = 'rule_modifier_ui_dark';
+const OUTPUT_MODE_SYNC_EVENT = 'rule-modifier-output-mode-updated';
 
 function readStoredDarkMode(): boolean {
   try {
@@ -1791,6 +1835,7 @@ const uiLayout = ref<Partial<UiLayoutSettings>>({
   maxWidth: 900,
   heightMode: 'fit',
   maxHeight: undefined,
+  tabPanelSpan: 'split',
 });
 
 const rootStyle = computed(() => {
@@ -1817,6 +1862,11 @@ const rootStyle = computed(() => {
     '--ui-max-height': maxHeight,
   } as Record<string, string>;
 });
+
+/** 设置「全屏」且已打开侧栏标签时：中间栏占满主区、游戏正文区隐藏 */
+const tabPanelLayoutFull = computed(
+  () => Boolean(activeTab.value) && uiLayout.value.tabPanelSpan === 'full',
+);
 
 // 弹窗表单数据（按类型复用）
 const modalForm = ref({
@@ -2160,6 +2210,16 @@ watch(
 );
 
 // 输出模式变更处理
+/** 设置面板：下载上一轮 generate / generateRaw 的请求摘要与返回全文 */
+function onDownloadGenerationTrace() {
+  if (!getLastTraceRound()) {
+    toastr.warning('暂无上一轮生成追踪：请先完成一次发送、重 roll、开局或变量重算中的 AI 调用');
+    return;
+  }
+  downloadLastTraceRoundTxt();
+  toastr.success('已下载生成追踪 txt');
+}
+
 function onOutputModeChange(mode: OutputMode) {
   console.log(`🔄 [App] 输出模式变更为: ${mode}`);
 }
@@ -2246,6 +2306,9 @@ function onLayoutChange(layout: UiLayoutSettings) {
   if (layout.scale !== undefined) {
     const s = Number(layout.scale);
     next.scale = Number.isFinite(s) ? Math.min(1.3, Math.max(0.8, s)) : next.scale;
+  }
+  if (layout.tabPanelSpan !== undefined) {
+    next.tabPanelSpan = layout.tabPanelSpan === 'full' ? 'full' : 'split';
   }
   uiLayout.value = next;
 }
@@ -3312,12 +3375,55 @@ async function applyMvuParseToMessageFloor(
   }
 }
 
+function closeDualApiBrokenModal() {
+  showDualApiBrokenModal.value = false;
+}
+
+/** 从「第二 API 不可用」弹窗切到单 API 并继续本次发送 */
+async function onDualApiBrokenSwitchToSingleAndResend() {
+  showDualApiBrokenModal.value = false;
+  try {
+    const { saveOutputMode } = await import('./utils/localSettings');
+    saveOutputMode('single');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(OUTPUT_MODE_SYNC_EVENT));
+    }
+    onOutputModeChange('single');
+    await onUpdateWorldbook('single');
+  } catch (e) {
+    console.error('❌ [App] 切换单 API 失败:', e);
+    toastr.error('切换单 API 失败');
+    return;
+  }
+  await sendMessage();
+}
+
 // 发送消息（同层前端界面核心功能）
 async function sendMessage() {
+  if (isGenerating.value || isVariablePersistInProgress.value) {
+    return;
+  }
+
   const typed = userInput.value.trim();
+  if (!typed && !hasPendingUpdateVariableToMerge()) {
+    return;
+  }
+
+  try {
+    const { getCurrentOutputMode, getSecondaryApiConfig, isSecondaryApiReadyForDualOperation } = await import(
+      './utils/apiSettings',
+    );
+    if (getCurrentOutputMode() === 'dual' && !isSecondaryApiReadyForDualOperation(getSecondaryApiConfig())) {
+      showDualApiBrokenModal.value = true;
+      return;
+    }
+  } catch (e) {
+    console.warn('⚠️ [App] 双 API 发送前检查失败，继续尝试发送:', e);
+  }
+
   const pendingUv = takePendingUpdateVariableBlock();
   const content = pendingUv ? (typed ? `${typed}\n\n${pendingUv}` : pendingUv) : typed;
-  if (!content || isGenerating.value || isVariablePersistInProgress.value) return;
+  if (!content) return;
 
   console.log('🎮 [App] 发送消息:', content.substring(0, 80) + '...');
 
@@ -3470,10 +3576,9 @@ async function sendMessage() {
     // 调用 generate 生成 AI 回复
     console.log('⏳ [App] 调用 generate...');
     aiGenerationStartMs.value = Date.now();
-    let result = await generate({
-      user_input: content,
-      should_stream: true,
-    });
+    beginTraceRound({ source: 'App.sendMessage', userPreview: content });
+    const sendGen = { user_input: content, should_stream: true };
+    let result = (await traceWrappedGenerate('App·主对话 generate', sendGen, () => generate(sendGen))) as string;
     console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
 
     if (myFlowGen !== gameSendFlowGeneration) {
@@ -3556,6 +3661,7 @@ async function sendMessage() {
     await rollbackToSnapshot();
 
   } finally {
+    commitTraceRound();
     gameSendInProgressBeforeTag.value = false;
     // 只有在标签验证弹窗未打开时才重置生成状态
     if (!isTagDialogOpen.value) {
@@ -3836,10 +3942,9 @@ async function handleRegenerate() {
     }
 
     aiGenerationStartMs.value = Date.now();
-    let result = await generate({
-      user_input: userMessageText,
-      should_stream: true,
-    });
+    beginTraceRound({ source: 'App.handleRegenerate', userPreview: userMessageText });
+    const rerollGen = { user_input: userMessageText, should_stream: true };
+    let result = (await traceWrappedGenerate('App·重 roll generate', rerollGen, () => generate(rerollGen))) as string;
 
     if (streamSubscriptionSuccessReroll && unsubscribeStreamReroll) {
       try {
@@ -3879,6 +3984,7 @@ async function handleRegenerate() {
     toastr.error('重 roll 失败: ' + String(error));
     loadMessageContent();
   } finally {
+    commitTraceRound();
     if (streamSubscriptionSuccessReroll && unsubscribeStreamReroll) {
       try {
         unsubscribeStreamReroll();
@@ -4065,6 +4171,7 @@ ${maintext}
     };
 
     // 生成新的 UpdateVariable
+    beginTraceRound({ source: 'App.handleRegenerateVariablesOnly', userPreview: maintext });
     let updateVariable = '';
     if (mode === 'dual' && isSecondaryApiConfigured(secondaryApiConfig)) {
       // 双API：优先走第二 API（generateRaw + 短上下文；若开启分轮则含附加任务合并）
@@ -4084,7 +4191,8 @@ ${maintext}
       // 单API且未配置第二 API：用主 API 按“第二 API 的任务格式”生成变量
       if (typeof generate !== 'function') throw new Error('generate 函数不可用');
       const prompt = await buildVariableOnlyPrompt();
-      const r = await generate({ user_input: prompt, should_stream: false });
+      const varOnlyGen = { user_input: prompt, should_stream: false };
+      const r = await traceWrappedGenerate('App·仅变量 generate（主 API）', varOnlyGen, () => generate(varOnlyGen));
       updateVariable = extractLastTagContent(String(r || ''), 'UpdateVariable');
     }
 
@@ -4113,6 +4221,7 @@ ${maintext}
     isVariableRerollOnly.value = false;
     loadMessageContent();
   } finally {
+    commitTraceRound();
     isGenerating.value = false;
   }
 }
@@ -5032,6 +5141,7 @@ function loadUiLayoutFromStorage(): void {
     uiLayout.value.scale = Number.isFinite(safeScale) ? Math.min(1.3, Math.max(0.8, safeScale)) : 0.8;
     uiLayout.value.maxWidth = Number.isFinite(safeMaxWidth) ? clampMainUiWidthPx(safeMaxWidth) : 900;
     uiLayout.value.maxHeight = clampMainUiHeightPx(safeMaxHeight);
+    uiLayout.value.tabPanelSpan = uiLayout.value.tabPanelSpan === 'full' ? 'full' : 'split';
 
     console.log('✅ [App] uiLayout 从 localStorage 加载成功:', uiLayout.value);
   } catch (e) {
@@ -5291,28 +5401,35 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
 
     // 调用 generate
     aiGenerationStartMs.value = Date.now();
-    let result = await generate({
-      user_input: userPrompt,
-      should_stream: true,
-      generation_id: openingGenerationId.value,
-    });
-    console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
+    beginTraceRound({ source: 'App.handleOpeningSubmit', userPreview: userPrompt });
+    let result: string;
+    try {
+      const openingGen = {
+        user_input: userPrompt,
+        should_stream: true,
+        generation_id: openingGenerationId.value,
+      };
+      result = (await traceWrappedGenerate('App·开局 generate', openingGen, () => generate(openingGen))) as string;
+      console.log('✅ [App] generate 完成，结果长度:', result?.length || 0);
 
-    // 双API模式：第二 API 变量 + 可选正文美化
-    if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
-      try {
-        const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
-        const openingStatMid =
-          pendingUserMessageId.value != null && pendingUserMessageId.value !== undefined
-            ? pendingUserMessageId.value
-            : 'latest';
-        result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
-          statDataMessageId: openingStatMid,
-        });
-        console.log('✅ [App] 开局流程：第二 API 合并完成');
-      } catch (error) {
-        console.error('❌ [App] 开局流程：第二API处理失败:', error);
+      // 双API模式：第二 API 变量 + 可选正文美化
+      if (isDualMode && result && isSecondaryApiConfigured(secondaryApiConfig)) {
+        try {
+          const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
+          const openingStatMid =
+            pendingUserMessageId.value != null && pendingUserMessageId.value !== undefined
+              ? pendingUserMessageId.value
+              : 'latest';
+          result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
+            statDataMessageId: openingStatMid,
+          });
+          console.log('✅ [App] 开局流程：第二 API 合并完成');
+        } catch (error) {
+          console.error('❌ [App] 开局流程：第二API处理失败:', error);
+        }
       }
+    } finally {
+      commitTraceRound();
     }
 
     // 清理流式监听（generate 已结束，避免 abort 时重复 unsubscribe）
@@ -5952,6 +6069,28 @@ onUnmounted(() => {
       max-width: none;
     }
   }
+
+  // 系统设置「标签卡全屏」：打开侧栏人物/规则/设置等时占满主区，隐藏游戏正文
+  &.layout-tab-panel-full {
+    .main-panel {
+      display: none !important;
+    }
+
+    .middle-panel {
+      flex: 1 1 auto !important;
+      width: auto !important;
+      min-width: 0;
+      max-width: none;
+      height: 100%;
+      max-height: none;
+      align-self: stretch;
+    }
+
+    .panel-inner {
+      width: 100% !important;
+      max-width: none;
+    }
+  }
 }
 
 // Sidebar
@@ -6336,13 +6475,17 @@ onUnmounted(() => {
   }
 }
 
+/* 各标签页在侧栏定高内自 Scroll；勿用 overflow:hidden 否则长列表（如随机规则）无法下拉 */
 .panel-tab-page {
   flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .dark .panel-content {
@@ -9338,6 +9481,24 @@ body.has-dragging-fab {
     max-height: none;
     padding: 16px 14px;
   }
+}
+
+.dual-api-broken-modal .modal-body {
+  min-height: 0;
+  max-height: none;
+}
+
+.dual-api-broken-text {
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+
+.dual-api-broken-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .modal-placeholder {
