@@ -4,6 +4,7 @@
  */
 
 import { extractLastSumContent, parseMaintext, parseOptions, type Option } from './messageParser';
+import { extractAllClosedUpdateVariableBlocks } from './updateVariableExtract';
 import {
   getCurrentOutputMode,
   getSecondaryApiConfig,
@@ -11,6 +12,11 @@ import {
   runSecondaryApiForMaintextPipeline,
 } from './apiSettings';
 import { beginTraceRound, commitTraceRound, traceWrappedGenerate } from './generationTrace';
+
+declare function getChatMessages(
+  range: string | number,
+  opts?: { role?: 'all' | 'system' | 'assistant' | 'user' },
+): { message_id: number; role: string; message: string }[];
 
 // 生成状态
 let isGenerating = false;
@@ -110,7 +116,7 @@ function validateMessage(text: string, isDualMode = false): { valid: boolean; er
   const hasSum = /<sum>[\s\S]*?<\/sum>/i.test(cleaned);
 
   // 单API模式下需要检查 UpdateVariable（可选但推荐）
-  const hasUpdateVariable = /<UpdateVariable>[\s\S]*?<\/UpdateVariable>/i.test(cleaned);
+  const hasUpdateVariable = extractAllClosedUpdateVariableBlocks(cleaned).length > 0;
 
   if (!hasMaintext) {
     return { valid: false, error: '缺少 <maintext> 标签' };
@@ -336,7 +342,22 @@ async function executeDualApiFlow(prompt: string, generationId: string): Promise
 
   // 4. 第二 API：变量与正文美化等附加任务；若开启「分两轮」则先变量再附加任务
   try {
-    const { variableUpdate, beautifiedInner } = await runSecondaryApiForMaintextPipeline(maintext, secondaryConfig);
+    let secondaryStatMid: number | 'latest' = 'latest';
+    if (typeof getChatMessages === 'function') {
+      try {
+        const tail = getChatMessages(-1);
+        if (tail?.[0]?.role === 'assistant') {
+          secondaryStatMid = tail[0].message_id;
+        }
+      } catch {
+        /* noop */
+      }
+    }
+    const { variableUpdate, beautifiedInner } = await runSecondaryApiForMaintextPipeline(
+      maintext,
+      secondaryConfig,
+      { statDataMessageId: secondaryStatMid },
+    );
 
     console.log('✅ [gameFlow] 第二API 分支完成（变量 / 附加任务）');
 

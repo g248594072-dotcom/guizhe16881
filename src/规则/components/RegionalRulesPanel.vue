@@ -177,9 +177,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { klona } from 'klona';
 import type { RegionData, RuleData } from '../types';
-import { useRegionalRules, useRegionalArchivedGrouped } from '../store';
+import { useRegionalRules, useRegionalArchivedGrouped, useDataStore } from '../store';
 import { submitRestoreRegionalRule } from '../utils/dialogAndVariable';
+import { queuePendingPatchesFromBeforeSnapshot } from '../utils/queueStatDataPatchesFromDiff';
 
 withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
@@ -194,6 +196,7 @@ const expandedRegions = ref<Set<string>>(new Set());
 const expandedRuleIds = ref<Set<string>>(new Set());
 
 // ⭐ 使用新的响应式 store
+const dataStore = useDataStore();
 const regions = useRegionalRules();
 const archivedGrouped = useRegionalArchivedGrouped();
 
@@ -264,8 +267,9 @@ function toggleRegion(name: string) {
 }
 
 async function onRestore(regionName: string, rule: RuleData) {
+  const statBefore = klona(dataStore.data);
   await submitRestoreRegionalRule(regionName, rule.id, ruleSummary(rule));
-  // 无需手动刷新，store 会自动更新
+  queuePendingPatchesFromBeforeSnapshot(statBefore);
 }
 </script>
 

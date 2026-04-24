@@ -18,6 +18,11 @@ import { processMaintextBeautification } from './maintextBeautify';
 import { extractFilteredContent, parseMaintext, replaceLastMaintextInnerContent } from './messageParser';
 import { mergeVariableUpdateJsonPatchInners } from './variablePatchMerge';
 import { traceWrappedGenerateRaw } from './generationTrace';
+import {
+  extractLastUpdateVariableInner,
+  mergeUpdateVariableInnerBodiesForPrompt,
+  stripAllClosedUpdateVariableBlocks,
+} from './updateVariableExtract';
 
 export { DEFAULT_SECONDARY_API_CONFIG };
 
@@ -30,6 +35,10 @@ export function clampSecondaryApiRetries(n: unknown): number {
 
 // 类型声明
 declare function waitGlobalInitialized<T>(global: 'Mvu' | string): Promise<T>;
+declare function getChatMessages(
+  range: string | number,
+  opts?: { role?: 'all' | 'system' | 'assistant' | 'user'; hide_state?: 'all' | 'hidden' | 'unhidden' },
+): { message_id: number; role: string; message: string }[];
 declare const Mvu: {
   getMvuData: (options: { type: 'message' | 'chat' | 'character' | 'global'; message_id?: number | 'latest' }) => {
     stat_data: Record<string, any>;
@@ -552,7 +561,84 @@ export function notifySecondaryApiEnd(detail?: SecondaryApiEndDetail): void {
 /** 第二 API 读「当前变量」时使用的消息楼层（与主文所在回合一致，勿滥用 latest） */
 export type ProcessWithSecondaryApiOptions = {
   statDataMessageId?: number | 'latest';
+  /**
+   * 本回合实际发给酒馆的 user 全文（含待发 `<UpdateVariable>`）。
+   * 当 `getChatMessages` 取到的正文因酒馆正则/同步等原因不含块时，用此字符串再提取一次注入第二路提示。
+   */
+  fallbackUserRawText?: string;
 };
+
+/** 注入第二 API 提示时，玩家附加块的最大字符数（避免撑爆上下文） */
+const MAX_PLAYER_STAGED_UV_PROMPT_CHARS = 24000;
+
+/**
+ * 本回合锚点对应的 **user 楼层正文全文**（未抠标签），供与 `fallbackUserRawText` 合并提取。
+ * - 锚点为 **assistant** 楼层 id：从该 id 之前最近一条 user 取正文；
+ * - 锚点为 **user** 楼层 id：使用该 user 正文；
+ * - `latest`：以当前聊天最后一楼为准，若为 assistant 则再向前找 user。
+ */
+export function getUserRoundMessageBodyForStatAnchor(statDataMessageId: number | 'latest'): string {
+  if (typeof getChatMessages !== 'function') return '';
+
+  const findPreviousUserBody = (beforeExclusive: number): string => {
+    for (let i = beforeExclusive - 1; i >= 0; i--) {
+      const u = getChatMessages(i, { role: 'user' });
+      if (u?.[0]) return String(u[0].message || '');
+    }
+    return '';
+  };
+
+  if (statDataMessageId === 'latest') {
+    const last = getChatMessages(-1);
+    const row = last?.[0];
+    if (!row) return '';
+    if (row.role === 'user') return String(row.message || '');
+    return findPreviousUserBody(row.message_id);
+  }
+
+  const rows = getChatMessages(statDataMessageId);
+  const row = rows?.[0];
+  if (!row) return '';
+  if (row.role === 'user') return String(row.message || '');
+  return findPreviousUserBody(statDataMessageId);
+}
+
+/**
+ * 从聊天正文与可选兜底字符串中合并提取所有闭合块的**标签内部**正文（去重；先聊天再兜底独有项）。
+ * 开标签允许属性，与 `extractLastUpdateVariableInner` / `xmlTagExtract` 规则一致；不依赖整段 user 剧情进第二路。
+ */
+export function resolvePlayerStagedUpdateVariableBlocksForPromptWithFallback(
+  statDataMessageId: number | 'latest',
+  fallbackUserRawText?: string | null,
+): string {
+  const chatBody = getUserRoundMessageBodyForStatAnchor(statDataMessageId);
+  return mergeUpdateVariableInnerBodiesForPrompt(
+    chatBody,
+    String(fallbackUserRawText ?? ''),
+    MAX_PLAYER_STAGED_UV_PROMPT_CHARS,
+  );
+}
+
+/**
+ * 根据 `statDataMessageId` 解析「本回合相关的 user 楼层」上玩家附加的闭合 UpdateVariable 块（仅聊天正文，无兜底）。
+ */
+export function resolvePlayerStagedUpdateVariableBlocksForPrompt(statDataMessageId: number | 'latest'): string {
+  const chatBody = getUserRoundMessageBodyForStatAnchor(statDataMessageId);
+  return mergeUpdateVariableInnerBodiesForPrompt(chatBody, '', MAX_PLAYER_STAGED_UV_PROMPT_CHARS);
+}
+
+function formatPlayerStagedUpdateVariablePromptSection(joinedInnerBodies: string): string {
+  const t = String(joinedInnerBodies || '').trim();
+  if (!t) return '';
+  return `## 玩家已在 user 消息中附加的变量（须保留）
+请注意：**玩家**已通过发送内容修改或附加了变量。下列为相关 **user** 消息中**成对闭合**的 \`<UpdateVariable>…</UpdateVariable>\` **标签内部**原文（不含外层标签；多段之间以单独一行 \`---\` 分隔；按字面引用，勿改写 path/取值意图）：
+
+${t}
+
+**约束**：你本轮输出的 Patch **不得撤销、删改或与上述内容相冲突地覆盖**上述块中的 path 与取值意图；仅可在与它**兼容**的前提下追加本回合正文所需的增量。若与正文表面不一致，以**上述玩家附加内容为准**。
+
+`;
+}
 
 /**
  * 在 {@link SecondaryApiConfig.splitSecondaryVariablePassAndExtras} 开启时，于「纯变量」轮之后执行：
@@ -601,7 +687,14 @@ export async function processSecondaryApiExtraTasksPass(
   }
 
   if (hasWorldChanges) {
-    const wc = await processWorldChangesSecondaryApi(maintext, config, currentVariables, worldbookContents, statMid);
+    const wc = await processWorldChangesSecondaryApi(
+      maintext,
+      config,
+      currentVariables,
+      worldbookContents,
+      statMid,
+      options?.fallbackUserRawText,
+    );
     if (wc?.trim()) {
       patchAccum = patchAccum ? mergeVariableUpdateJsonPatchInners(patchAccum, wc.trim()) : wc.trim();
     }
@@ -616,11 +709,18 @@ async function processWorldChangesSecondaryApi(
   currentVariables: Record<string, any>,
   worldbookContents: SecondaryApiWorldbookContents,
   statDataMessageId: number | 'latest',
+  fallbackUserRawText?: string,
 ): Promise<string | null> {
   const retryCount = clampSecondaryApiRetries(config.maxRetries);
   const maxAttempts = 1 + retryCount;
   let lastError: Error | null = null;
-  const prompt = buildWorldChangesExtrasPrompt(maintext, currentVariables, worldbookContents, statDataMessageId);
+  const prompt = buildWorldChangesExtrasPrompt(
+    maintext,
+    currentVariables,
+    worldbookContents,
+    statDataMessageId,
+    fallbackUserRawText,
+  );
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -655,6 +755,7 @@ function buildWorldChangesExtrasPrompt(
   currentVariables: Record<string, any>,
   worldbookContents: SecondaryApiWorldbookContents,
   statDataMessageId: number | 'latest',
+  fallbackUserRawText?: string,
 ): string {
   const statSourceLabel =
     statDataMessageId === 'latest' ? 'latest（当前聊天最近一层消息的 stat_data）' : `消息楼层 #${statDataMessageId} 的 stat_data`;
@@ -672,12 +773,16 @@ function buildWorldChangesExtrasPrompt(
       ? `## 世界书 [mvu] / [mvu_update] 条目（与「世界大势 / 居民」描写相关处请遵守）\n${worldbookContents.mvuPrefixedEntriesFull.trim().slice(0, 6000)}\n\n`
       : '';
 
+  const playerStagedSection = formatPlayerStagedUpdateVariablePromptSection(
+    resolvePlayerStagedUpdateVariableBlocksForPromptWithFallback(statDataMessageId, fallbackUserRawText),
+  );
+
   return `你是第二 API「NPC生活」专用助手，与上一轮「纯变量」Patch **分工不同**。
 
 ## 变量快照来源
 以下上下文取自：**${statSourceLabel}**。
 
-${mvuSection}## 当前「游戏状态」JSON（**仅允许**对本对象下路径做 Patch；禁止 /角色档案、/区域数据、/建筑数据、/活动数据、/元信息、/世界规则、/个人规则、/区域规则 等）
+${playerStagedSection}${mvuSection}## 当前「游戏状态」JSON（**仅允许**对本对象下路径做 Patch；禁止 /角色档案、/区域数据、/建筑数据、/活动数据、/元信息、/世界规则、/个人规则、/区域规则 等）
 \`\`\`json
 ${gameStateJson}
 \`\`\`
@@ -787,6 +892,9 @@ export async function processWithSecondaryApi(
 
       // 构建完整提示词（包含变量数据+世界书内容+正文）
       const variablesOnly = config.splitSecondaryVariablePassAndExtras === true;
+      const playerStagedSection = formatPlayerStagedUpdateVariablePromptSection(
+        resolvePlayerStagedUpdateVariableBlocksForPromptWithFallback(statMid, options?.fallbackUserRawText),
+      );
       const prompt = buildSecondaryApiPrompt(
         maintext,
         config.tasks,
@@ -794,6 +902,7 @@ export async function processWithSecondaryApi(
         worldbookContents,
         statMid,
         variablesOnly,
+        playerStagedSection,
       );
 
       notifySecondaryApiStart({ attempt: attempt + 1, scope: 'variable_update' });
@@ -872,6 +981,7 @@ function buildSecondaryApiPrompt(
   worldbookContents: SecondaryApiWorldbookContents,
   statDataMessageId: number | 'latest',
   variablesOnly: boolean,
+  playerStagedSection: string,
 ): string {
   // 构建任务说明（变量更新为第二 API 默认职责，始终说明）
   let tasksDescription =
@@ -961,7 +1071,7 @@ ${variablesJson}
 ## 变量快照来源
 以下 JSON 取自：**${statSourceLabel}**。请在此基础上输出 JSON Patch（path 相对 stat_data 根），与正文及世界书规则一致。
 
-${variablesOnlyScopeSection}${mvuFullSection}${formatPersonalRuleKeysSection(currentVariables)}${wlListSection}${wlRuleSection}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
+${playerStagedSection}${variablesOnlyScopeSection}${mvuFullSection}${formatPersonalRuleKeysSection(currentVariables)}${wlListSection}${wlRuleSection}${characterGapSection}${VARIABLE_JSON_PATCH_RUNTIME_RULES}
 ## Patch 输出形式（示例）
 \`\`\`json
 ${outputFormat}
@@ -1169,8 +1279,8 @@ export async function generateSecondaryRawOrderedPrompts(
  * @returns UpdateVariable标签内容，或null
  */
 function extractUpdateVariable(response: string): string | null {
-  const match = response.match(/<UpdateVariable>([\s\S]*?)<\/UpdateVariable>/i);
-  return match ? match[1].trim() : null;
+  const inner = extractLastUpdateVariableInner(String(response || '')).trim();
+  return inner.length > 0 ? inner : null;
 }
 
 /**
@@ -1183,9 +1293,6 @@ export function getCurrentCharWorldbookName(): string {
 
 // 导出常量供外部使用
 export { WORLDBOOK_ENTRIES };
-
-/** 去掉 assistant 中所有成对的 UpdateVariable 块（双 API 下由第二路统一写回一条） */
-const ALL_UPDATE_VARIABLE_BLOCKS_RE = /<UpdateVariable>[\s\S]*?<\/UpdateVariable>/gi;
 
 /**
  * 对单条 assistant 全文：按需并行第二路「变量 + 正文美化」，写回 maintext 内层并追加 UpdateVariable。
@@ -1220,7 +1327,7 @@ export async function mergeSecondaryPipelineIntoAssistantText(
 
   const variableInner = variableUpdate != null ? String(variableUpdate).trim() : '';
   if (variableInner.length > 0) {
-    out = out.replace(ALL_UPDATE_VARIABLE_BLOCKS_RE, '');
+    out = stripAllClosedUpdateVariableBlocks(out);
     out = `${out.trim().replace(/\n{3,}/g, '\n\n')}\n\n<UpdateVariable>${variableInner}</UpdateVariable>`;
   }
 

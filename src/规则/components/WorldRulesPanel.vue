@@ -154,6 +154,7 @@ import {
 import { isEditCartEnabled, buildMetaWorldInfoCartItem, stageItem } from '../utils/editCartFlow';
 import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
 import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
+import { queuePendingPatchesFromBeforeSnapshot } from '../utils/queueStatDataPatchesFromDiff';
 
 withDefaults(defineProps<{ isDarkMode?: boolean }>(), { isDarkMode: false });
 
@@ -234,8 +235,9 @@ watch(rules, (val) => {
 }, { immediate: true });
 
 async function onRestore(rule: RuleData) {
+  const statBefore = klona(dataStore.data);
   await submitRestoreWorldRule(rule.id ?? rule.title);
-  // 无需手动刷新，store 会自动更新
+  queuePendingPatchesFromBeforeSnapshot(statBefore);
 }
 
 function onSaveMeta() {

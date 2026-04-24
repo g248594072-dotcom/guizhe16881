@@ -2,6 +2,8 @@
  * JSON Patch（RFC 6902 子集）解析与应用，供 App.vue 用户消息解析与战术地图 AI 确认共用。
  */
 
+import { extractAllClosedUpdateVariableBlocks, innerBodyOfUpdateVariableBlock } from './updateVariableExtract';
+
 export type JsonPatchOp = { op: string; path: string; value?: unknown; from?: string };
 
 /** 优先从 `<JSONPatch>` 提取数组 */
@@ -29,9 +31,10 @@ export function extractJsonPatchFromTacticalAiBlock(text: string): JsonPatchOp[]
   const fromTag = extractJsonPatchFromUpdateVariable(text);
   if (fromTag && fromTag.length > 0) return fromTag;
 
-  const uv = text.match(/<UpdateVariable>([\s\S]*?)<\/UpdateVariable>/i);
-  if (!uv) return null;
-  const inner = uv[1].trim();
+  const blocks = extractAllClosedUpdateVariableBlocks(text);
+  if (blocks.length === 0) return null;
+  const inner = innerBodyOfUpdateVariableBlock(blocks[0] ?? '');
+  if (!inner) return null;
   const arrMatch = inner.match(/\[[\s\S]*\]/);
   if (!arrMatch) return null;
   try {

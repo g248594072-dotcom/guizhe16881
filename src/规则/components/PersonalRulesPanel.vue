@@ -141,9 +141,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
+import { klona } from 'klona';
 import type { RuleData } from '../types';
-import { usePersonalRulesByCharacter } from '../store';
+import { usePersonalRulesByCharacter, useDataStore } from '../store';
 import { submitRestorePersonalRule } from '../utils/dialogAndVariable';
+import { queuePendingPatchesFromBeforeSnapshot } from '../utils/queueStatDataPatchesFromDiff';
 
 const props = defineProps<{
   /** 从角色详情「管理规则影响」跳转时要展开的分组名（与 rule.target 一致） */
@@ -161,6 +163,7 @@ const archiveSectionOpen = ref(false);
 const expandedGroups = ref<Set<string>>(new Set());
 
 // ⭐ 使用新的响应式 store
+const dataStore = useDataStore();
 const grouped = usePersonalRulesByCharacter();
 
 const archivedGroups = computed(() =>
@@ -234,8 +237,9 @@ watch(
 );
 
 async function onRestore(rule: RuleData, groupName: string) {
+  const statBefore = klona(dataStore.data);
   await submitRestorePersonalRule(rule.id, groupName, ruleSummary(rule));
-  // 无需手动刷新，store 会自动更新
+  queuePendingPatchesFromBeforeSnapshot(statBefore);
 }
 </script>
 

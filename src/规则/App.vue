@@ -1607,6 +1607,8 @@ import {
 } from './utils/messageParser';
 import { applyMaintextInlineBeautify } from './utils/maintextInlineBeautify';
 import { applyJsonPatch, extractJsonPatchFromUpdateVariable } from './utils/jsonPatchStat';
+import { extractLastUpdateVariableInner, stripAllClosedUpdateVariableBlocks } from './utils/updateVariableExtract';
+import { extractLastTagInnerContent } from './utils/xmlTagExtract';
 import {
   appendPendingUpdateVariablePatches,
   appendStagingSummaryForNextPendingUvBlock,
@@ -1615,6 +1617,7 @@ import {
   hasPendingUpdateVariableToMerge,
 } from './utils/pendingUpdateVariableQueue';
 import { diffValueToJsonPatches } from './utils/tacticalMapCommitSendBox';
+import { queuePendingPatchesFromBeforeSnapshot } from './utils/queueStatDataPatchesFromDiff';
 import {
   GamePhase,
   CLOTHING_BODY_SLOT_KEYS,
@@ -2488,8 +2491,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildArchiveWorldItem(String(payload.title)));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitArchiveWorldRule } = await import('./utils/dialogAndVariable');
         await submitArchiveWorldRule(payload.title);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('归档世界规则失败', e);
@@ -2508,8 +2513,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildDeleteWorldItem(title));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitDeleteWorldRule } = await import('./utils/dialogAndVariable');
         await submitDeleteWorldRule(title);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('删除世界规则失败', e);
@@ -2523,8 +2530,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildArchiveRegionItem(String(payload.name)));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitArchiveRegion } = await import('./utils/dialogAndVariable');
         await submitArchiveRegion(payload.name);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('归档区域失败', e);
@@ -2543,8 +2552,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildDeleteRegionItem(name));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitDeleteRegion } = await import('./utils/dialogAndVariable');
         await submitDeleteRegion(name);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('删除区域失败', e);
@@ -2566,8 +2577,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildArchiveRegionalRuleItem(regionName, ruleId, ruleSummary));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitArchiveRegionalRule } = await import('./utils/dialogAndVariable');
         await submitArchiveRegionalRule(regionName, ruleId, ruleSummary);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('归档区域规则失败', e);
@@ -2594,8 +2607,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildDeleteRegionalRuleItem(regionName, ruleId, ruleSummary));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitDeleteRegionalRule } = await import('./utils/dialogAndVariable');
         await submitDeleteRegionalRule(regionName, ruleId, ruleSummary);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('删除区域规则失败', e);
@@ -2609,12 +2624,14 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildArchivePersonalFromPayload(payload as Record<string, unknown>));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitArchivePersonalRule } = await import('./utils/dialogAndVariable');
         await submitArchivePersonalRule(
           payload.id ?? payload.title ?? payload.character,
           payload.character ?? payload.title,
           payload.title !== payload.character ? String(payload.title) : undefined,
         );
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('归档个人规则失败', e);
@@ -2634,12 +2651,14 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildDeletePersonalFromPayload(payload as Record<string, unknown>));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitDeletePersonalRule } = await import('./utils/dialogAndVariable');
         await submitDeletePersonalRule(
           payload.id ?? payload.title ?? payload.character,
           payload.character ?? payload.title,
           payload.title !== payload.character ? String(payload.title) : undefined,
         );
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('删除个人规则失败', e);
@@ -2655,8 +2674,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildArchivePersonalRulesGroupItem(g));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitArchivePersonalRulesForGroup } = await import('./utils/dialogAndVariable');
         await submitArchivePersonalRulesForGroup(g);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('归档个人规则（分组）失败', e);
@@ -2676,8 +2697,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
       if (isEditCartEnabled()) {
         stageItem(buildDeletePersonalRulesGroupItem(g));
       } else {
+        const statBefore = klona(useDataStore().data);
         const { submitDeletePersonalRulesForGroup } = await import('./utils/dialogAndVariable');
         await submitDeletePersonalRulesForGroup(g);
+        queuePendingPatchesFromBeforeSnapshot(statBefore);
       }
     } catch (e) {
       console.error('删除个人规则（分组）失败', e);
@@ -3327,7 +3350,7 @@ async function applyMvuParseToMessageFloor(
   baseMvu: Mvu.MvuData,
   messageId: number,
 ): Promise<void> {
-  if (!/<UpdateVariable>/i.test(messageText)) return;
+  if (!/<UpdateVariable(\s|>)/i.test(messageText)) return;
   try {
     await waitGlobalInitialized('Mvu');
     let baseForParse: Mvu.MvuData;
@@ -3600,6 +3623,7 @@ async function sendMessage() {
               : 'latest';
           result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
             statDataMessageId: statMid,
+            fallbackUserRawText: content,
           });
           console.log('✅ [App] 第二 API 合并完成');
         }
@@ -3962,6 +3986,7 @@ async function handleRegenerate() {
         const { mergeSecondaryPipelineIntoAssistantText } = await import('./utils/apiSettings');
         result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
           statDataMessageId: info.userMessageId,
+          fallbackUserRawText: userMessageText,
         });
       } catch (error) {
         console.error('❌ [App] 第二API处理失败:', error);
@@ -3995,26 +4020,6 @@ async function handleRegenerate() {
     isGenerating.value = false;
     isRegenerating.value = false;
   }
-}
-
-function extractLastTagContent(text: string, tag: string): string {
-  if (!text) return '';
-  // 从后往前找：先找最后一个闭合标签，再找它前面最近的开标签
-  const closeTag = `</${tag}>`;
-  const closeIdx = text.toLowerCase().lastIndexOf(closeTag.toLowerCase());
-  if (closeIdx === -1) return '';
-
-  const openTagPattern = new RegExp(`<${tag}(\\s+[^>]*)?>`, 'i');
-  const textBeforeClose = text.slice(0, closeIdx);
-  // 从 closeIdx 往前找最后一个开标签
-  const lastOpenMatch = textBeforeClose.match(new RegExp(`<${tag}(\\s+[^>]*)?>`, 'gi'));
-  if (!lastOpenMatch || lastOpenMatch.length === 0) return '';
-
-  const lastOpenTag = lastOpenMatch[lastOpenMatch.length - 1];
-  const openIdx = textBeforeClose.lastIndexOf(lastOpenTag);
-  if (openIdx === -1) return '';
-
-  return text.slice(openIdx + lastOpenTag.length, closeIdx).trim();
 }
 
 async function handleRegenerateVariablesOnly() {
@@ -4193,7 +4198,7 @@ ${maintext}
       const prompt = await buildVariableOnlyPrompt();
       const varOnlyGen = { user_input: prompt, should_stream: false };
       const r = await traceWrappedGenerate('App·仅变量 generate（主 API）', varOnlyGen, () => generate(varOnlyGen));
-      updateVariable = extractLastTagContent(String(r || ''), 'UpdateVariable');
+      updateVariable = extractLastUpdateVariableInner(String(r || ''));
     }
 
     if (!updateVariable) {
@@ -4204,7 +4209,7 @@ ${maintext}
     console.log('🔄 [App] 直接应用变量更新到楼层:', info.messageId);
 
     // 构建完整消息：保留原正文、选项、sum，只替换变量部分
-    const withoutOldVariable = filtered.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
+    const withoutOldVariable = stripAllClosedUpdateVariableBlocks(filtered).trim();
     const updatedMessage = `${withoutOldVariable}\n\n<UpdateVariable>\n${updateVariable.trim()}\n</UpdateVariable>`;
 
     // 保存到快照，设置标记，打开标签验证弹窗（与handleRegenerate保持一致）
@@ -4249,7 +4254,7 @@ async function confirmVariableRerollApply() {
     console.log('🔄 [App] 开始应用变量更新到楼层:', pending.messageId);
 
     // 构建包含新 UpdateVariable 的消息内容
-    const withoutOld = pending.filteredMessage.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
+    const withoutOld = stripAllClosedUpdateVariableBlocks(pending.filteredMessage).trim();
     const updatedMessage = `${withoutOld}\n\n<UpdateVariable>\n${patchText}\n</UpdateVariable>`;
     const jsonPatchesForWorldLife = extractJsonPatchFromUpdateVariable(updatedMessage);
 
@@ -4349,7 +4354,7 @@ async function openVariableUpdateDialog() {
     }
 
     const filtered = extractFilteredContent(messageText);
-    const patch = extractLastTagContent(filtered, 'UpdateVariable');
+    const patch = extractLastUpdateVariableInner(filtered);
 
     variableUpdateDialogText.value = patch || '';
     variableUpdateDialogOpen.value = true;
@@ -4962,7 +4967,7 @@ async function refineOpeningAssistantWithSecondaryApi(
     }
 
     const filtered = extractFilteredContent(fullMessageUsedForRecord);
-    const maintext = extractLastTagContent(filtered, 'maintext');
+    const maintext = extractLastTagInnerContent(filtered, 'maintext');
     if (!maintext.trim()) {
       console.log('ℹ️ [App] 开局精炼变量：无 maintext，跳过');
       return;
@@ -4977,7 +4982,7 @@ async function refineOpeningAssistantWithSecondaryApi(
     );
     if (!updateVariable?.trim()) return;
 
-    const oldPatch = extractLastTagContent(filtered, 'UpdateVariable');
+    const oldPatch = extractLastUpdateVariableInner(filtered);
     if (oldPatch.trim() === updateVariable.trim()) {
       console.log('ℹ️ [App] 开局精炼变量：第二 API 与首轮 patch 相同，跳过写回');
       return;
@@ -4985,7 +4990,7 @@ async function refineOpeningAssistantWithSecondaryApi(
 
     if (typeof setChatMessages !== 'function') return;
 
-    const withoutOld = filtered.replace(/<UpdateVariable>[\s\S]*?<\/UpdateVariable>\s*/gi, '').trim();
+    const withoutOld = stripAllClosedUpdateVariableBlocks(filtered).trim();
     const updatedMessage = `${withoutOld}\n\n<UpdateVariable>\n${updateVariable.trim()}\n</UpdateVariable>`;
 
     await setChatMessages([{ message_id: assistantMessageId, message: updatedMessage }], { refresh: 'affected' });
@@ -5422,6 +5427,7 @@ async function handleOpeningSubmit(formData: OpeningFormData) {
               : 'latest';
           result = await mergeSecondaryPipelineIntoAssistantText(result, secondaryApiConfig, {
             statDataMessageId: openingStatMid,
+            fallbackUserRawText: userPrompt,
           });
           console.log('✅ [App] 开局流程：第二 API 合并完成');
         } catch (error) {

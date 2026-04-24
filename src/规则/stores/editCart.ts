@@ -57,10 +57,14 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
     const list = sortedItems();
     const hintText = buildStagingHintsFromCartItems(list);
     const store = useDataStore();
-    const statBefore = klona(store.data);
     for (let i = 0; i < list.length; i++) {
       try {
+        const beforeItem = klona(store.data);
         await applyEditCartAction(list[i].action);
+        const itemPatches = diffValueToJsonPatches('', beforeItem, klona(store.data));
+        if (itemPatches.length > 0) {
+          appendPendingUpdateVariablePatches(itemPatches);
+        }
       } catch (e) {
         console.error('[editCart] applyAll 在第', i + 1, '项失败:', e);
         const keepIds = new Set(list.slice(i).map(x => x.id));
@@ -68,11 +72,6 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
         toastr.error(`批量提交在第 ${i + 1} 项失败：${e instanceof Error ? e.message : String(e)}`);
         return false;
       }
-    }
-    const statAfter = klona(store.data);
-    const batchPatches = diffValueToJsonPatches('', statBefore, statAfter);
-    if (batchPatches.length > 0) {
-      appendPendingUpdateVariablePatches(batchPatches);
     }
     if (hintText) {
       copyToInput(hintText, 'append');
