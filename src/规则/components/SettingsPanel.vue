@@ -95,17 +95,6 @@
             {{ injectTemplateLoading ? '注入中…' : '注入内置表格模板' }}
           </button>
         </div>
-
-        <div class="shujuku-inject-actions trace-download-row">
-          <button type="button" class="btn-api btn-api-secondary" @click="emit('downloadGenerationTrace')">
-            <i class="fa-solid fa-file-arrow-down"></i>
-            下载上一轮 AI 调用追踪（txt）
-          </button>
-          <p class="trace-download-hint">
-            记录本界面发起的 <code>generate</code> / <code>generateRaw</code>：传入参数摘要与模型返回；不含酒馆主进程拼好的完整
-            messages。
-          </p>
-        </div>
       </div>
 
       <!-- API 模式选择卡片 -->
@@ -394,6 +383,20 @@
         </div>
       </div>
     </div>
+
+      <div
+        class="shujuku-inject-actions trace-download-row output-tab-trace-foot"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <button type="button" class="btn-api btn-api-secondary" @click="emit('downloadGenerationTrace')">
+          <i class="fa-solid fa-file-arrow-down"></i>
+          下载上一轮 AI 调用追踪（txt）
+        </button>
+        <p class="trace-download-hint">
+          记录本界面发起的 <code>generate</code> / <code>generateRaw</code>：传入参数摘要与模型返回；不含酒馆主进程拼好的完整
+          messages。
+        </p>
+      </div>
     </div>
 
     <!-- 点击选项时：直接发送 vs 填入输入框 -->
@@ -1671,6 +1674,17 @@ async function selectMode(mode: OutputMode) {
 .trace-download-row {
   flex-direction: column;
   align-items: flex-start;
+}
+
+/* 「输出与 API」页底：与上方内容区隔开 */
+.output-tab-trace-foot {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.settings-panel.light .output-tab-trace-foot {
+  border-top-color: rgba(0, 0, 0, 0.08);
 }
 
 .trace-download-hint {
