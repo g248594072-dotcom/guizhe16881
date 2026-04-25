@@ -57,10 +57,13 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
     const list = sortedItems();
     const hintText = buildStagingHintsFromCartItems(list);
     const store = useDataStore();
+    const dialogChunks: string[] = [];
     for (let i = 0; i < list.length; i++) {
       try {
         const beforeItem = klona(store.data);
-        await applyEditCartAction(list[i].action);
+        const msg = await applyEditCartAction(list[i].action);
+        const m = String(msg ?? '').trim();
+        if (m) dialogChunks.push(m);
         const itemPatches = diffValueToJsonPatches('', beforeItem, klona(store.data));
         if (itemPatches.length > 0) {
           appendPendingUpdateVariablePatches(itemPatches);
@@ -73,8 +76,11 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
         return false;
       }
     }
-    if (hintText) {
-      copyToInput(hintText, 'append');
+    const drafted = dialogChunks.join('\n\n').trim();
+    const hint = hintText.trim();
+    const body = [drafted, hint].filter(Boolean).join('\n\n');
+    if (body) {
+      copyToInput(body, 'append');
     }
     clear();
     return true;

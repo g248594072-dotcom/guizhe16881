@@ -11,7 +11,8 @@ function hintModalCommit(modalType: string, form: EditCartModalForm, p: Record<s
   const pl = p ?? undefined;
   switch (modalType) {
     case 'add_character':
-      return `玩家申请新增角色：${t(form.addCharacterName) || '未命名'}。简介：${t(form.addCharacterDescription)}。`;
+      // `[新增角色]` 正文由购物车 apply 时 `runModalCommit` 返回并写入输入框，此处不再生成摘要以免重复。
+      return '';
     case 'add_world_rule':
       return `玩家添加世界规则：${t(form.worldRuleName)}。效果：${t(form.worldRuleDetail)}。`;
     case 'edit_world_rule': {

@@ -222,6 +222,10 @@ watch(
       if (copy.action.kind === 'modal_commit') {
         const f = copy.action.form as EditCartModalForm;
         if (f.personalRuleName === undefined || f.personalRuleName === null) f.personalRuleName = '';
+        if (copy.action.modalType === 'add_character') {
+          if (f.addCharacterName == null) f.addCharacterName = '';
+          if (f.addCharacterRelationIdentity == null) f.addCharacterRelationIdentity = '';
+        }
       }
       if (copy.action.kind === 'random_add_personal') {
         const a = copy.action;

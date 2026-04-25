@@ -6,6 +6,7 @@ import { useEditCartStore } from '../stores/editCart';
 import type { EditCartCategory, EditCartItem, EditCartModalForm } from '../types/editCart';
 import type { TacticalMapCommitPatchOp } from './tacticalMapCommitSendBox';
 import { getOtherSettings } from './otherSettings';
+import { buildAddCharacterCombinedBrief } from './recruitModalBrief';
 
 export function isEditCartEnabled(): boolean {
   return getOtherSettings().enableEditStagingCart === true;
@@ -470,13 +471,19 @@ export function buildCartItemFromModal(
 ): EditCartItem | null {
   const p = payload;
 
+  /** 新增角色：`AI生成` 候选人仍不入队；「正文输出角色」走购物车（与 `onModalComplete` 一致）。 */
   if (modalType === 'add_character') {
+    const intro = String(form.addCharacterDescription ?? '').trim();
+    if (!intro) return null;
+    const brief = buildAddCharacterCombinedBrief(form).trim();
+    const snippet = brief.replace(/\s+/g, ' ');
+    const short = snippet.length > 28 ? `${snippet.slice(0, 28)}…` : snippet;
     return buildModalCartItem(
       modalType,
       form,
       p,
-      `新增角色：${form.addCharacterName || '（未命名）'}`,
-      'add_character',
+      `新增角色（正文）：${short || '（待定）'}`,
+      'add_character:body-output:latest',
     );
   }
   if (modalType === 'add_world_rule') {

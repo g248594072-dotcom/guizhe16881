@@ -2,11 +2,28 @@
   <div class="ecf">
     <!-- 新增角色 -->
     <template v-if="modalType === 'add_character'">
-      <label class="eci-label">角色名字</label>
-      <input v-model="form.addCharacterName" type="text" class="eci-input" />
-      <label class="eci-label">简单描述</label>
-      <textarea v-model="form.addCharacterDescription" class="eci-textarea" rows="5" />
-      <p class="eci-hint">提交购物车后只发消息，不预写档案；角色在 AI 写入变量后出现。</p>
+      <label class="eci-label">名字</label>
+      <input
+        v-model="form.addCharacterName"
+        type="text"
+        class="eci-input"
+        placeholder="可不填，会随机生成。"
+      />
+      <label class="eci-label">关系和身份</label>
+      <input
+        v-model="form.addCharacterRelationIdentity"
+        type="text"
+        class="eci-input"
+        placeholder="一行：与主角或他人的关系、身份。与主弹窗一致。"
+      />
+      <label class="eci-label">角色简介（必填）</label>
+      <textarea
+        v-model="form.addCharacterDescription"
+        class="eci-textarea eci-textarea--recruit"
+        rows="3"
+        placeholder="几句小传、气质与关键词、职业或剧情钩子等。与主弹窗一致；填写后在大弹窗内点「AI生成」或「正文输出角色」。"
+      />
+      <p class="eci-hint">新增角色为弹窗内招募，确认后仅复制到酒馆输入框、不直写 MVU；「编辑暂存」开启时本条不入队。</p>
     </template>
 
     <template v-else-if="modalType === 'add_world_rule' || modalType === 'edit_world_rule'">
@@ -280,6 +297,11 @@ const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 
 .eci-textarea {
   resize: vertical;
+}
+
+.eci-textarea--recruit {
+  min-height: 0;
+  max-height: min(42vh, 320px);
 }
 
 .ecf-details {

@@ -4,7 +4,6 @@
 import { bumpUpdateTime, tryRulesMvuWritable, useDataStore } from '../store';
 import type { EditCartAction, EditCartModalForm } from '../types/editCart';
 import { applyJsonPatch } from './jsonPatchStat';
-
 /** 兼容旧版 random_add_personal：detail 曾为「标题: 描述」单串 */
 function normalizeRandomPersonalCartDetail(action: {
   target: string;
@@ -32,9 +31,16 @@ export async function runModalCommit(
   let messageText = '';
 
   if (type === 'add_character') {
+    if (!String(form.addCharacterDescription ?? '').trim()) {
+      throw new Error('请先填写角色简介（必填）');
+    }
     // 与主弹窗 onModalComplete 一致：只生成消息，由发送后 AI/第二 API 写入变量
     const { submitAddCharacter } = await import('./dialogAndVariable');
-    messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
+    messageText = await submitAddCharacter(
+      form.addCharacterName,
+      String(form.addCharacterRelationIdentity ?? ''),
+      String(form.addCharacterDescription ?? ''),
+    );
   } else if (type === 'add_world_rule') {
     const { submitAddWorldRule } = await import('./dialogAndVariable');
     messageText = await submitAddWorldRule(form.worldRuleName, form.worldRuleDetail);

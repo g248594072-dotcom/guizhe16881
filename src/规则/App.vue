@@ -558,10 +558,17 @@
       <div v-if="isModalOpen" id="modal-overlay" class="modal-overlay" @click.self="closeModal">
         <div class="modal-content rule-modal-content" :class="{ dark: isDarkMode, light: !isDarkMode }">
           <div class="modal-header rule-modal-header">
-            <button type="button" class="btn-complete" aria-label="编辑完成" @click="onModalComplete">
+            <button
+              v-if="modalType !== 'add_character'"
+              type="button"
+              class="btn-complete"
+              aria-label="编辑完成"
+              @click="onModalComplete"
+            >
               <i class="fa-solid fa-check" aria-hidden="true"></i>
               <span class="btn-complete-text">编辑完成</span>
             </button>
+            <div v-else class="btn-complete-placeholder" aria-hidden="true" />
             <h2>{{ modalTitle }}</h2>
             <button type="button" id="btn-cancel-modal" class="btn-cancel" aria-label="取消" @click="closeModal">
               <i class="fa-solid fa-xmark" aria-hidden="true"></i>
@@ -569,25 +576,126 @@
             </button>
           </div>
           <div class="modal-body">
-            <!-- 新增角色 -->
-            <div v-if="modalType === 'add_character'" class="rule-form">
-              <label class="form-label">角色名字</label>
-              <input
-                v-model="modalForm.addCharacterName"
-                type="text"
-                class="form-input"
-                placeholder="输入角色名字"
-              />
-              <label class="form-label">简单描述角色</label>
-              <textarea
-                v-model="modalForm.addCharacterDescription"
-                class="form-textarea"
-                rows="6"
-                placeholder="简要描述外貌、身份、性格等..."
-              />
-              <p class="form-hint">
-                确认后仅将请求填入输入框并发消息，不会立刻写入角色档案；新角色在 AI（或第二 API 处理变量）生成变量后才会出现，避免重复。
-              </p>
+            <!-- 新增角色（招募：静默 generate → 选人 → 写入当前消息层 MVU） -->
+            <div v-if="modalType === 'add_character'" class="rule-form recruit-character-modal">
+              <div class="recruit-tabs" role="tablist">
+                <button
+                  type="button"
+                  role="tab"
+                  class="recruit-tab"
+                  :class="{ 'recruit-tab--active': recruitTab === 'input' }"
+                  :aria-selected="recruitTab === 'input'"
+                  @click="recruitTab = 'input'"
+                >
+                  填写需求
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  class="recruit-tab"
+                  :class="{ 'recruit-tab--active': recruitTab === 'select' }"
+                  :aria-selected="recruitTab === 'select'"
+                  @click="recruitTab = 'select'"
+                >
+                  选择角色
+                </button>
+              </div>
+
+              <div v-show="recruitTab === 'input'" class="recruit-tab-panel recruit-tab-panel--input">
+                <p class="recruit-input-hud" aria-hidden="true">
+                  <span class="recruit-input-hud-dot" />
+                  <span class="recruit-input-hud-text">RECRUIT_BUFFER // SECURE_DRAFT</span>
+                </p>
+                <div class="recruit-input-card">
+                  <span class="recruit-input-bracket-tl" aria-hidden="true" />
+                  <span class="recruit-input-bracket-br" aria-hidden="true" />
+                  <div class="recruit-input-card-inner">
+                    <div class="recruit-field-block">
+                      <label class="recruit-cyber-label" for="recruit-name-input">名字</label>
+                      <input
+                        id="recruit-name-input"
+                        v-model="addCharacterName"
+                        type="text"
+                        class="form-input recruit-cyber-input recruit-field-name"
+                        placeholder="可不填，会随机生成。"
+                      />
+                    </div>
+                    <div class="recruit-field-block">
+                      <label class="recruit-cyber-label" for="recruit-relation-input">关系和身份</label>
+                      <input
+                        id="recruit-relation-input"
+                        v-model="addCharacterRelationIdentity"
+                        type="text"
+                        class="form-input recruit-cyber-input recruit-field-relation"
+                        placeholder="一行写明与主角或他人的关系及身份（职业、立场等）。可不填。"
+                      />
+                    </div>
+                    <div class="recruit-field-block">
+                      <label class="recruit-cyber-label" for="recruit-desc-textarea">角色简介（必填）</label>
+                      <textarea
+                        id="recruit-desc-textarea"
+                        v-model="addCharacterDescription"
+                        class="form-textarea recruit-cyber-input recruit-field-recruit"
+                        rows="3"
+                        placeholder="写几句角色小传、气质与关键词、职业或剧情钩子；会一并交给生成模型。"
+                      />
+                    </div>
+                    <p v-if="recruitGenError" class="recruit-error">{{ recruitGenError }}</p>
+                    <div class="recruit-actions recruit-actions--input">
+                      <div class="recruit-actions-primary">
+                        <button
+                          type="button"
+                          class="action-btn cyber-button cyber-button-cyan recruit-generate-btn recruit-generate-btn--nexus"
+                          :disabled="recruitGenerating || !hasRecruitBriefForGenerate"
+                          @click="runRecruitGenerate"
+                        >
+                          <i :class="recruitGenerating ? 'fa-solid fa-circle-notch fa-spin' : 'fa-solid fa-wand-magic-sparkles'" />
+                          <span>{{ recruitGenerating ? '生成中…' : 'AI生成' }}</span>
+                        </button>
+                        <button
+                          type="button"
+                          class="action-btn cyber-button recruit-output-body-btn recruit-output-body-btn--nexus"
+                          :disabled="!hasRecruitBriefForGenerate"
+                          @click="recruitOutputCharacterToBody"
+                        >
+                          <i class="fa-solid fa-paper-plane" aria-hidden="true" />
+                          <span>正文输出角色</span>
+                        </button>
+                      </div>
+                      <button type="button" class="action-btn recruit-clear-btn" @click="onRecruitClearDraft">
+                        清空草稿
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-show="recruitTab === 'select'" class="recruit-tab-panel">
+                <div
+                  v-if="recruitGenerating && recruitCandidates.length === 0"
+                  class="recruit-select-placeholder"
+                >
+                  <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true" />
+                  正在生成候选人，可关闭本弹窗；完成后将弹出提示。
+                </div>
+                <div
+                  v-else-if="recruitCandidates.length === 0"
+                  class="recruit-select-placeholder"
+                >
+                  请先在「填写需求」中点击「AI生成」。
+                </div>
+                <RecruitCandidatePicker
+                  v-else
+                  :candidates="recruitCandidates"
+                  :selected-indices="recruitSelectedIndices"
+                  :committing="recruitCommitting"
+                  :generating="recruitGenerating"
+                  :is-dark-mode="isDarkMode"
+                  @toggle="onRecruitCandidateSelect"
+                  @back="recruitBackToBrief"
+                  @confirm="confirmRecruitToArchive"
+                />
+              </div>
             </div>
             <!-- 新增世界规则 -->
             <div v-else-if="modalType === 'add_world_rule'" class="rule-form">
@@ -1592,6 +1700,8 @@ import HeaderEffects from './components/HeaderEffects.vue';
 import SidebarEffects from './components/SidebarEffects.vue';
 // 游戏时间组件
 import GameTimeDisplay from './components/GameTimeDisplay.vue';
+import RecruitCandidatePicker from './components/RecruitCandidatePicker.vue';
+import { useRecruitWizardStore } from './stores/recruitWizard';
 import {
   loadFromLatestMessage,
   parseMaintext,
@@ -1658,6 +1768,14 @@ import {
   downloadLastTraceRoundTxt,
   getLastTraceRound,
 } from './utils/generationTrace';
+import {
+  buildRecruitUpdateVariablePatchText,
+  buildWorldContextSummaryForRecruit,
+  extractCompanionInner,
+  generateCompanionRecruitBlock,
+  parseCompanionCandidates,
+} from './utils/characterRecruitFromAi';
+import { buildAddCharacterCombinedBrief } from './utils/recruitModalBrief';
 import { isRulesMvuLiveHostAtInit, useDataStore } from './store';
 import { useEditCartStore } from './stores/editCart';
 import { getOtherSettings } from './utils/otherSettings';
@@ -1697,6 +1815,21 @@ import {
   PHONE_CHARACTER_AVATAR_SYNC_TYPE,
   applyCharacterAvatarOverrideLocal,
 } from '../shared/phoneCharacterAvatarStorage';
+
+const recruitWizard = useRecruitWizardStore();
+const {
+  addCharacterName,
+  addCharacterRelationIdentity,
+  addCharacterDescription,
+  recruitTab,
+  phase,
+  candidates: recruitCandidates,
+  selectedIndices: recruitSelectedIndices,
+  lastRaw: recruitLastRaw,
+  genError: recruitGenError,
+  genInFlight: recruitGenerating,
+  genRequestId: recruitGenRequestId,
+} = storeToRefs(recruitWizard);
 
 /** 构建时注入，见 webpack DefinePlugin `__APP_VERSION__` */
 const appBuildVersion = __APP_VERSION__;
@@ -1874,6 +2007,7 @@ const tabPanelLayoutFull = computed(
 // 弹窗表单数据（按类型复用）
 const modalForm = ref({
   addCharacterName: '',
+  addCharacterRelationIdentity: '',
   addCharacterDescription: '',
   worldRuleName: '',
   worldRuleDetail: '',
@@ -1907,6 +2041,175 @@ const modalForm = ref({
 });
 
 const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
+
+/** 新增角色：招募向导（与 characterRecruitFromAi 配合；状态见 recruitWizard store） */
+const recruitCommitting = ref(false);
+
+function recruitDraftAsModalForm(): EditCartModalForm {
+  return {
+    ...modalForm.value,
+    addCharacterName: addCharacterName.value,
+    addCharacterRelationIdentity: addCharacterRelationIdentity.value,
+    addCharacterDescription: addCharacterDescription.value,
+  } as EditCartModalForm;
+}
+
+/** 招募：角色简介为必填；名字与关系仍可选 */
+const hasRecruitBriefForGenerate = computed(
+  () => String(recruitDraftAsModalForm().addCharacterDescription ?? '').trim().length > 0,
+);
+
+function onRecruitCandidateSelect(idx: number, checked: boolean) {
+  const cap = Math.max(recruitCandidates.value.length, 1);
+  recruitWizard.toggleSelection(idx, checked, cap);
+}
+
+function recruitBackToBrief() {
+  recruitWizard.setPhaseBrief();
+}
+
+function onRecruitClearDraft() {
+  recruitWizard.clear();
+  recruitWizard.applyDraftToModalForm(modalForm.value);
+}
+
+/** 「正文输出角色」：生成 `[新增角色]` 正文并入输入框；开启编辑暂存时先入购物车（与旧版弹窗提交一致）。 */
+async function recruitOutputCharacterToBody() {
+  const form = recruitDraftAsModalForm();
+  const intro = String(form.addCharacterDescription ?? '').trim();
+  if (!intro) {
+    toastr.warning('请先填写角色简介（必填）');
+    return;
+  }
+  const name = String(form.addCharacterName ?? '').trim();
+  if (isEditCartEnabled()) {
+    const item = buildCartItemFromModal('add_character', form, null);
+    if (!item) {
+      toastr.error('无法加入编辑暂存');
+      return;
+    }
+    stageItem(item);
+    toastr.info(`已加入编辑暂存（共 ${editCartPendingCount.value} 项），请在侧栏购物车确认提交`);
+    return;
+  }
+  try {
+    const { submitAddCharacter } = await import('./utils/dialogAndVariable');
+    const messageText = await submitAddCharacter(
+      name,
+      String(form.addCharacterRelationIdentity ?? ''),
+      String(form.addCharacterDescription ?? ''),
+    );
+    if (!messageText) return;
+    // 与「复制到对话框」一致：无视「修改是否写入对话框」开关，强制写入本界面输入框（否则只会并入待发变量块摘要）
+    copyToInput(messageText, 'append', true);
+  } catch (e) {
+    console.error('正文输出角色失败', e);
+    toastr.error('写入输入框失败');
+  }
+}
+
+async function runRecruitGenerate() {
+  const form = recruitDraftAsModalForm();
+  if (!String(form.addCharacterDescription ?? '').trim()) {
+    toastr.warning('请先填写角色简介（必填）');
+    return;
+  }
+  const brief = buildAddCharacterCombinedBrief(form);
+  recruitGenRequestId.value += 1;
+  const myId = recruitGenRequestId.value;
+  recruitGenerating.value = true;
+  recruitGenError.value = '';
+  recruitLastRaw.value = '';
+  try {
+    const store = useDataStore();
+    const world = buildWorldContextSummaryForRecruit(store.data);
+    const raw = await generateCompanionRecruitBlock(brief, world);
+    if (myId !== recruitGenRequestId.value) return;
+    recruitLastRaw.value = raw;
+    const inner = extractCompanionInner(raw);
+    if (!inner) {
+      throw new Error('模型回复中未找到 <companion>…</companion> 块。');
+    }
+    const list = parseCompanionCandidates(inner);
+    recruitCandidates.value = list;
+    recruitSelectedIndices.value = [];
+    phase.value = 'picking';
+    recruitTab.value = 'select';
+    const modalOpen = isModalOpen.value && modalType.value === 'add_character';
+    if (modalOpen) {
+      toastr.success('已生成 5 位候选人，请确认选择后使用「复制到对话框」');
+    } else {
+      await Swal.fire({
+        title: '候选人已生成',
+        text: '共 5 位，请点击「前往选择」打开招募并跳转到选择标签。',
+        icon: 'success',
+        confirmButtonText: '前往选择',
+      });
+      recruitTab.value = 'select';
+      openModal('add_character', null);
+    }
+  } catch (e) {
+    if (myId !== recruitGenRequestId.value) return;
+    const msg = e instanceof Error ? e.message : String(e);
+    recruitGenError.value = msg;
+    console.warn('招募生成/解析失败', e, recruitLastRaw.value?.slice(0, 500));
+    toastr.error('生成或解析失败，请重试');
+  } finally {
+    if (myId === recruitGenRequestId.value) {
+      recruitGenerating.value = false;
+    }
+  }
+}
+
+async function confirmRecruitToArchive() {
+  if (recruitSelectedIndices.value.length === 0) {
+    toastr.warning('请至少选择一位候选人');
+    return;
+  }
+  recruitCommitting.value = true;
+  try {
+    const store = useDataStore();
+    const form = recruitDraftAsModalForm();
+    if (!String(form.addCharacterDescription ?? '').trim()) {
+      toastr.warning('请先填写角色简介（必填）');
+      return;
+    }
+    const recruitBrief = buildAddCharacterCombinedBrief(form).trim();
+
+    const built = buildRecruitUpdateVariablePatchText({
+      rootData: store.data,
+      candidateIndices: recruitSelectedIndices.value,
+      candidates: recruitCandidates.value,
+      recruitBrief,
+    });
+    if (!built.ok) {
+      toastr.error(built.zodMessage ? `${built.error}\n${built.zodMessage}` : built.error);
+      return;
+    }
+    const ids = built.newIds.join('、');
+    const confirmCopy = await Swal.fire({
+      title: '复制到对话框？',
+      html: `将把含新角色 <strong>${ids}</strong> 的 <code>&lt;UpdateVariable&gt;</code> 块写入本界面输入框；需<strong>自行发送消息</strong>后才会由 MVU 应用。<br><br>确定继续？`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    });
+    if (!confirmCopy.isConfirmed) return;
+
+    const { sendToDialog } = await import('./utils/dialogAndVariable');
+    await sendToDialog(built.text, true, { suppressSuccessToast: true });
+    toastr.success(`已填入对话框：${ids}（发送后由 MVU 应用）`);
+    closeModal();
+    recruitWizard.clear();
+    recruitWizard.applyDraftToModalForm(modalForm.value);
+  } catch (e) {
+    console.error('复制招募变量块失败', e);
+    toastr.error('复制失败');
+  } finally {
+    recruitCommitting.value = false;
+  }
+}
 
 function pushModalBodyGarmentRow() {
   modalForm.value.appearanceBodyGarmentRows.push({
@@ -2713,6 +3016,7 @@ async function openModal(type: string, payload?: Record<string, any>) {
   modalPayload.value = payload ?? null;
   modalForm.value = {
     addCharacterName: '',
+    addCharacterRelationIdentity: '',
     addCharacterDescription: '',
     worldRuleName: payload?.title ?? '',
     worldRuleDetail: payload?.desc ?? '',
@@ -2832,6 +3136,9 @@ async function openModal(type: string, payload?: Record<string, any>) {
       console.warn('预填身份标签失败', e);
     }
   }
+  if (type === 'add_character') {
+    recruitWizard.applyDraftToModalForm(modalForm.value);
+  }
   isModalOpen.value = true;
 }
 
@@ -2887,8 +3194,14 @@ async function onAvatarFileSelected(event: Event) {
  * @param text 要复制的文本
  * @param mode 模式：'replace' 替换，'append' 追加（默认）
  * @param bypassVariableHintGate 为 true 时强制写入输入框（如恢复用户发言），忽略「修改是否写入对话框」
+ * @param suppressSuccessToast 为 true 时不弹出「已复制」类成功提示（由调用方自定义，如招募复制）
  */
-function copyToInput(text: string, mode: 'replace' | 'append' = 'append', bypassVariableHintGate = false) {
+function copyToInput(
+  text: string,
+  mode: 'replace' | 'append' = 'append',
+  bypassVariableHintGate = false,
+  suppressSuccessToast = false,
+) {
   const messageText = String(text ?? '').trim();
   if (!messageText) return;
 
@@ -2898,7 +3211,9 @@ function copyToInput(text: string, mode: 'replace' | 'append' = 'append', bypass
     } else {
       appendStagingSummaryForNextPendingUvBlock(messageText);
     }
-    toastr.success('修改说明已暂存，发送消息时将并入变量块');
+    if (!suppressSuccessToast) {
+      toastr.success('修改说明已暂存，发送消息时将并入变量块');
+    }
     return;
   }
 
@@ -2912,7 +3227,9 @@ function copyToInput(text: string, mode: 'replace' | 'append' = 'append', bypass
     userInput.value = currentInput + '\n\n' + messageText;
   }
 
-  toastr.success('修改信息已复制进入对话框');
+  if (!suppressSuccessToast) {
+    toastr.success('修改信息已复制进入对话框');
+  }
 }
 
 function onEditCartRemove(id: string) {
@@ -2960,7 +3277,7 @@ async function onEditCartApply() {
   if (editCartPendingCount.value === 0 || editCartApplying.value) return;
   editCartApplying.value = true;
   try {
-    const ok = await editCartStore.applyAll((text, mode) => copyToInput(text, mode));
+    const ok = await editCartStore.applyAll((text, mode) => copyToInput(text, mode, true));
     if (ok) {
       editCartPanelOpen.value = false;
       toastr.success('已批量提交暂存');
@@ -2971,14 +3288,27 @@ async function onEditCartApply() {
 }
 
 function onCopyToInputEvent(event: Event) {
-  const customEvent = event as CustomEvent<{ message?: string; bypassVariableHintGate?: boolean }>;
+  const customEvent = event as CustomEvent<{
+    message?: string;
+    bypassVariableHintGate?: boolean;
+    suppressSuccessToast?: boolean;
+  }>;
   const messageText = String(customEvent.detail?.message ?? '').trim();
   if (!messageText) return;
-  copyToInput(messageText, 'append', customEvent.detail?.bypassVariableHintGate === true);
+  copyToInput(
+    messageText,
+    'append',
+    customEvent.detail?.bypassVariableHintGate === true,
+    customEvent.detail?.suppressSuccessToast === true,
+  );
 }
 
 async function onModalComplete() {
   const type = modalType.value;
+  if (type === 'add_character') {
+    toastr.info('请用弹窗内「AI生成」或「选择角色」流程；「正文输出角色」走 [新增角色] 正文流（受编辑暂存影响）。顶栏「编辑完成」不用于本流程。');
+    return;
+  }
   const form = modalForm.value;
   const payload = modalPayload.value;
   let messageText = '';
@@ -2999,11 +3329,7 @@ async function onModalComplete() {
     const capturePendingUv = !isEditCartEnabled();
     const statBeforeModal = capturePendingUv ? klona(useDataStore().data) : null;
 
-    if (type === 'add_character') {
-      // 只生成 [新增角色] 消息，不预写角色档案（与 editCartApply.runModalCommit 一致）
-      const { submitAddCharacter } = await import('./utils/dialogAndVariable');
-      messageText = await submitAddCharacter(form.addCharacterName, form.addCharacterDescription);
-    } else if (type === 'add_world_rule') {
+    if (type === 'add_world_rule') {
       const { submitAddWorldRule } = await import('./utils/dialogAndVariable');
       messageText = await submitAddWorldRule(form.worldRuleName, form.worldRuleDetail);
     } else if (type === 'edit_world_rule' && (payload?.id ?? payload?.title)) {
@@ -9165,6 +9491,357 @@ body.has-dragging-fab {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.btn-complete-placeholder {
+  flex-shrink: 0;
+  min-width: 112px;
+  height: 40px;
+}
+
+.recruit-character-modal {
+  position: relative;
+
+  /* 参考 cybernexus：细网格底纹（仅招募区） */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.35;
+    border-radius: inherit;
+    background-image:
+      linear-gradient(rgba(0, 243, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 243, 255, 0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+    z-index: 0;
+  }
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .recruit-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 243, 255, 0.15);
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+  }
+
+  .recruit-tab {
+    flex: 1;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: var(--font-cyber-mono, 'JetBrains Mono', monospace);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    margin-bottom: 0;
+    cursor: pointer;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.42);
+    transition:
+      color 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      background 0.2s ease;
+  }
+
+  .recruit-tab--active {
+    color: var(--color-neon-cyan, #00f3ff);
+    border-color: rgba(0, 243, 255, 0.45);
+    background: rgba(0, 243, 255, 0.08);
+    box-shadow: 0 0 18px rgba(0, 243, 255, 0.12);
+  }
+
+  .light .recruit-tabs {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: rgba(8, 145, 178, 0.2);
+  }
+
+  .light .recruit-tab {
+    color: rgba(24, 24, 27, 0.45);
+  }
+
+  .light .recruit-tab--active {
+    color: #0e7490;
+    border-color: rgba(8, 145, 178, 0.45);
+    background: rgba(8, 145, 178, 0.1);
+    box-shadow: 0 0 14px rgba(8, 145, 178, 0.12);
+  }
+
+  .recruit-tab-panel {
+    min-height: 120px;
+  }
+
+  .recruit-tab-panel--input {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .recruit-input-hud {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-family: var(--font-cyber-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  .light .recruit-input-hud {
+    color: rgba(63, 63, 70, 0.75);
+  }
+
+  .recruit-input-hud-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-neon-magenta, #ff00ff);
+    box-shadow: 0 0 8px var(--color-neon-magenta, #ff00ff);
+    animation: recruit-hud-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes recruit-hud-pulse {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .recruit-input-card {
+    position: relative;
+    border-radius: 12px;
+    padding: 2px;
+    overflow: hidden;
+  }
+
+  .recruit-input-card-inner {
+    position: relative;
+    padding: 18px 18px 16px;
+    border-radius: 11px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    box-shadow:
+      0 0 0 1px rgba(0, 243, 255, 0.06) inset,
+      0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+
+  .light .recruit-input-card-inner {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  }
+
+  .recruit-input-bracket-tl,
+  .recruit-input-bracket-br {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .recruit-input-bracket-tl {
+    top: 10px;
+    left: 10px;
+    border-top: 2px solid var(--color-neon-cyan, #00f3ff);
+    border-left: 2px solid var(--color-neon-cyan, #00f3ff);
+  }
+
+  .recruit-input-bracket-br {
+    bottom: 10px;
+    right: 10px;
+    border-bottom: 2px solid var(--color-neon-magenta, #ff00ff);
+    border-right: 2px solid var(--color-neon-magenta, #ff00ff);
+  }
+
+  .recruit-field-block {
+    margin-bottom: 14px;
+
+    &:last-of-type {
+      margin-bottom: 0;
+    }
+  }
+
+  .recruit-cyber-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-family: var(--font-cyber-mono, 'JetBrains Mono', monospace);
+    color: var(--color-neon-cyan, #00f3ff);
+    opacity: 0.92;
+  }
+
+  .light .recruit-cyber-label {
+    color: #0e7490;
+  }
+
+  .recruit-cyber-input.form-input,
+  .recruit-cyber-input.form-textarea {
+    border-color: rgba(0, 243, 255, 0.22);
+    background: rgba(0, 0, 0, 0.35);
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .recruit-cyber-input.form-input:focus,
+  .recruit-cyber-input.form-textarea:focus {
+    border-color: rgba(0, 243, 255, 0.55);
+    box-shadow: 0 0 0 1px rgba(0, 243, 255, 0.15);
+  }
+
+  .light .recruit-cyber-input.form-input,
+  .light .recruit-cyber-input.form-textarea {
+    background: #fff;
+    border-color: rgba(8, 145, 178, 0.25);
+  }
+
+  .light .recruit-cyber-input.form-input:focus,
+  .light .recruit-cyber-input.form-textarea:focus {
+    border-color: rgba(8, 145, 178, 0.55);
+    box-shadow: 0 0 0 1px rgba(8, 145, 178, 0.12);
+  }
+
+  .recruit-clear-btn {
+    border: 1px dashed rgba(255, 255, 255, 0.28);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition:
+      border-color 0.2s ease,
+      color 0.2s ease;
+
+    &:hover {
+      border-color: var(--color-neon-magenta, #ff00ff);
+      color: var(--color-neon-magenta, #ff00ff);
+    }
+  }
+
+  .light .recruit-clear-btn {
+    color: #52525b;
+    border-color: rgba(0, 0, 0, 0.18);
+
+    &:hover {
+      border-color: #c026d3;
+      color: #a21caf;
+    }
+  }
+
+  .recruit-generate-btn--nexus {
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  }
+
+  .recruit-select-placeholder {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 16px;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.65);
+    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    margin-bottom: 12px;
+  }
+
+  .light .recruit-select-placeholder {
+    color: #52525b;
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .recruit-actions--input {
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .recruit-actions-primary {
+    display: flex;
+    width: 100%;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .recruit-actions-primary > .action-btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .recruit-output-body-btn--nexus {
+    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  }
+
+  .action-btn.cyber-button.recruit-output-body-btn {
+    min-height: 48px;
+    padding: 12px 20px;
+    font-size: 15px;
+    font-weight: 700;
+    gap: 10px;
+
+    i {
+      font-size: 1.1em;
+    }
+  }
+
+  .recruit-actions--input .recruit-clear-btn {
+    align-self: flex-end;
+  }
+
+  /* 默认约三行高；可拖拽右下角拉高 */
+  .form-textarea.recruit-field-recruit {
+    min-height: 0;
+    resize: vertical;
+    max-height: min(42vh, 320px);
+  }
+
+  .action-btn.cyber-button.recruit-generate-btn {
+    min-height: 48px;
+    padding: 12px 28px;
+    font-size: 16px;
+    font-weight: 700;
+    gap: 10px;
+
+    i {
+      font-size: 1.15em;
+    }
+  }
+
+  .recruit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .recruit-error {
+    margin: 10px 0 0;
+    color: #f87171;
+    white-space: pre-wrap;
+    font-size: 13px;
+  }
 }
 
 .avatar-file-input {

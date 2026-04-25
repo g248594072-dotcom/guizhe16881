@@ -23,7 +23,7 @@
     <div v-else-if="visibleCharacters.length === 0" class="empty-state">
       <i class="fa-solid fa-users"></i>
       <p>暂无角色</p>
-      <span class="hint">点击「新增角色」填写并发消息后，由 AI 写入档案；也可等待剧情中自动生成</span>
+      <span class="hint">点击「新增角色」填写需求后可用「AI生成」选人并「复制到对话框」写变量块，或用「正文输出角色」走 [新增角色] 正文流（发送后生效）；也可等待剧情中自动生成</span>
     </div>
 
     <div v-else class="character-grid">

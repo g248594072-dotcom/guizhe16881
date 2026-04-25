@@ -6,7 +6,10 @@ import type { ClothingBodyGarmentEditRow, ClothingStateZh, JewelryEditRow } from
 import type { TacticalMapCommitPatchOp } from '../utils/tacticalMapCommitSendBox';
 
 export interface EditCartModalForm {
+  /** 保留字段；招募弹窗主要用关系/身份与角色简介 */
   addCharacterName: string;
+  /** 与主角或他人的关系、身份定位（单行） */
+  addCharacterRelationIdentity: string;
   addCharacterDescription: string;
   worldRuleName: string;
   worldRuleDetail: string;

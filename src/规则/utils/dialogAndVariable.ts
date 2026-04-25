@@ -47,8 +47,13 @@ import { appendStagingSummaryForNextPendingUvBlock } from './pendingUpdateVariab
  * 将文本写入前端输入区（经 `th:copy-to-input` → App `copyToInput`）。
  * 当「修改是否写入对话框」关闭时：不触发写入输入框，仅把说明并入待发 `<UpdateVariable>` 摘要（与发送时变量块合并）。
  * @param bypassCopyToInputGate 为 true 时忽略上述开关（例如恢复误删的用户发言，须仍填入输入框）。
+ * @param opts.suppressSuccessToast 为 true 时由 `copyToInput` 不弹出「已复制」类成功 toastr（调用方自行提示）。
  */
-export async function sendToDialog(message: string, bypassCopyToInputGate = false): Promise<void> {
+export async function sendToDialog(
+  message: string,
+  bypassCopyToInputGate = false,
+  opts?: { suppressSuccessToast?: boolean },
+): Promise<void> {
   const msg = String(message ?? '').trim();
   if (!msg) return;
 
@@ -64,7 +69,11 @@ export async function sendToDialog(message: string, bypassCopyToInputGate = fals
   try {
     window.dispatchEvent(
       new CustomEvent('th:copy-to-input', {
-        detail: { message: msg, bypassVariableHintGate: bypassCopyToInputGate },
+        detail: {
+          message: msg,
+          bypassVariableHintGate: bypassCopyToInputGate,
+          suppressSuccessToast: opts?.suppressSuccessToast === true,
+        },
       }),
     );
     console.log('✅ [dialogAndVariable] 已写入前端对话框输入区:', msg.substring(0, 80) + (msg.length > 80 ? '...' : ''));
@@ -133,28 +142,33 @@ function parseTagLines(text: string): string[] {
 
 // ---------- 角色 ----------
 
-export function formatAddCharacterMessage(name: string, description: string): string {
-  const n = name.trim();
-  const d = description.trim();
-  const lines = ['[新增角色]', `姓名：${n}`];
-  if (d) lines.push(`简单描述：${d}`);
+/** `[新增角色]` 正文：姓名（空则随机生成）、身份和关系（空则无）、简单描述（角色简介）分行输出 */
+export function formatAddCharacterMessage(
+  name: string,
+  relationIdentity: string,
+  characterIntro: string,
+): string {
+  const n = String(name ?? '').trim();
+  const rel = String(relationIdentity ?? '').trim();
+  const intro = String(characterIntro ?? '').trim();
+  const lines = [
+    '[新增角色]',
+    `姓名：${n || '随机生成'}`,
+    `身份和关系： ${rel || '无'}`,
+  ];
+  if (intro) lines.push(`简单描述：${intro}`);
   return lines.join('\n');
 }
 
-/** 直接向 MVU 写入新角色档案（一般不要用；新增角色应走 `submitAddCharacter` 由 AI/变量管线写入，避免重复条目） */
-export function addCharacterToVariables(name: string, description: string): void {
-  if (isRulesMvuArchiveSnapshot()) return;
-  const store = useDataStore();
-  const id = allocateNextChrId(store.data.角色档案 as Record<string, unknown>);
-  if (!id) {
-    toastr.error('角色档案已达 CHR-999 上限，无法新增');
-    return;
-  }
-  const n = name.trim() || '未命名';
-  const desc = description.trim();
+const emptyClothingSlot = () => ({}) as Record<string, { 状态: string; 描述: string }>;
 
-  const emptySlot = () => ({}) as Record<string, { 状态: string; 描述: string }>;
-  store.data.角色档案[id] = {
+/**
+ * 新建一条「角色档案」条目的默认骨架（与 `addCharacterToVariables` 写入形状一致），供招募解析或本地拼装后 `Schema.safeParse` 再写入。
+ */
+export function createEmptyCharacterRecord(姓名: string, 描写: string): Record<string, unknown> {
+  const n = String(姓名 ?? '').trim() || '未命名';
+  const desc = String(描写 ?? '').trim();
+  return {
     姓名: n,
     状态: '出场中',
     描写: desc,
@@ -177,7 +191,7 @@ export function addCharacterToVariables(name: string, description: string): void
       体质特征: '普通',
     },
     服装状态: {
-      ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, emptySlot()])),
+      ...Object.fromEntries(CLOTHING_BODY_SLOT_KEYS.map(k => [k, emptyClothingSlot()])),
       饰品: {},
     },
     身体部位物理状态: {},
@@ -190,19 +204,39 @@ export function addCharacterToVariables(name: string, description: string): void
     当前综合生理描述: '',
     参与活动记录: {},
   };
-  
+}
+
+/** 直接向 MVU 写入新角色档案（一般不要用；新增角色应走 `submitAddCharacter` 由 AI/变量管线写入，避免重复条目） */
+export function addCharacterToVariables(name: string, description: string): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const id = allocateNextChrId(store.data.角色档案 as Record<string, unknown>);
+  if (!id) {
+    toastr.error('角色档案已达 CHR-999 上限，无法新增');
+    return;
+  }
+  store.data.角色档案[id] = createEmptyCharacterRecord(name, description) as (typeof store.data.角色档案)[string];
+
   bumpUpdateTime();
 }
 
 /** 仅生成并返回 `[新增角色]` 消息文本；不写入 `角色档案`，避免与 AI 输出变量重复。 */
-export async function submitAddCharacter(name: string, description: string): Promise<string> {
-  const n = name.trim();
-  if (!n) {
-    toastr.warning('请输入角色名字');
+export async function submitAddCharacter(
+  name: string,
+  relationIdentity: string,
+  characterIntro: string,
+): Promise<string> {
+  const introRaw = String(characterIntro ?? '').trim();
+  if (!introRaw) {
+    toastr.warning('请先填写角色简介（必填）');
     return '';
   }
   if (!tryRulesMvuWritable()) return '';
-  return formatAddCharacterMessage(n, description);
+  const { squashRecruitBriefForAddCharacterMessage } = await import('./recruitModalBrief');
+  const intro = squashRecruitBriefForAddCharacterMessage(introRaw) || introRaw;
+  const n = String(name ?? '').trim();
+  const rel = String(relationIdentity ?? '').trim();
+  return formatAddCharacterMessage(n, rel, intro);
 }
 
 // ---------- 编辑角色基础信息 ----------
