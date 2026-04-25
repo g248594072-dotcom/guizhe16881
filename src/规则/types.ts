@@ -204,6 +204,12 @@ export interface CharacterData {
   };
   status: 'active' | 'inactive' | 'dead';
   description?: string;
+  /** MVU「角色简介」 */
+  characterIntro?: string;
+  /** MVU「代表性发言」：语境 → 台词 */
+  representativeQuotes?: Record<string, string>;
+  /** MVU「爱好」：标签名 → 等级与原因 */
+  hobbies?: Record<string, { 等级: number; 喜欢的原因?: string }>;
   /** 对应变量「当前综合生理描述」 */
   currentPhysiologicalDesc?: string;
   /** 性癖详情（含等级、细节描述、自我合理化） */

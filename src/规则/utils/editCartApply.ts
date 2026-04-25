@@ -147,24 +147,75 @@ export async function runModalCommit(
     const characterId = String(p.characterId);
     updateCharacterIdentityTags(characterId, tagsObj);
     messageText = formatIdentityTagsMessage(characterId, tagsObj);
-  } else if (type === 'edit_character_appearance' && p?.characterId) {
+  } else if (type === 'edit_character_background_archive' && p?.characterId) {
+    const { buildBackgroundArchivePayloadFromModalForm, submitEditCharacterBackgroundArchive } = await import(
+      './dialogAndVariable'
+    );
+    const characterId = String(p.characterId);
+    const payload = buildBackgroundArchivePayloadFromModalForm(form);
+    messageText = await submitEditCharacterBackgroundArchive(characterId, payload);
+  } else if (
+    (type === 'edit_character_appearance' ||
+      type === 'edit_character_clothing' ||
+      type === 'edit_character_jewelry' ||
+      type === 'edit_character_body_physics') &&
+    p?.characterId
+  ) {
     const {
       submitEditCharacterAppearance,
       mergeClothingAppearanceSubmit,
       normalizeJewelryEditRow,
+      clothingStateFromMvuRaw,
+      bodyGarmentRowsFromClothingState,
+      jewelryRowsFromClothingState,
+      bodyPartRowsFromMvuRaw,
     } = await import('./dialogAndVariable');
     const characterId = String(p.characterId);
-    const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
-    const clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
-    const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
-    for (const row of form.appearanceBodyPartRows ?? []) {
-      const k = String(row.key ?? '').trim();
-      if (!k) continue;
-      body[k] = {
-        外观描述: String(row.外观描述 ?? ''),
-        当前状态: String(row.当前状态 ?? ''),
-      };
+    const store = useDataStore();
+    const rawChar = store.data.角色档案?.[characterId] as Record<string, unknown> | undefined;
+    const curCloth = clothingStateFromMvuRaw(rawChar?.服装状态);
+
+    const bodyFromRows = (rows: typeof form.appearanceBodyPartRows) => {
+      const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
+      for (const row of rows ?? []) {
+        const k = String(row.key ?? '').trim();
+        if (!k) continue;
+        body[k] = {
+          外观描述: String(row.外观描述 ?? ''),
+          当前状态: String(row.当前状态 ?? ''),
+        };
+      }
+      return body;
+    };
+    const bodyFromStore = () => bodyFromRows(bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态));
+
+    let clothing;
+    let body: Record<string, { 外观描述: string; 当前状态: string }>;
+
+    if (type === 'edit_character_clothing') {
+      clothing = mergeClothingAppearanceSubmit(
+        form.appearanceBodyGarmentRows ?? [],
+        jewelryRowsFromClothingState(curCloth).map(normalizeJewelryEditRow),
+      );
+      body = bodyFromStore();
+    } else if (type === 'edit_character_jewelry') {
+      clothing = mergeClothingAppearanceSubmit(
+        bodyGarmentRowsFromClothingState(curCloth),
+        (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow),
+      );
+      body = bodyFromStore();
+    } else if (type === 'edit_character_body_physics') {
+      clothing = mergeClothingAppearanceSubmit(
+        bodyGarmentRowsFromClothingState(curCloth),
+        jewelryRowsFromClothingState(curCloth).map(normalizeJewelryEditRow),
+      );
+      body = bodyFromRows(form.appearanceBodyPartRows);
+    } else {
+      const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
+      clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
+      body = bodyFromRows(form.appearanceBodyPartRows);
     }
+
     messageText = await submitEditCharacterAppearance(characterId, {
       服装状态: clothing,
       身体部位物理状态: body,

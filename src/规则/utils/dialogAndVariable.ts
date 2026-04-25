@@ -1,11 +1,12 @@
 /**
  * 将内容填入对话框并同步修改变量
  * 用于：新增/编辑角色、规则等操作
- * 
+ *
  * 注意：此版本已适配 ZOD MVU，使用 useDataStore 直接修改变量
  * 修改会自动同步到酒馆变量，无需手动调用 updateVariablesWith
  */
 
+import { bumpUpdateTime, isRulesMvuArchiveSnapshot, tryRulesMvuWritable, useDataStore } from '../store';
 import type {
   BodyPartPhysicsZh,
   CharacterData,
@@ -18,30 +19,22 @@ import type {
   RegionData,
   RuleData,
 } from '../types';
-import {
-  mergeBodySlotRecords,
-  normalizeClothingBodySlotRecord,
-  normalize服装状态Raw,
-} from './clothingStateNormalize';
 import { CLOTHING_BODY_SLOT_KEYS } from '../types';
+import { allocateNextChrId } from './chrId';
+import { mergeBodySlotRecords, normalizeClothingBodySlotRecord, normalize服装状态Raw } from './clothingStateNormalize';
+import { getOtherSettings } from './otherSettings';
+import { appendStagingSummaryForNextPendingUvBlock } from './pendingUpdateVariableQueue';
+import { markResidentLifePendingPersonalRule } from './residentLifePending';
 import {
-  useDataStore,
-  bumpUpdateTime,
-  tryRulesMvuWritable,
-  isRulesMvuArchiveSnapshot,
-} from '../store';
-import {
-  parseEditableTextToTagMap,
+  normalizeHobbyRecord,
+  normalizeRepresentativeSpeechRecord,
   parseEditableTextToFetishRecord,
   parseEditableTextToSensitiveRecord,
+  parseEditableTextToTagMap,
   type FetishEntryZh,
   type SensitiveEntryZh,
 } from './tagMap';
 import { generateWorldTrend } from './worldLifeGenerator';
-import { markResidentLifePendingPersonalRule } from './residentLifePending';
-import { allocateNextChrId } from './chrId';
-import { getOtherSettings } from './otherSettings';
-import { appendStagingSummaryForNextPendingUvBlock } from './pendingUpdateVariableQueue';
 
 /**
  * 将文本写入前端输入区（经 `th:copy-to-input` → App `copyToInput`）。
@@ -76,16 +69,17 @@ export async function sendToDialog(
         },
       }),
     );
-    console.log('✅ [dialogAndVariable] 已写入前端对话框输入区:', msg.substring(0, 80) + (msg.length > 80 ? '...' : ''));
+    console.log(
+      '✅ [dialogAndVariable] 已写入前端对话框输入区:',
+      msg.substring(0, 80) + (msg.length > 80 ? '...' : ''),
+    );
   } catch (e) {
     console.warn('⚠️ [dialogAndVariable] 写入前端对话框输入区失败:', e);
   }
 }
 
 function deliveryHintForToast(): string {
-  return getOtherSettings().copyStagingChangeHintsToInput !== false
-    ? '并写入对话框'
-    : '；说明将在发送时并入变量块';
+  return getOtherSettings().copyStagingChangeHintsToInput !== false ? '并写入对话框' : '；说明将在发送时并入变量块';
 }
 
 /**
@@ -112,7 +106,10 @@ export function updateMetaWorldInfo(世界类型: string, 世界简介: string):
 
 /** 与「其他规则」一致：可追加进输入框或待发变量块摘要的说明 */
 export function formatMetaWorldInfoMessage(世界类型: string, 世界简介: string): string {
-  const t = String(世界类型 ?? '').trim().slice(0, 64) || '现代';
+  const t =
+    String(世界类型 ?? '')
+      .trim()
+      .slice(0, 64) || '现代';
   const i = String(世界简介 ?? '').slice(0, 2000);
   return `【元信息】\n世界类型：${t}\n世界简介：${i}`;
 }
@@ -136,26 +133,18 @@ function parseTagLines(text: string): string[] {
   const raw = String(text ?? '');
   return raw
     .split(/\r?\n|，|,/g)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 }
 
 // ---------- 角色 ----------
 
 /** `[新增角色]` 正文：姓名（空则随机生成）、身份和关系（空则无）、简单描述（角色简介）分行输出 */
-export function formatAddCharacterMessage(
-  name: string,
-  relationIdentity: string,
-  characterIntro: string,
-): string {
+export function formatAddCharacterMessage(name: string, relationIdentity: string, characterIntro: string): string {
   const n = String(name ?? '').trim();
   const rel = String(relationIdentity ?? '').trim();
   const intro = String(characterIntro ?? '').trim();
-  const lines = [
-    '[新增角色]',
-    `姓名：${n || '随机生成'}`,
-    `身份和关系： ${rel || '无'}`,
-  ];
+  const lines = ['[新增角色]', `姓名：${n || '随机生成'}`, `身份和关系： ${rel || '无'}`];
   if (intro) lines.push(`简单描述：${intro}`);
   return lines.join('\n');
 }
@@ -171,7 +160,10 @@ export function createEmptyCharacterRecord(姓名: string, 描写: string): Reco
   return {
     姓名: n,
     状态: '出场中',
+    角色简介: '',
+    代表性发言: {},
     描写: desc,
+    爱好: {},
     当前内心想法: '',
     当前位置: {
       区域ID: '',
@@ -313,14 +305,11 @@ export async function submitEditCharacterBasic(
     physique: payload.physique as string | undefined,
   };
 
-  updateCharacterInVariables(
-    characterId,
-    {
-      name: (payload.name as string | undefined) ?? undefined,
-      basic,
-      stats: Object.keys(stats).length ? (stats as Record<string, number>) : undefined,
-    } as Partial<CharacterData>,
-  );
+  updateCharacterInVariables(characterId, {
+    name: (payload.name as string | undefined) ?? undefined,
+    basic,
+    stats: Object.keys(stats).length ? (stats as Record<string, number>) : undefined,
+  } as Partial<CharacterData>);
   return message;
 }
 
@@ -481,10 +470,7 @@ export interface SensitivePartDetailUpdate {
 /**
  * 更新角色的性癖详情
  */
-export function updateCharacterFetishDetails(
-  characterId: string,
-  updates: FetishDetailUpdate[],
-): void {
+export function updateCharacterFetishDetails(characterId: string, updates: FetishDetailUpdate[]): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
@@ -497,9 +483,9 @@ export function updateCharacterFetishDetails(
   for (const update of updates) {
     const existing = char.性癖[update.name];
     char.性癖[update.name] = {
-      等级: update.level ?? (existing?.等级 ?? existing?.level ?? 1),
-      细节描述: update.description ?? (existing?.细节描述 ?? existing?.description ?? ''),
-      自我合理化: update.justification ?? (existing?.自我合理化 ?? existing?.justification ?? ''),
+      等级: update.level ?? existing?.等级 ?? existing?.level ?? 1,
+      细节描述: update.description ?? existing?.细节描述 ?? existing?.description ?? '',
+      自我合理化: update.justification ?? existing?.自我合理化 ?? existing?.justification ?? '',
     };
   }
 
@@ -509,10 +495,7 @@ export function updateCharacterFetishDetails(
 /**
  * 更新角色的敏感点开发详情（MVU 键名「敏感点开发」；读侧仍合并旧键「敏感部位」）
  */
-export function updateCharacterSensitivePartDetails(
-  characterId: string,
-  updates: SensitivePartDetailUpdate[],
-): void {
+export function updateCharacterSensitivePartDetails(characterId: string, updates: SensitivePartDetailUpdate[]): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
@@ -523,9 +506,9 @@ export function updateCharacterSensitivePartDetails(
   for (const update of updates) {
     const existing = char.敏感点开发[update.name];
     char.敏感点开发[update.name] = {
-      敏感等级: update.level ?? (existing?.敏感等级 ?? existing?.level ?? 1),
-      生理反应: update.reaction ?? (existing?.生理反应 ?? existing?.reaction ?? ''),
-      开发细节: update.devDetails ?? (existing?.开发细节 ?? existing?.devDetails ?? ''),
+      敏感等级: update.level ?? existing?.敏感等级 ?? existing?.level ?? 1,
+      生理反应: update.reaction ?? existing?.生理反应 ?? existing?.reaction ?? '',
+      开发细节: update.devDetails ?? existing?.开发细节 ?? existing?.devDetails ?? '',
     };
   }
 
@@ -535,10 +518,7 @@ export function updateCharacterSensitivePartDetails(
 /**
  * 更新角色的身份标签
  */
-export function updateCharacterIdentityTags(
-  characterId: string,
-  tags: Record<string, string>,
-): void {
+export function updateCharacterIdentityTags(characterId: string, tags: Record<string, string>): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
@@ -547,6 +527,90 @@ export function updateCharacterIdentityTags(
   char.身份标签 = { ...tags };
 
   bumpUpdateTime();
+}
+
+/**
+ * 写入 MVU「角色简介」「描写」「代表性发言」「爱好」（与 schema 键名一致）
+ */
+export function updateCharacterBackgroundArchiveInVariables(
+  characterId: string,
+  payload: {
+    角色简介: string;
+    描写: string;
+    代表性发言: Record<string, string>;
+    爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
+  },
+): void {
+  if (isRulesMvuArchiveSnapshot()) return;
+  const store = useDataStore();
+  const char = store.data.角色档案[characterId] as Record<string, unknown> | undefined;
+  if (!char || typeof char !== 'object') return;
+
+  char.角色简介 = payload.角色简介;
+  char.描写 = payload.描写;
+  char.代表性发言 = { ...payload.代表性发言 };
+  char.爱好 = { ...payload.爱好 };
+
+  bumpUpdateTime();
+}
+
+export function formatEditCharacterBackgroundArchiveMessage(characterId: string): string {
+  return ['[编辑背景与档案]', `角色ID：${characterId}`, '已更新：角色简介、描写、代表性发言、爱好。'].join('\n');
+}
+
+export async function submitEditCharacterBackgroundArchive(
+  characterId: string,
+  payload: {
+    角色简介: string;
+    描写: string;
+    代表性发言: Record<string, string>;
+    爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
+  },
+): Promise<string> {
+  if (!tryRulesMvuWritable()) return '';
+  const 代表性发言 = normalizeRepresentativeSpeechRecord(payload.代表性发言);
+  const 爱好 = normalizeHobbyRecord(payload.爱好);
+  updateCharacterBackgroundArchiveInVariables(characterId, {
+    角色简介: String(payload.角色简介 ?? ''),
+    描写: String(payload.描写 ?? ''),
+    代表性发言,
+    爱好,
+  });
+  return formatEditCharacterBackgroundArchiveMessage(characterId);
+}
+
+/** 将弹窗/暂存表单行合并为写入 MVU 的 payload（再经 submit 内 normalize） */
+export function buildBackgroundArchivePayloadFromModalForm(form: {
+  backgroundCharacterIntro?: string;
+  backgroundDescription?: string;
+  backgroundSpeechRows?: Array<{ context?: string; line?: string }>;
+  backgroundHobbyRows?: Array<{ name?: string; level?: number; reason?: string }>;
+}): {
+  角色简介: string;
+  描写: string;
+  代表性发言: Record<string, string>;
+  爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
+} {
+  const 代表性发言: Record<string, string> = {};
+  for (const r of form.backgroundSpeechRows ?? []) {
+    const k = String(r.context ?? '').trim();
+    if (!k) continue;
+    代表性发言[k] = String(r.line ?? '');
+  }
+  const 爱好: Record<string, { 等级: number; 喜欢的原因: string }> = {};
+  for (const r of form.backgroundHobbyRows ?? []) {
+    const k = String(r.name ?? '').trim();
+    if (!k) continue;
+    const lv = Math.round(Number(r.level));
+    const 等级 = Number.isFinite(lv) ? Math.max(0, Math.min(10, lv)) : 1;
+    爱好[k] = { 等级, 喜欢的原因: String(r.reason ?? '') };
+  }
+  return {
+    角色简介: String(form.backgroundCharacterIntro ?? ''),
+    描写: String(form.backgroundDescription ?? ''),
+    代表性发言,
+    爱好,
+  };
 }
 
 /** 新建角色 / 弹窗重置用：完整默认「服装状态」 */
@@ -650,11 +714,7 @@ export function removeCharacterClothingBodyGarment(
 }
 
 /** 仅更新「服装状态.饰品」下某一键（如 手镯），其余饰品与身体槽位不变 */
-export function patchCharacterJewelryItem(
-  characterId: string,
-  itemName: string,
-  item: JewelryItemZh,
-): void {
+export function patchCharacterJewelryItem(characterId: string, itemName: string, item: JewelryItemZh): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const char = store.data.角色档案[characterId];
@@ -726,11 +786,7 @@ export async function submitEditCharacterAppearance(
   payload: { 服装状态: ClothingStateZh; 身体部位物理状态: Record<string, BodyPartPhysicsZh> },
 ): Promise<string> {
   if (!tryRulesMvuWritable()) return '';
-  const message = formatEditCharacterAppearanceMessage(
-    characterId,
-    payload.服装状态,
-    payload.身体部位物理状态,
-  );
+  const message = formatEditCharacterAppearanceMessage(characterId, payload.服装状态, payload.身体部位物理状态);
   updateCharacterAppearanceInVariables(characterId, payload);
   return message;
 }
@@ -912,19 +968,19 @@ export function updateWorldRuleInVariables(idOrTitle: string, updates: Partial<R
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
-  
+
   // 查找规则键
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('world-')) {
     const t = idOrTitle.slice('world-'.length);
     if (rules[t]) key = t;
   }
-  
+
   if (!rules[key]) return;
 
   const cur = rules[key];
   const newTitle = updates.title?.trim();
-  
+
   // 如果需要重命名
   if (newTitle && newTitle !== key) {
     delete rules[key];
@@ -946,13 +1002,13 @@ export function archiveWorldRuleInVariables(idOrTitle: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
-  
+
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('world-')) {
     const t = idOrTitle.slice('world-'.length);
     if (rules[t]) key = t;
   }
-  
+
   if (rules[key]) {
     rules[key].状态 = '已归档';
     bumpUpdateTime();
@@ -963,13 +1019,13 @@ export function restoreWorldRuleInVariables(idOrTitle: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.世界规则;
-  
+
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('world-')) {
     const t = idOrTitle.slice('world-'.length);
     if (rules[t]) key = t;
   }
-  
+
   if (rules[key]) {
     rules[key].状态 = '生效中';
     bumpUpdateTime();
@@ -1005,7 +1061,7 @@ export async function submitAddWorldRule(name: string, detail: string): Promise<
 
   // 异步触发世界大势生成（不阻塞主流程）
   setTimeout(() => {
-    void generateWorldTrend(n, 'world', detail.trim()).then((success) => {
+    void generateWorldTrend(n, 'world', detail.trim()).then(success => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
@@ -1092,9 +1148,7 @@ export function addRegionToVariables(name: string, detail: string, firstRuleTitl
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
   const trimmedTitle = firstRuleTitle?.trim() ?? '';
-  const 细分规则 = trimmedTitle
-    ? { [trimmedTitle]: { 描述: detail, 状态: '生效中' as const } }
-    : {};
+  const 细分规则 = trimmedTitle ? { [trimmedTitle]: { 描述: detail, 状态: '生效中' as const } } : {};
   regions[name] = {
     名称: name,
     效果描述: detail,
@@ -1112,18 +1166,18 @@ export function updateRegionInVariables(idOrName: string, updates: Partial<Regio
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
     const n = idOrName.slice('region-'.length);
     if (regions[n]) key = n;
   }
-  
+
   if (!regions[key]) return;
 
   const cur = regions[key];
   const newName = updates.name?.trim();
-  
+
   if (newName && newName !== key) {
     delete regions[key];
     regions[newName] = {
@@ -1139,7 +1193,7 @@ export function updateRegionInVariables(idOrName: string, updates: Partial<Regio
       状态: enRuleStatusToZh(updates.status, cur.状态),
     };
   }
-  
+
   store.data.区域规则 = regions;
   bumpUpdateTime();
 }
@@ -1149,13 +1203,13 @@ export function archiveRegionInVariables(idOrName: string): void {
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
     const n = idOrName.slice('region-'.length);
     if (regions[n]) key = n;
   }
-  
+
   if (regions[key]) {
     regions[key] = { ...regions[key], 状态: '已归档' };
     store.data.区域规则 = regions;
@@ -1168,13 +1222,13 @@ export function restoreRegionInVariables(idOrName: string): void {
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let key = idOrName;
   if (!regions[idOrName] && idOrName.startsWith('region-')) {
     const n = idOrName.slice('region-'.length);
     if (regions[n]) key = n;
   }
-  
+
   if (regions[key]) {
     regions[key] = { ...regions[key], 状态: '生效中' };
     store.data.区域规则 = regions;
@@ -1205,13 +1259,13 @@ export function addRegionalRuleToVariables(regionIdOrName: string, title: string
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let key = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
     const n = regionIdOrName.slice('region-'.length);
     if (regions[n]) key = n;
   }
-  
+
   if (!regions[key]) return;
 
   // 更新区域及其细分规则
@@ -1226,28 +1280,32 @@ export function addRegionalRuleToVariables(regionIdOrName: string, title: string
       },
     },
   };
-  
+
   store.data.区域规则 = regions;
   bumpUpdateTime();
 }
 
-export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTitle: string, updates: Partial<RuleData>): void {
+export function updateRegionalRuleInVariables(
+  regionIdOrName: string,
+  ruleIdOrTitle: string,
+  updates: Partial<RuleData>,
+): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
     const n = regionIdOrName.slice('region-'.length);
     if (regions[n]) regionKey = n;
   }
-  
+
   if (!regions[regionKey]) return;
-  
+
   const region = { ...regions[regionKey] };
   const subRules = { ...region.细分规则 };
-  
+
   // 查找子规则键
   let subKey = ruleIdOrTitle;
   const prefix = `regional-${regionKey}-`;
@@ -1257,11 +1315,11 @@ export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTi
       if (subRules[k]) subKey = k;
     }
   }
-  
+
   if (!subRules[subKey]) return;
 
   const cur = subRules[subKey];
-  
+
   if (updates.title && updates.title !== subKey) {
     delete subRules[subKey];
     subRules[updates.title] = {
@@ -1276,7 +1334,7 @@ export function updateRegionalRuleInVariables(regionIdOrName: string, ruleIdOrTi
       状态: enRuleStatusToZh(updates.status, cur.状态),
     };
   }
-  
+
   // 替换区域及其细分规则
   regions[regionKey] = {
     ...region,
@@ -1291,18 +1349,18 @@ export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
     const n = regionIdOrName.slice('region-'.length);
     if (regions[n]) regionKey = n;
   }
-  
+
   if (!regions[regionKey]) return;
-  
+
   const region = { ...regions[regionKey] };
   const subRules = { ...region.细分规则 };
-  
+
   let subKey = ruleIdOrTitle;
   const prefix = `regional-${regionKey}-`;
   if (!subRules[ruleIdOrTitle]) {
@@ -1311,7 +1369,7 @@ export function archiveRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
       if (subRules[k]) subKey = k;
     }
   }
-  
+
   if (subRules[subKey]) {
     subRules[subKey] = { ...subRules[subKey], 状态: '已归档' };
     regions[regionKey] = {
@@ -1328,18 +1386,18 @@ export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
   const store = useDataStore();
   // 使用浅拷贝 + 替换整个对象的方式，确保响应式系统正确追踪
   const regions = { ...store.data.区域规则 };
-  
+
   let regionKey = regionIdOrName;
   if (!regions[regionIdOrName] && regionIdOrName.startsWith('region-')) {
     const n = regionIdOrName.slice('region-'.length);
     if (regions[n]) regionKey = n;
   }
-  
+
   if (!regions[regionKey]) return;
-  
+
   const region = { ...regions[regionKey] };
   const subRules = { ...region.细分规则 };
-  
+
   let subKey = ruleIdOrTitle;
   const prefix = `regional-${regionKey}-`;
   if (!subRules[ruleIdOrTitle]) {
@@ -1348,7 +1406,7 @@ export function restoreRegionalRuleInVariables(regionIdOrName: string, ruleIdOrT
       if (subRules[k]) subKey = k;
     }
   }
-  
+
   if (subRules[subKey]) {
     subRules[subKey] = { ...subRules[subKey], 状态: '生效中' };
     regions[regionKey] = {
@@ -1409,7 +1467,7 @@ export async function submitAddRegion(name: string, detail: string, firstRuleNam
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    void generateWorldTrend(n, 'regional', detail.trim(), [n]).then((success) => {
+    void generateWorldTrend(n, 'regional', detail.trim(), [n]).then(success => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
@@ -1419,7 +1477,12 @@ export async function submitAddRegion(name: string, detail: string, firstRuleNam
   return message;
 }
 
-export async function submitAddRegionalRule(regionIdOrName: string, regionName: string, ruleName: string, ruleDetail: string): Promise<string> {
+export async function submitAddRegionalRule(
+  regionIdOrName: string,
+  regionName: string,
+  ruleName: string,
+  ruleDetail: string,
+): Promise<string> {
   const n = ruleName.trim();
   if (!n) {
     toastr.warning('请输入规则名称');
@@ -1432,7 +1495,7 @@ export async function submitAddRegionalRule(regionIdOrName: string, regionName: 
 
   // 异步触发世界大势生成（区域级别）
   setTimeout(() => {
-    void generateWorldTrend(n, 'regional', detail, [regionName]).then((success) => {
+    void generateWorldTrend(n, 'regional', detail, [regionName]).then(success => {
       if (success) {
         toastr.success(`已生成世界大势说明：${n}`);
       }
@@ -1501,7 +1564,11 @@ export async function submitRestoreRegion(name: string): Promise<void> {
   toastr.success(`已复原区域「${name}」${deliveryHintForToast()}`);
 }
 
-export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+export async function submitArchiveRegionalRule(
+  regionName: string,
+  ruleIdOrTitle: string,
+  ruleSummary?: string,
+): Promise<void> {
   if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('archive', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
@@ -1509,7 +1576,11 @@ export async function submitArchiveRegionalRule(regionName: string, ruleIdOrTitl
   toastr.success(`已归档「${regionName}」下规则${ruleSummary ? `「${ruleSummary}」` : ''}${deliveryHintForToast()}`);
 }
 
-export async function submitRestoreRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+export async function submitRestoreRegionalRule(
+  regionName: string,
+  ruleIdOrTitle: string,
+  ruleSummary?: string,
+): Promise<void> {
   if (!tryRulesMvuWritable()) return;
   const message = formatRegionRuleMessage('restore', regionName, ruleSummary ?? ruleIdOrTitle);
   await sendToDialog(message);
@@ -1525,7 +1596,11 @@ export async function submitDeleteRegion(name: string): Promise<void> {
   toastr.success(`已删除区域「${name}」${deliveryHintForToast()}`);
 }
 
-export async function submitDeleteRegionalRule(regionName: string, ruleIdOrTitle: string, ruleSummary?: string): Promise<void> {
+export async function submitDeleteRegionalRule(
+  regionName: string,
+  ruleIdOrTitle: string,
+  ruleSummary?: string,
+): Promise<void> {
   if (!tryRulesMvuWritable()) return;
   const summary = ruleSummary ?? ruleIdOrTitle;
   const message = formatDeleteRegionalSubRuleMessage(regionName, summary);
@@ -1551,10 +1626,7 @@ export function formatPersonalRuleMessage(
 }
 
 /** 与 usePersonalRulesByCharacter 分组键一致 */
-export function personalRuleEntryGroupKey(
-  id: string,
-  rule: { 名称?: string; 适用对象?: string },
-): string {
+export function personalRuleEntryGroupKey(id: string, rule: { 名称?: string; 适用对象?: string }): string {
   const target = String(rule?.适用对象 ?? '').trim();
   const title = String(rule?.名称 ?? '').trim() || String(rule?.适用对象 ?? '').trim() || id;
   return target || title || '未命名';
@@ -1594,17 +1666,17 @@ export function updatePersonalRuleInVariables(
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
-  
+
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('personal-')) {
     const k = idOrTitle.slice('personal-'.length);
     if (rules[k]) key = k;
   }
-  
+
   if (!rules[key]) return;
 
   const cur = rules[key];
-  
+
   if (updates.applicableTarget !== undefined) {
     cur.适用对象 = String(updates.applicableTarget).trim();
   }
@@ -1621,13 +1693,13 @@ export function archivePersonalRuleInVariables(idOrTitle: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
-  
+
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('personal-')) {
     const k = idOrTitle.slice('personal-'.length);
     if (rules[k]) key = k;
   }
-  
+
   if (rules[key]) {
     rules[key].状态 = '已归档';
     bumpUpdateTime();
@@ -1638,13 +1710,13 @@ export function restorePersonalRuleInVariables(idOrTitle: string): void {
   if (isRulesMvuArchiveSnapshot()) return;
   const store = useDataStore();
   const rules = store.data.个人规则;
-  
+
   let key = idOrTitle;
   if (!rules[idOrTitle] && idOrTitle.startsWith('personal-')) {
     const k = idOrTitle.slice('personal-'.length);
     if (rules[k]) key = k;
   }
-  
+
   if (rules[key]) {
     rules[key].状态 = '生效中';
     bumpUpdateTime();
@@ -1668,11 +1740,7 @@ export function deletePersonalRuleInVariables(idOrTitle: string): void {
   }
 }
 
-export async function submitAddPersonalRule(
-  characterName: string,
-  ruleName: string,
-  detail: string,
-): Promise<string> {
+export async function submitAddPersonalRule(characterName: string, ruleName: string, detail: string): Promise<string> {
   const c = String(characterName ?? '').trim();
   const rn = String(ruleName ?? '').trim();
   if (!c) {
@@ -1719,7 +1787,11 @@ export async function submitEditPersonalRule(
   return message;
 }
 
-export async function submitArchivePersonalRule(idOrTitle: string, characterName?: string, ruleSummary?: string): Promise<void> {
+export async function submitArchivePersonalRule(
+  idOrTitle: string,
+  characterName?: string,
+  ruleSummary?: string,
+): Promise<void> {
   if (!tryRulesMvuWritable()) return;
   const label = characterName ?? idOrTitle;
   const message = formatPersonalRuleMessage('archive', label, ruleSummary);
@@ -1729,7 +1801,11 @@ export async function submitArchivePersonalRule(idOrTitle: string, characterName
   toastr.success(`已归档「${label}」${ruleSummary ? `（${ruleSummary}）` : ''}${deliveryHintForToast()}`);
 }
 
-export async function submitRestorePersonalRule(idOrTitle: string, characterName?: string, ruleSummary?: string): Promise<void> {
+export async function submitRestorePersonalRule(
+  idOrTitle: string,
+  characterName?: string,
+  ruleSummary?: string,
+): Promise<void> {
   if (!tryRulesMvuWritable()) return;
   const label = characterName ?? idOrTitle;
   const message = formatPersonalRuleMessage('restore', label, ruleSummary);
@@ -1764,7 +1840,7 @@ export async function submitArchivePersonalRulesForGroup(groupName: string): Pro
     `[归档个人规则（本对象所有条目）]`,
     `对象：${groupName}`,
     `条数：${keys.length}`,
-    ...keys.map((k) => `- ${k}`),
+    ...keys.map(k => `- ${k}`),
   ];
   await sendToDialog(lines.join('\n'));
   for (const k of keys) {
@@ -1785,7 +1861,7 @@ export async function submitDeletePersonalRulesForGroup(groupName: string): Prom
     `[删除个人规则（本对象所有条目）]`,
     `对象：${groupName}`,
     `条数：${keys.length}`,
-    ...keys.map((k) => `- ${k}`),
+    ...keys.map(k => `- ${k}`),
   ];
   await sendToDialog(lines.join('\n'));
   for (const k of keys) {

@@ -1,5 +1,10 @@
 import { TimeoutError, waitUntil } from 'async-wait-until';
-import { normalizeFetishRecord, normalizeSensitivePartRecord } from './utils/tagMap';
+import {
+  normalizeFetishRecord,
+  normalizeHobbyRecord,
+  normalizeRepresentativeSpeechRecord,
+  normalizeSensitivePartRecord,
+} from './utils/tagMap';
 import App from './App.vue';
 import './index.scss';
 import './styles/cyber-neon-theme.scss';
@@ -41,6 +46,22 @@ function normalizeCharSensitiveMaps(char: Record<string, unknown>): boolean {
     fixed = true;
   }
 
+  if (char.爱好 != null) {
+    const normalized = normalizeHobbyRecord(char.爱好);
+    if (!_.isEqual(char.爱好, normalized)) {
+      char.爱好 = normalized;
+      fixed = true;
+    }
+  }
+
+  if (char.代表性发言 != null) {
+    const normalized = normalizeRepresentativeSpeechRecord(char.代表性发言);
+    if (!_.isEqual(char.代表性发言, normalized)) {
+      char.代表性发言 = normalized;
+      fixed = true;
+    }
+  }
+
   return fixed;
 }
 
@@ -58,7 +79,7 @@ function registerMvuNestedObjectFix() {
     }
 
     if (fixed) {
-      console.warn('[规则] VARIABLE_UPDATE_ENDED: 修复了性癖/敏感点开发/敏感部位嵌套对象');
+      console.warn('[规则] VARIABLE_UPDATE_ENDED: 修复了性癖/敏感点开发/敏感部位/爱好/代表性发言嵌套对象');
     }
   });
 }

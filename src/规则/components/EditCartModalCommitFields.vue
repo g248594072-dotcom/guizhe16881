@@ -144,9 +144,9 @@
       <textarea v-model="form.avatarUrl" class="eci-textarea" rows="3" placeholder="https:// 或 data:image/..." />
     </template>
 
-    <template v-else-if="modalType === 'edit_character_appearance'">
-      <p class="eci-hint">身体槽下多件服装（服装名为 MVU 键）；与主弹窗一致。</p>
-      <details class="ecf-details" open>
+    <template v-else-if="showAppearanceCart">
+      <p class="eci-hint">{{ appearanceCartHint }}</p>
+      <details v-if="appearanceCartShowGarments" class="ecf-details" open>
         <summary>服装（槽位 · 名字 · 状态 · 描述）</summary>
         <div
           v-for="(gr, gidx) in form.appearanceBodyGarmentRows"
@@ -163,7 +163,7 @@
           </div>
           <input v-model="gr.name" type="text" class="eci-input" placeholder="服装名（键）" />
           <input v-model="gr.状态" type="text" class="eci-input" placeholder="状态" />
-          <textarea v-model="gr.描述" class="eci-textarea" rows="2" placeholder="描述" />
+          <input v-model="gr.描述" type="text" class="eci-input eci-input-desc-narrow" placeholder="描述" />
         </div>
         <button
           type="button"
@@ -180,7 +180,7 @@
           + 服装条目
         </button>
       </details>
-      <details class="ecf-details">
+      <details v-if="appearanceCartShowJewelry" class="ecf-details" :open="appearanceCartSlice === 'jewelry'">
         <summary>饰品（名字 · 部位 · 描述）</summary>
         <div
           v-for="(jw, jidx) in form.appearanceJewelryRows"
@@ -189,7 +189,7 @@
         >
           <input v-model="jw.name" type="text" class="eci-input" placeholder="名字" aria-label="饰品名字" />
           <input v-model="jw.部位" type="text" class="eci-input" placeholder="部位" aria-label="饰品部位" />
-          <input v-model="jw.描述" type="text" class="eci-input" placeholder="描述" aria-label="饰品描述" />
+          <input v-model="jw.描述" type="text" class="eci-input eci-input-desc-narrow" placeholder="描述" aria-label="饰品描述" />
           <button type="button" class="ecf-icon-btn" @click="form.appearanceJewelryRows.splice(jidx, 1)">
             <i class="fa-solid fa-trash"></i>
           </button>
@@ -202,7 +202,7 @@
           + 饰品
         </button>
       </details>
-      <details class="ecf-details">
+      <details v-if="appearanceCartShowBody" class="ecf-details" :open="appearanceCartSlice === 'body'">
         <summary>身体部位物理状态</summary>
         <div
           v-for="(bp, bpidx) in form.appearanceBodyPartRows"
@@ -215,8 +215,8 @@
               <i class="fa-solid fa-trash"></i>
             </button>
           </div>
-          <textarea v-model="bp.外观描述" class="eci-textarea" rows="2" placeholder="外观描述" />
-          <textarea v-model="bp.当前状态" class="eci-textarea" rows="2" placeholder="当前状态" />
+          <input v-model="bp.外观描述" type="text" class="eci-input eci-input-desc-narrow" placeholder="外观描述" />
+          <input v-model="bp.当前状态" type="text" class="eci-input eci-input-desc-narrow" placeholder="当前状态" />
         </div>
         <button
           type="button"
@@ -226,6 +226,58 @@
           + 身体部位
         </button>
       </details>
+    </template>
+
+    <template v-else-if="modalType === 'edit_character_background_archive'">
+      <div class="ecf-bg-archive">
+        <section class="ecf-bg-archive-section">
+          <h4 class="ecf-bg-archive-section__title">角色简介</h4>
+          <textarea v-model="form.backgroundCharacterIntro" class="eci-textarea eci-textarea--intro" rows="4" placeholder="一整段背景或简介" />
+        </section>
+        <section class="ecf-bg-archive-section">
+          <h4 class="ecf-bg-archive-section__title">描写</h4>
+          <input v-model="form.backgroundDescription" type="text" class="eci-input eci-input-desc-narrow" placeholder="一句话式描写" />
+        </section>
+        <section class="ecf-bg-archive-section">
+          <h4 class="ecf-bg-archive-section__title">代表性发言</h4>
+          <div
+            v-for="(row, sidx) in form.backgroundSpeechRows"
+            :key="'ecf-sp-' + sidx"
+            class="ecf-detail-row ecf-bg-speech-row"
+          >
+            <input v-model="row.context" type="text" class="eci-input" placeholder="场景或语境标识" />
+            <input v-model="row.line" type="text" class="eci-input" placeholder="台词" />
+            <button type="button" class="ecf-icon-btn" @click="form.backgroundSpeechRows.splice(sidx, 1)">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+          <button type="button" class="ecf-add-btn" @click="form.backgroundSpeechRows.push({ context: '', line: '' })">
+            + 发言
+          </button>
+        </section>
+        <section class="ecf-bg-archive-section">
+          <h4 class="ecf-bg-archive-section__title">爱好</h4>
+          <div
+            v-for="(row, hidx) in form.backgroundHobbyRows"
+            :key="'ecf-hb-' + hidx"
+            class="ecf-detail-row ecf-bg-hobby-row"
+          >
+            <input v-model="row.name" type="text" class="eci-input" placeholder="爱好标签名" />
+            <input v-model.number="row.level" type="number" class="eci-input eci-input-level" min="0" max="10" />
+            <input v-model="row.reason" type="text" class="eci-input" placeholder="喜欢的原因" />
+            <button type="button" class="ecf-icon-btn" @click="form.backgroundHobbyRows.splice(hidx, 1)">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+          <button
+            type="button"
+            class="ecf-add-btn"
+            @click="form.backgroundHobbyRows.push({ name: '', level: 1, reason: '' })"
+          >
+            + 爱好
+          </button>
+        </section>
+      </div>
     </template>
 
     <template v-else-if="modalType === 'edit_identity_tags'">
@@ -252,16 +304,51 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { EditCartModalForm } from '../types/editCart';
 import { CLOTHING_BODY_SLOT_KEYS } from '../types';
 import PersonalRuleCharacterPicker from './PersonalRuleCharacterPicker.vue';
 
-defineProps<{
+const props = defineProps<{
   modalType: string;
   form: EditCartModalForm;
 }>();
 
 const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
+
+function appearanceCartSliceFromType(t: string): 'full' | 'clothing' | 'jewelry' | 'body' | null {
+  if (t === 'edit_character_appearance') return 'full';
+  if (t === 'edit_character_clothing') return 'clothing';
+  if (t === 'edit_character_jewelry') return 'jewelry';
+  if (t === 'edit_character_body_physics') return 'body';
+  return null;
+}
+
+const appearanceCartSlice = computed(() => appearanceCartSliceFromType(props.modalType));
+const showAppearanceCart = computed(() => appearanceCartSlice.value != null);
+const appearanceCartShowGarments = computed(
+  () => appearanceCartSlice.value === 'full' || appearanceCartSlice.value === 'clothing',
+);
+const appearanceCartShowJewelry = computed(
+  () => appearanceCartSlice.value === 'full' || appearanceCartSlice.value === 'jewelry',
+);
+const appearanceCartShowBody = computed(
+  () => appearanceCartSlice.value === 'full' || appearanceCartSlice.value === 'body',
+);
+const appearanceCartHint = computed(() => {
+  switch (appearanceCartSlice.value) {
+    case 'full':
+      return '身体槽下多件服装（服装名为 MVU 键）；与主弹窗一致。';
+    case 'clothing':
+      return '仅编辑服装槽位；暂存提交时会保留当前饰品与身体部位。';
+    case 'jewelry':
+      return '仅编辑饰品；提交时会保留当前槽位服装与身体部位。';
+    case 'body':
+      return '仅编辑身体部位物理状态；提交时会保留当前服装与饰品。';
+    default:
+      return '';
+  }
+});
 </script>
 
 <style scoped lang="scss">
@@ -297,6 +384,50 @@ const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 
 .eci-textarea {
   resize: vertical;
+}
+
+.eci-input-desc-narrow {
+  max-width: 22rem;
+}
+
+.eci-textarea--intro {
+  min-height: 5rem;
+  max-height: min(36vh, 220px);
+  resize: vertical;
+}
+
+.eci-input-level {
+  flex: 0 0 4.25rem;
+  max-width: 4.5rem;
+}
+
+.ecf-bg-speech-row,
+.ecf-bg-hobby-row {
+  flex-wrap: wrap;
+}
+
+.ecf-bg-archive {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ecf-bg-archive-section {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+
+  &__title {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .ecf-add-btn {
+    margin-top: 6px;
+  }
 }
 
 .eci-textarea--recruit {

@@ -177,49 +177,51 @@
         </div>
       </article>
 
-      <!-- 位置与参与活动（MVU 角色档案：当前位置 / 参与活动记录） -->
-      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
-        <div class="card-title">
-          <i class="fa-solid fa-location-crosshairs"></i>
-          <h3>位置与参与活动</h3>
-        </div>
-        <div class="location-participation-block">
-          <div v-if="locationLine !== '—'" class="detail-row">
-            <span class="detail-label">区域 / 建筑 / 活动</span>
-            <span class="detail-value">{{ locationLine }}</span>
+      <!-- 位置（左）与 性癖与敏感带（右）同排；窄屏上下堆叠 -->
+      <div class="detail-location-fetish-row">
+        <!-- 位置与参与活动（MVU 角色档案：当前位置 / 参与活动记录） -->
+        <article class="detail-card character-location-card" :class="{ 'cyber-card': isDarkMode }">
+          <div class="card-title">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            <h3>位置与参与活动</h3>
           </div>
-          <div v-if="locationBehaviorDescription" class="detail-row">
-            <span class="detail-label">当前行为</span>
-            <span class="detail-value">{{ locationBehaviorDescription }}</span>
+          <div class="location-participation-block">
+            <div v-if="locationLine !== '—'" class="detail-row">
+              <span class="detail-label">区域 / 建筑 / 活动</span>
+              <span class="detail-value">{{ locationLine }}</span>
+            </div>
+            <div v-if="locationBehaviorDescription" class="detail-row">
+              <span class="detail-label">当前行为</span>
+              <span class="detail-value">{{ locationBehaviorDescription }}</span>
+            </div>
+            <div v-if="buildingOccupantsSummary" class="detail-row">
+              <span class="detail-label">同建筑在场：</span>
+              <span class="detail-value">{{ buildingOccupantsSummary }}</span>
+            </div>
+            <template v-if="participationRows.length > 0">
+              <span class="section-label sub">参与活动记录</span>
+              <ul class="participation-list">
+                <li v-for="row in participationRows" :key="row.id">
+                  <strong>{{ row.activityTitle }}</strong>：{{ row.summary }}
+                </li>
+              </ul>
+            </template>
+            <p
+              v-if="
+                locationLine === '—' &&
+                !locationBehaviorDescription &&
+                !buildingOccupantsSummary &&
+                participationRows.length === 0
+              "
+              class="empty-hint"
+            >
+              暂无位置与活动记录（由剧情变量写入「当前位置」「参与活动记录」后显示）
+            </p>
           </div>
-          <div v-if="buildingOccupantsSummary" class="detail-row">
-            <span class="detail-label">同建筑在场：</span>
-            <span class="detail-value">{{ buildingOccupantsSummary }}</span>
-          </div>
-          <template v-if="participationRows.length > 0">
-            <span class="section-label sub">参与活动记录</span>
-            <ul class="participation-list">
-              <li v-for="row in participationRows" :key="row.id">
-                <strong>{{ row.activityTitle }}</strong>：{{ row.summary }}
-              </li>
-            </ul>
-          </template>
-          <p
-            v-if="
-              locationLine === '—' &&
-              !locationBehaviorDescription &&
-              !buildingOccupantsSummary &&
-              participationRows.length === 0
-            "
-            class="empty-hint"
-          >
-            暂无位置与活动记录（由剧情变量写入「当前位置」「参与活动记录」后显示）
-          </p>
-        </div>
-      </article>
+        </article>
 
-      <!-- Fetishes -->
-      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
+        <!-- Fetishes -->
+        <article class="detail-card character-fetish-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
           <i class="fa-solid fa-heart"></i>
           <h3>性癖与敏感带</h3>
@@ -362,8 +364,10 @@
           </div>
         </div>
       </article>
+      </div>
 
-      <!-- 服装与身体状态：紧挨「性癖与敏感带」，与身份标签同屏出现（双列时一般在性癖右侧） -->
+      <!-- 服装与身体状态在上、身份标签与背景档案在下；整段占满网格一行宽度 -->
+      <div class="detail-clothing-identity-stack">
       <article
         id="panel-character-appearance"
         class="detail-card character-appearance-card"
@@ -372,18 +376,20 @@
         <div class="card-title">
           <i class="fa-solid fa-shirt"></i>
           <h3>服装与身体状态</h3>
-          <button
-            type="button"
-            class="edit-mini-btn"
-            @click="$emit('openModal', 'edit_character_appearance', { characterId })"
-          >
-            编辑
-          </button>
         </div>
         <div class="appearance-content">
           <div class="appearance-block">
-            <span class="section-label">服装槽位</span>
-            <p class="clothing-slot-hint">点击添加添加服装，点击服装修改服装。</p>
+            <div class="appearance-subsection-head">
+              <span class="section-label section-label--appearance-lg">服装槽位</span>
+              <button
+                type="button"
+                class="edit-mini-btn appearance-subsection-edit"
+                @click="$emit('openModal', 'edit_character_clothing', { characterId })"
+              >
+                编辑
+              </button>
+            </div>
+            <p class="clothing-slot-hint">点击「添加」添加服装，点击服装名称修改服装。</p>
             <div class="clothing-slot-stack">
               <div
                 v-for="slotKey in appearanceSlotKeys"
@@ -420,9 +426,18 @@
                 <span v-else class="empty-hint clothing-slot-empty">暂无</span>
               </div>
             </div>
-            <span class="section-label sub">饰品</span>
+            <div class="appearance-subsection-head appearance-subsection-head--jewelry">
+              <span class="section-label sub section-label--appearance-lg">饰品</span>
+              <button
+                type="button"
+                class="edit-mini-btn appearance-subsection-edit"
+                @click="$emit('openModal', 'edit_character_jewelry', { characterId })"
+              >
+                编辑
+              </button>
+            </div>
             <p class="clothing-slot-hint">每件饰品单独按钮编辑，对应 <code>服装状态.饰品.&lt;名字&gt;</code>。</p>
-            <div v-if="jewelryEntries.length > 0" class="clothing-slot-stack">
+            <div v-if="jewelryEntries.length > 0" class="jewelry-items-strip">
               <div v-for="jw in jewelryEntries" :key="'jw-' + jw.name" class="clothing-slot-block clothing-slot-block--jewelry">
                 <button type="button" class="clothing-slot-btn" @click="openJewelryItemEditor(jw.name)">
                   {{ jw.name }}
@@ -443,42 +458,50 @@
             <span v-else class="empty-hint">暂无饰品（点某件饰品名或顶部「编辑」添加）</span>
           </div>
           <div class="appearance-block">
-            <span class="section-label">身体部位物理状态</span>
-            <div v-if="bodyPartBadgeLines.length > 0" class="body-part-rows">
-              <div
-                v-for="line in bodyPartBadgeLines"
-                :key="'bp-' + line"
-                class="body-part-row-wrap"
+            <div class="appearance-subsection-head">
+              <span class="section-label section-label--appearance-lg">身体部位物理状态</span>
+              <button
+                type="button"
+                class="edit-mini-btn appearance-subsection-edit"
+                @click="$emit('openModal', 'edit_character_body_physics', { characterId })"
               >
+                编辑
+              </button>
+            </div>
+            <div v-if="bodyPartBadgeLines.length > 0" class="body-part-rows">
+              <div class="body-part-chip-strip">
                 <button
+                  v-for="line in bodyPartBadgeLines"
+                  :key="'bp-' + line"
                   type="button"
-                  class="body-part-line"
+                  class="body-part-line body-part-line--chip"
+                  :title="line"
                   :class="{
                     'is-expanded': expandedBodyPart === line,
                     'is-updated': bodyPartUpdatedHighlight[line],
                   }"
                   @click="toggleBodyPartExpand(line)"
                 >
+                  <i class="body-part-icon" :class="['fa-solid', bodyPartIcon(line)]" aria-hidden="true" />
                   <span class="body-part-name">{{ line }}</span>
                 </button>
-                <div
-                  v-if="expandedBodyPart === line"
-                  class="detail-expand-panel body-part-detail-panel"
-                >
+              </div>
+              <div v-if="expandedBodyPart" class="body-part-expand-under">
+                <div class="detail-expand-panel body-part-detail-panel">
                   <div class="detail-header">
-                    <span class="detail-title">{{ line }}</span>
+                    <span class="detail-title">{{ expandedBodyPart }}</span>
                     <button type="button" class="close-btn" @click="expandedBodyPart = null">
                       <i class="fa-solid fa-xmark"></i>
                     </button>
                   </div>
                   <div class="detail-body">
-                    <div v-if="getBodyPartPhysics(line)?.外观描述" class="detail-row">
+                    <div v-if="getBodyPartPhysics(expandedBodyPart)?.外观描述" class="detail-row">
                       <span class="detail-label">外观描述</span>
-                      <span class="detail-value">{{ getBodyPartPhysics(line)?.外观描述 }}</span>
+                      <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.外观描述 }}</span>
                     </div>
-                    <div v-if="getBodyPartPhysics(line)?.当前状态" class="detail-row">
+                    <div v-if="getBodyPartPhysics(expandedBodyPart)?.当前状态" class="detail-row">
                       <span class="detail-label">当前状态</span>
-                      <span class="detail-value">{{ getBodyPartPhysics(line)?.当前状态 }}</span>
+                      <span class="detail-value">{{ getBodyPartPhysics(expandedBodyPart)?.当前状态 }}</span>
                     </div>
                   </div>
                 </div>
@@ -489,11 +512,13 @@
         </div>
       </article>
 
-      <!-- Identity Tags -->
-      <article class="detail-card identity-tags-card" :class="{ 'cyber-card': isDarkMode }">
+      <article
+        class="detail-card character-identity-narrative-card identity-narrative-merge-card"
+        :class="{ 'cyber-card': isDarkMode }"
+      >
         <div class="card-title">
-          <i class="fa-solid fa-tags"></i>
-          <h3>身份标签</h3>
+          <i class="fa-solid fa-id-card"></i>
+          <h3>身份标签与背景档案</h3>
           <button
             type="button"
             class="edit-mini-btn"
@@ -502,22 +527,87 @@
             编辑
           </button>
         </div>
-        <div class="identity-content">
-          <template v-if="displayIdentityTags.length > 0">
-            <div
-              v-for="(tag, idx) in displayIdentityTags"
-              :key="`${tag.category}-${idx}`"
-              class="identity-tag-row"
-            >
-              <span class="identity-category">{{ tag.category }}</span>
-              <span class="identity-value">{{ tag.value }}</span>
+        <div class="identity-narrative-merge-body">
+          <section class="merge-identity-block" aria-labelledby="merge-identity-heading">
+            <h4 id="merge-identity-heading" class="merge-subhead">身份标签</h4>
+            <div class="identity-content">
+              <template v-if="displayIdentityTags.length > 0">
+                <div
+                  v-for="(tag, idx) in displayIdentityTags"
+                  :key="`${tag.category}-${idx}`"
+                  class="identity-tag-row"
+                >
+                  <span class="identity-category">{{ tag.category }}</span>
+                  <span class="identity-value">{{ tag.value }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <span class="empty-hint">暂无身份标签</span>
+              </template>
             </div>
-          </template>
-          <template v-else>
-            <span class="empty-hint">暂无身份标签</span>
-          </template>
+          </section>
+          <div class="merge-identity-narrative-sep" role="presentation" />
+          <section class="merge-narrative-block" aria-labelledby="merge-narrative-heading">
+            <div class="merge-subhead-row">
+              <h4 id="merge-narrative-heading" class="merge-subhead merge-subhead--toolbar">背景与档案</h4>
+              <button
+                type="button"
+                class="edit-mini-btn appearance-subsection-edit"
+                @click="$emit('openModal', 'edit_character_background_archive', { characterId })"
+              >
+                编辑
+              </button>
+            </div>
+            <div class="narrative-three-boxes">
+              <div class="appearance-narrative-subbox">
+                <span class="section-label">角色简介</span>
+                <p v-if="displayCharacterIntro" class="thought-text narrative-prose">
+                  {{ displayCharacterIntro }}
+                </p>
+                <span v-else class="empty-hint">暂无角色简介</span>
+              </div>
+              <div class="appearance-narrative-subbox">
+                <span class="section-label">描写</span>
+                <p
+                  v-if="displayCharacterDescription && !introCoversDescription"
+                  class="thought-text narrative-prose"
+                >
+                  {{ displayCharacterDescription }}
+                </p>
+                <span
+                  v-else-if="introCoversDescription && displayCharacterDescription"
+                  class="empty-hint"
+                >与角色简介相同，未单独列出</span>
+                <span v-else class="empty-hint">暂无描写</span>
+              </div>
+              <div class="appearance-narrative-subbox appearance-narrative-subbox--speech-hobby">
+                <div class="narrative-subbox-block">
+                  <span class="section-label">代表性发言</span>
+                  <ul v-if="representativeQuoteRows.length > 0" class="quote-list">
+                    <li v-for="row in representativeQuoteRows" :key="'q-' + row.ctx">
+                      <span class="quote-ctx">{{ row.ctx }}</span>
+                      <span class="quote-line">{{ row.line }}</span>
+                    </li>
+                  </ul>
+                  <span v-else class="empty-hint">暂无代表性发言</span>
+                </div>
+                <div class="narrative-subbox-block narrative-subbox-block--hobby">
+                  <span class="section-label">爱好</span>
+                  <ul v-if="hobbyRows.length > 0" class="hobby-list">
+                    <li v-for="h in hobbyRows" :key="'h-' + h.name">
+                      <span class="hobby-name">{{ h.name }}</span>
+                      <span class="hobby-meta">Lv.{{ h.level }}</span>
+                      <p v-if="h.reason" class="hobby-reason">{{ h.reason }}</p>
+                    </li>
+                  </ul>
+                  <span v-else class="empty-hint">暂无爱好</span>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </article>
+      </div>
 
       <!-- Affected Rules（放在同一 grid 内，大屏占满列宽） -->
       <article class="rules-card" :class="{ 'cyber-card cyber-card--no-clip': isDarkMode }">
@@ -881,6 +971,10 @@ const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 
 const currentExtra = ref<{
   currentThought?: string;
+  characterIntro?: string;
+  characterDescription?: string;
+  representativeQuotes?: Record<string, string>;
+  hobbies?: Record<string, { 等级: number; 喜欢的原因?: string }>;
   traits?: string[];
   fetishes?: string[];
   sensitiveParts?: string[];
@@ -1018,6 +1112,23 @@ function getBodyPartPhysics(name: string) {
   return currentExtra.value.bodyPartPhysics?.[name];
 }
 
+/** 身体部位物理状态：条带上的小图标（未知部位回退为圆点） */
+function bodyPartIcon(part: string): string {
+  const k = String(part).trim();
+  const map: Record<string, string> = {
+    脸部: 'fa-face-smile',
+    面部: 'fa-face-smile',
+    手部: 'fa-hand',
+    手: 'fa-hand',
+    乳房: 'fa-shirt',
+    乳头: 'fa-droplet',
+    小穴: 'fa-circle',
+    脚部: 'fa-shoe-prints',
+    脚: 'fa-shoe-prints',
+  };
+  return map[k] ?? 'fa-circle-dot';
+}
+
 function bodyGarmentEntriesForSlot(slotKey: ClothingBodySlotKeyZh): Array<{ name: string; 状态: string; 描述: string }> {
   const rec = currentExtra.value.clothingState?.[slotKey];
   if (!rec || typeof rec !== 'object') return [];
@@ -1078,7 +1189,7 @@ async function openBodyGarmentEditor(slotKey: ClothingBodySlotKeyZh, itemName: s
       <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">状态</label>
       <input id="${baseId}-s" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：正常">
       <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">描述</label>
-      <textarea id="${baseId}-d" class="swal2-textarea" rows="3" style="width:100%;box-sizing:border-box;margin:0" placeholder="外观或穿着描述"></textarea>
+      <input id="${baseId}-d" type="text" class="swal2-input" style="margin:0;width:100%;max-width:22rem;box-sizing:border-box" placeholder="外观或穿着描述" />
     </div>`,
     width: 520,
     showCancelButton: true,
@@ -1093,14 +1204,14 @@ async function openBodyGarmentEditor(slotKey: ClothingBodySlotKeyZh, itemName: s
         if (n) n.value = '';
       }
       const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
-      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLInputElement | null;
       if (s) s.value = status0;
       if (d) d.value = desc0;
     },
     preConfirm: () => {
       const n = document.getElementById(`${baseId}-n`) as HTMLInputElement | null;
       const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
-      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLInputElement | null;
       const nameNew = existing ? nm0 : (n?.value ?? '').trim();
       if (!nameNew) {
         Swal.showValidationMessage('请填写服装名');
@@ -1145,7 +1256,7 @@ async function openJewelryItemEditor(itemName: string) {
       <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">状态</label>
       <input id="${baseId}-s" type="text" class="swal2-input" style="margin:0 0 10px;width:100%;box-sizing:border-box" placeholder="如：正常">
       <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px">描述</label>
-      <textarea id="${baseId}-d" class="swal2-textarea" rows="3" style="width:100%;box-sizing:border-box;margin:0" placeholder="外观或佩戴方式"></textarea>
+      <input id="${baseId}-d" type="text" class="swal2-input" style="margin:0;width:100%;max-width:22rem;box-sizing:border-box" placeholder="外观或佩戴方式" />
     </div>`,
     width: 520,
     showCancelButton: true,
@@ -1155,7 +1266,7 @@ async function openJewelryItemEditor(itemName: string) {
     didOpen: () => {
       const p = document.getElementById(`${baseId}-p`) as HTMLInputElement | null;
       const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
-      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLInputElement | null;
       if (p) p.value = part0;
       if (s) s.value = status0;
       if (d) d.value = desc0;
@@ -1163,7 +1274,7 @@ async function openJewelryItemEditor(itemName: string) {
     preConfirm: () => {
       const p = document.getElementById(`${baseId}-p`) as HTMLInputElement | null;
       const s = document.getElementById(`${baseId}-s`) as HTMLInputElement | null;
-      const d = document.getElementById(`${baseId}-d`) as HTMLTextAreaElement | null;
+      const d = document.getElementById(`${baseId}-d`) as HTMLInputElement | null;
       return {
         部位: (p?.value ?? '').trim(),
         状态: (s?.value ?? '正常').trim() || '正常',
@@ -1267,6 +1378,38 @@ const displayThought = computed(() => {
   const v = currentExtra.value.currentThought;
   if (typeof v === 'string' && v.trim().length > 0) return v;
   return '暂无';
+});
+
+const displayCharacterIntro = computed(() => String(currentExtra.value.characterIntro ?? '').trim());
+const displayCharacterDescription = computed(() =>
+  String(currentExtra.value.characterDescription ?? '').trim(),
+);
+/** 简介与描写全文相同则不再单独展示「描写」块 */
+const introCoversDescription = computed(() => {
+  const a = displayCharacterIntro.value;
+  const b = displayCharacterDescription.value;
+  if (!a || !b) return false;
+  return a === b;
+});
+const representativeQuoteRows = computed(() => {
+  const q = currentExtra.value.representativeQuotes;
+  if (!q || typeof q !== 'object') return [];
+  return Object.entries(q)
+    .map(([ctx, line]) => ({ ctx: String(ctx).trim(), line: String(line).trim() }))
+    .filter(r => r.ctx && r.line)
+    .sort((a, b) => a.ctx.localeCompare(b.ctx, 'zh-Hans-CN'));
+});
+const hobbyRows = computed(() => {
+  const h = currentExtra.value.hobbies;
+  if (!h || typeof h !== 'object') return [];
+  return Object.entries(h)
+    .map(([name, v]) => ({
+      name: String(name).trim(),
+      level: Math.min(10, Math.max(0, Math.round(Number(v?.等级) || 0))),
+      reason: String(v?.喜欢的原因 ?? '').trim(),
+    }))
+    .filter(r => r.name)
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 });
 const displayTraits = computed(() => tagFieldToBadgeLines(currentExtra.value.traits));
 const displayFetishes = computed(() => tagFieldToBadgeLines(currentExtra.value.fetishes, 'fetish'));
@@ -1380,6 +1523,10 @@ onMounted(() => {
 
       currentExtra.value = {
         currentThought: (current as any).currentThought,
+        characterIntro: (current as any).characterIntro,
+        characterDescription: (current as any).description,
+        representativeQuotes: { ...((current as any).representativeQuotes || {}) },
+        hobbies: { ...((current as any).hobbies || {}) },
         traits: (current as any).traits,
         fetishes: (current as any).fetishes,
         sensitiveParts: (current as any).sensitiveParts,
@@ -1824,11 +1971,136 @@ const emit = defineEmits<{
     }
   }
 
-  > .identity-tags-card {
+  /* 位置（左）+ 性癖与敏感带（右）同排；整行占满网格宽度 */
+  > .detail-location-fetish-row {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-width: 0;
+
+    @media (min-width: 768px) {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 24px;
+      align-items: stretch;
+    }
+
     @media (min-width: 1280px) {
-      grid-column: span 2;
+      gap: 28px;
+    }
+
+    > .detail-card {
+      min-width: 0;
     }
   }
+
+  /* 服装 + 身份/背景：竖向堆叠，整行从左到右占满 */
+  > .detail-clothing-identity-stack {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    width: 100%;
+    min-width: 0;
+
+    @media (min-width: 1280px) {
+      gap: 28px;
+    }
+
+    > .detail-card {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+}
+
+.narrative-profile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.narrative-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.narrative-prose {
+  white-space: pre-wrap;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.quote-list,
+.hobby-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quote-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.quote-ctx {
+  font-size: 12px;
+  color: #a1a1aa;
+  font-weight: 600;
+}
+
+.quote-line {
+  font-size: 14px;
+  color: #e4e4e7;
+}
+
+.hobby-list li {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hobby-name {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.hobby-meta {
+  font-size: 12px;
+  color: #a78bfa;
+}
+
+.hobby-reason {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d4d4d8;
+}
+
+:global(.light) .quote-list li,
+:global(.light) .hobby-list li {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+:global(.light) .quote-ctx {
+  color: #71717a;
+}
+
+:global(.light) .quote-line,
+:global(.light) .hobby-reason {
+  color: #3f3f46;
 }
 
 // 与是否挂上 .cyber-card 无关：保证深色/赛博下标题行与「编辑」同一套 flex 排版
@@ -2017,11 +2289,30 @@ const emit = defineEmits<{
   }
 }
 
-.psych-content,
+.psych-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .fetish-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
+
+  /* 敏感点开发（左）+ 性癖（右）；隐藏性癖占满整行在下方 */
+  @media (min-width: 768px) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 20px 24px;
+    align-items: start;
+  }
+
+  > .hidden-fetish {
+    @media (min-width: 768px) {
+      grid-column: 1 / -1;
+    }
+  }
 }
 
 .thought-section {
@@ -2491,10 +2782,167 @@ const emit = defineEmits<{
   }
 }
 
+.identity-narrative-merge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.merge-subhead-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.merge-subhead--toolbar {
+  margin-bottom: 0;
+}
+
+.merge-subhead {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e4e4e7;
+  letter-spacing: 0.02em;
+}
+
+.merge-identity-narrative-sep {
+  flex-shrink: 0;
+  height: 1px;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:global(.light) .merge-subhead {
+  color: #27272a;
+}
+
+:global(.light) .merge-identity-narrative-sep {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.narrative-three-boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.appearance-narrative-subbox {
+  flex-shrink: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+
+  .section-label {
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  &--speech-hobby {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+}
+
+.narrative-subbox-block--hobby {
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+:global(.light) .appearance-narrative-subbox {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.65);
+
+  .narrative-subbox-block--hobby {
+    border-top-color: rgba(0, 0, 0, 0.12);
+  }
+}
+
 .appearance-content {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+/* 槽位分组（上装/下装等）横排，避免大块空白留在右侧 */
+.appearance-block > .clothing-slot-stack {
+  @media (min-width: 640px) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-content: start;
+  }
+
+  @media (min-width: 1100px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.appearance-subsection-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+
+  .section-label {
+    margin: 0;
+  }
+
+  .section-label.sub {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
+.appearance-subsection-head--jewelry {
+  margin-top: 18px;
+}
+
+.appearance-subsection-head .appearance-subsection-edit {
+  padding: 6px 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #22c55e;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.appearance-subsection-head .appearance-subsection-edit:hover {
+  color: #4ade80;
+}
+
+:global(.light) .appearance-subsection-head .appearance-subsection-edit {
+  color: #16a34a;
+}
+
+:global(.light) .appearance-subsection-head .appearance-subsection-edit:hover {
+  color: #15803d;
+}
+
+.section-label--appearance-lg {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+
+  &:not(.sub) {
+    color: #e4e4e7;
+  }
+}
+
+:global(.light) .section-label--appearance-lg:not(.sub) {
+  color: #27272a;
 }
 
 .appearance-block {
@@ -2506,6 +2954,12 @@ const emit = defineEmits<{
     font-weight: 700;
     color: #f87171;
     letter-spacing: 0.02em;
+  }
+
+  .appearance-subsection-head .section-label.sub {
+    display: inline-block;
+    margin-top: 0;
+    font-size: 1.22rem;
   }
 }
 
@@ -2643,29 +3097,78 @@ const emit = defineEmits<{
   }
 }
 
-.clothing-slot-block--jewelry .clothing-slot-btn {
-  border-color: rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.12);
-  color: #fecaca;
+/* 饰品：横向排布、卡片更紧凑，文案完整换行显示 */
+.jewelry-items-strip {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: stretch;
+}
 
-  &:hover {
-    background: rgba(248, 113, 113, 0.2);
-    border-color: rgba(248, 113, 113, 0.6);
+.clothing-slot-block--jewelry {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: min(100%, 280px);
+  padding: 8px 10px;
+  gap: 6px;
+
+  .clothing-slot-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-color: rgba(248, 113, 113, 0.45);
+    background: rgba(248, 113, 113, 0.12);
+    color: #fecaca;
+
+    &:hover {
+      background: rgba(248, 113, 113, 0.2);
+      border-color: rgba(248, 113, 113, 0.6);
+    }
+  }
+
+  .clothing-name-tag {
+    padding: 3px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .clothing-slot-detail {
+    gap: 4px;
+  }
+
+  .clothing-meta-row {
+    font-size: 12px;
+    line-height: 1.45;
+
+    .meta-k {
+      font-size: 11px;
+      min-width: 2.5em;
+    }
+
+    .meta-v {
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
   }
 }
 
 .body-part-rows {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   margin-top: 6px;
 }
 
-.body-part-row-wrap {
+.body-part-chip-strip {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.body-part-expand-under {
   width: 100%;
+  min-width: 0;
 }
 
 .body-part-detail-panel {
@@ -2673,47 +3176,56 @@ const emit = defineEmits<{
 }
 
 .body-part-line {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  width: 100%;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  max-width: 100%;
   text-align: left;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
   font: inherit;
   color: inherit;
 
   &:hover {
-    border-color: rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.07);
   }
 
   &.is-expanded {
-    border-color: rgba(167, 139, 250, 0.5);
-    background: rgba(167, 139, 250, 0.09);
+    border-color: rgba(167, 139, 250, 0.55);
+    background: rgba(167, 139, 250, 0.12);
   }
 
   &.is-updated {
     border-color: rgba(34, 197, 94, 0.65);
-    background: rgba(34, 197, 94, 0.1);
+    background: rgba(34, 197, 94, 0.12);
   }
 
   &.is-expanded.is-updated {
     border-color: rgba(34, 197, 94, 0.75);
-    background: rgba(34, 197, 94, 0.12);
+    background: rgba(34, 197, 94, 0.14);
   }
 }
 
-.body-part-name {
+.body-part-icon {
+  flex-shrink: 0;
   font-size: 14px;
+  color: #c4b5fd;
+  line-height: 1;
+}
+
+.body-part-name {
+  font-size: 12px;
   font-weight: 600;
-  color: #a78bfa;
-  line-height: 1.35;
+  color: #ddd6fe;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 :global(.light) {
@@ -2770,6 +3282,10 @@ const emit = defineEmits<{
   }
 
   .body-part-name {
+    color: #5b21b6;
+  }
+
+  .body-part-icon {
     color: #7c3aed;
   }
 

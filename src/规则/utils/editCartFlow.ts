@@ -32,7 +32,11 @@ export function categoryForModalType(modalType: string): EditCartCategory {
     case 'edit_character_mind':
     case 'edit_character_fetish':
     case 'edit_identity_tags':
+    case 'edit_character_background_archive':
     case 'edit_character_appearance':
+    case 'edit_character_clothing':
+    case 'edit_character_jewelry':
+    case 'edit_character_body_physics':
       return 'character';
     case 'add_personal_rule':
     case 'edit_personal_rule':
@@ -571,9 +575,25 @@ export function buildCartItemFromModal(
     const cid = String(p.characterId);
     return buildModalCartItem(modalType, form, p, `编辑身份标签：${cid}`, `identity:${cid}`);
   }
+  if (modalType === 'edit_character_background_archive' && p?.characterId) {
+    const cid = String(p.characterId);
+    return buildModalCartItem(modalType, form, p, `编辑背景与档案：${cid}`, `background_archive:${cid}`);
+  }
   if (modalType === 'edit_character_appearance' && p?.characterId) {
     const cid = String(p.characterId);
     return buildModalCartItem(modalType, form, p, `编辑外观与身体状态：${cid}`, `appearance:${cid}`);
+  }
+  if (modalType === 'edit_character_clothing' && p?.characterId) {
+    const cid = String(p.characterId);
+    return buildModalCartItem(modalType, form, p, `编辑服装槽位：${cid}`, `appearance:clothing:${cid}`);
+  }
+  if (modalType === 'edit_character_jewelry' && p?.characterId) {
+    const cid = String(p.characterId);
+    return buildModalCartItem(modalType, form, p, `编辑饰品：${cid}`, `appearance:jewelry:${cid}`);
+  }
+  if (modalType === 'edit_character_body_physics' && p?.characterId) {
+    const cid = String(p.characterId);
+    return buildModalCartItem(modalType, form, p, `编辑身体部位物理状态：${cid}`, `appearance:body:${cid}`);
   }
   if (modalType === 'edit_avatar' && p?.characterId) {
     const cid = String(p.characterId);

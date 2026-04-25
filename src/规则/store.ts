@@ -74,6 +74,34 @@ export function useCharacters() {
         ? char.姓名
         : (char.name || id);
       const description = char.描写 || char.description || char.desc || '';
+      const characterIntro =
+        typeof char.角色简介 === 'string' ? char.角色简介 : typeof char.characterIntro === 'string' ? char.characterIntro : '';
+      const rawQuotes = char.代表性发言;
+      const representativeQuotes =
+        rawQuotes != null && typeof rawQuotes === 'object' && !Array.isArray(rawQuotes)
+          ? Object.fromEntries(
+              Object.entries(rawQuotes as Record<string, unknown>)
+                .filter(([_, v]) => typeof v === 'string')
+                .map(([k, v]) => [k, String(v)]),
+            )
+          : {};
+      const rawHobbies = char.爱好;
+      const hobbies: CharacterData['hobbies'] = {};
+      if (rawHobbies != null && typeof rawHobbies === 'object' && !Array.isArray(rawHobbies)) {
+        for (const [k, v] of Object.entries(rawHobbies as Record<string, unknown>)) {
+          const key = String(k).trim();
+          if (!key) continue;
+          if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+            const o = v as Record<string, unknown>;
+            hobbies[key] = {
+              等级: Math.min(10, Math.max(0, Math.round(Number(o['等级']) || 1))),
+              喜欢的原因: String(o['喜欢的原因'] ?? ''),
+            };
+          } else if (typeof v === 'string') {
+            hobbies[key] = { 等级: 1, 喜欢的原因: v };
+          }
+        }
+      }
       const status = char.状态 === '出场中' ? 'active' : 'inactive';
 
       const currentThought = char.当前内心想法 || char.currentThought || '';
@@ -141,6 +169,10 @@ export function useCharacters() {
         id,
         name,
         description,
+        characterIntro: String(characterIntro || '').trim() || undefined,
+        representativeQuotes:
+          Object.keys(representativeQuotes).length > 0 ? representativeQuotes : undefined,
+        hobbies: Object.keys(hobbies).length > 0 ? hobbies : undefined,
         status,
         basic: {
           age: String(body.年龄 || body.age || ''),

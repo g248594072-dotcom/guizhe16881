@@ -10,6 +10,8 @@ import {
   normalizeTagMap,
   normalize三围,
   normalizeFetishRecord,
+  normalizeHobbyRecord,
+  normalizeRepresentativeSpeechRecord,
   normalizeSensitivePartRecord,
 } from './utils/tagMap';
 import { normalize服装状态Raw } from './utils/clothingStateNormalize';
@@ -37,7 +39,7 @@ const 性癖映射 = z.preprocess(
 
 const 敏感部位条目 = z
   .object({
-    敏感等级: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 10)).prefault(1),
+    敏感等级: z.coerce.number().transform(v => Math.max(0, Math.round(v))).prefault(1),
     生理反应: z.string().prefault(''),
     开发细节: z.string().prefault(''),
   })
@@ -48,6 +50,24 @@ const 敏感部位条目 = z
 const 敏感点开发映射 = z.preprocess(
   (raw: unknown) => normalizeSensitivePartRecord(raw),
   z.record(z.string(), 敏感部位条目),
+).prefault({});
+
+const 爱好条目 = z
+  .object({
+    等级: z.coerce.number().transform(v => _.clamp(Math.round(v), 0, 10)).prefault(1),
+    喜欢的原因: z.string().prefault(''),
+  })
+  .passthrough()
+  .prefault({});
+
+const 爱好映射 = z.preprocess(
+  (raw: unknown) => normalizeHobbyRecord(raw),
+  z.record(z.string(), 爱好条目),
+).prefault({});
+
+const 代表性发言映射 = z.preprocess(
+  (raw: unknown) => normalizeRepresentativeSpeechRecord(raw),
+  z.record(z.string(), z.string()),
 ).prefault({});
 
 /** 身体槽：服装名为键，值为 { 状态, 描述 }（无「名称」字段）；旧档单对象经 preprocess 迁移 */
@@ -357,12 +377,18 @@ const 核心结构 = z.object({
   }).prefault({}),
 
   角色档案: z.record(
-    z.string().describe('角色档案键名：须为 CHR- 加三位序号，如 CHR-001'),
+    z.string().describe('角色档案键名：必须为 CHR- + 三位十进制序号，如 CHR-001、CHR-002'),
     z
       .object({
         姓名: z.string().prefault('未知'),
         状态: z.enum(['出场中', '暂时退场']).prefault('出场中'),
+        /** 长段背景/设定，与「描写」并存时由界面分开展示 */
+        角色简介: z.string().prefault(''),
+        /** 语境标识 → 代表性台词 */
+        代表性发言: 代表性发言映射,
         描写: z.string().prefault(''),
+        /** 爱好名 → 等级与原因 */
+        爱好: 爱好映射,
 
         当前内心想法: z.string().prefault(''),
         当前位置: z.preprocess(

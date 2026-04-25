@@ -43,6 +43,12 @@ export interface SensitiveEntryZh {
   开发细节: string;
 }
 
+/** MVU「爱好」单条 */
+export interface HobbyEntryZh {
+  等级: number;
+  喜欢的原因: string;
+}
+
 function coerceFetishEntry(v: Record<string, unknown>): FetishEntryZh {
   const levelRaw = unwrapMvuTaggedValue(v['等级'] ?? v['level']);
   const n =
@@ -61,7 +67,7 @@ function coerceSensitiveEntry(v: Record<string, unknown>): SensitiveEntryZh {
   const levelRaw = unwrapMvuTaggedValue(v['敏感等级'] ?? v['level']);
   const n =
     typeof levelRaw === 'number' && Number.isFinite(levelRaw) ? levelRaw : Number(levelRaw);
-  const 敏感等级 = Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : 1;
+  const 敏感等级 = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 1;
   const 反应Raw = unwrapMvuTaggedValue(v['生理反应'] ?? v['reaction']);
   const 开发Raw = unwrapMvuTaggedValue(v['开发细节'] ?? v['devDetails']);
   return {
@@ -120,6 +126,101 @@ export function normalizeFetishRecord(raw: unknown): Record<string, FetishEntryZ
     if (typeof vUn === 'object' && vUn !== null && !Array.isArray(vUn)) {
       out[key] = coerceFetishEntry(vUn as Record<string, unknown>);
     }
+  }
+  return out;
+}
+
+function coerceHobbyEntry(v: Record<string, unknown>): HobbyEntryZh {
+  const levelRaw = unwrapMvuTaggedValue(v['等级'] ?? v['level']);
+  const n =
+    typeof levelRaw === 'number' && Number.isFinite(levelRaw) ? levelRaw : Number(levelRaw);
+  const 等级 = Number.isFinite(n) ? Math.max(0, Math.min(10, Math.round(n))) : 1;
+  const reasonRaw = unwrapMvuTaggedValue(v['喜欢的原因'] ?? v['原因']);
+  return {
+    等级,
+    喜欢的原因: reasonRaw == null ? '' : String(reasonRaw),
+  };
+}
+
+/**
+ * 将任意存档形态规范为「爱好名 → { 等级, 喜欢的原因 }」；兼容旧 string / string[] / JSON 字符串。
+ */
+export function normalizeHobbyRecord(raw: unknown): Record<string, HobbyEntryZh> {
+  if (raw == null) return {};
+  if (Array.isArray(raw)) {
+    const o: Record<string, HobbyEntryZh> = {};
+    raw.forEach((item, i) => {
+      const s = String(item ?? '');
+      const m = s.match(/^([^：:]+)[：:]\s*(.*)$/);
+      if (m) {
+        o[m[1].trim()] = { 等级: 1, 喜欢的原因: m[2].trim() };
+      } else {
+        o[`爱好${i + 1}`] = { 等级: 1, 喜欢的原因: s };
+      }
+    });
+    return o;
+  }
+  let obj: Record<string, unknown> | null = null;
+  if (typeof raw === 'object') {
+    obj = raw as Record<string, unknown>;
+  } else if (typeof raw === 'string') {
+    const parsed = tryParseJsonObject(raw);
+    obj = parsed;
+  }
+  if (!obj) return {};
+
+  const out: Record<string, HobbyEntryZh> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = String(k);
+    if (v == null) continue;
+    const vUn = unwrapMvuTaggedValue(v);
+    if (typeof vUn === 'string') {
+      if (isCorruptObjectString(vUn)) {
+        out[key] = { 等级: 1, 喜欢的原因: '' };
+        continue;
+      }
+      const jp = tryParseJsonObject(vUn);
+      if (jp) {
+        out[key] = coerceHobbyEntry(jp);
+        continue;
+      }
+      out[key] = { 等级: 1, 喜欢的原因: vUn };
+      continue;
+    }
+    if (typeof vUn === 'object' && vUn !== null && !Array.isArray(vUn)) {
+      out[key] = coerceHobbyEntry(vUn as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
+/**
+ * 「代表性发言」：语境标识 → 台词字符串；兼容 JSON 字符串、纯对象。
+ */
+export function normalizeRepresentativeSpeechRecord(raw: unknown): Record<string, string> {
+  if (raw == null) return {};
+  if (Array.isArray(raw)) {
+    const o: Record<string, string> = {};
+    raw.forEach((item, i) => {
+      o[`台词${i + 1}`] = String(item ?? '').trim();
+    });
+    return o;
+  }
+  let obj: Record<string, unknown> | null = null;
+  if (typeof raw === 'object') {
+    obj = raw as Record<string, unknown>;
+  } else if (typeof raw === 'string') {
+    const parsed = tryParseJsonObject(raw);
+    obj = parsed;
+  }
+  if (!obj) return {};
+
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = String(k).trim();
+    if (!key) continue;
+    const vUn = unwrapMvuTaggedValue(v);
+    out[key] = vUn == null ? '' : String(vUn).trim();
   }
   return out;
 }
@@ -207,6 +308,8 @@ export function sanitizeStatDataRoleArchivesNestedMaps(statData: unknown): unkno
     if ('性癖' in c) c['性癖'] = normalizeFetishRecord(c['性癖']);
     if ('敏感点开发' in c) c['敏感点开发'] = normalizeSensitivePartRecord(c['敏感点开发']);
     if ('敏感部位' in c) c['敏感部位'] = normalizeSensitivePartRecord(c['敏感部位']);
+    if ('爱好' in c) c['爱好'] = normalizeHobbyRecord(c['爱好']);
+    if ('代表性发言' in c) c['代表性发言'] = normalizeRepresentativeSpeechRecord(c['代表性发言']);
     chars[id] = c;
   }
   return { ...sd, 角色档案: chars };

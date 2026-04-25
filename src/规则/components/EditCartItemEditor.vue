@@ -181,6 +181,14 @@ import {
 import { refreshEditCartItem } from '../utils/editCartFlow';
 import ModalCommitFields from './EditCartModalCommitFields.vue';
 
+/** 与 App 主弹窗外观类 modalType 一致，用于预填服装/饰品/身体行 */
+const APPEARANCE_CART_MODAL_TYPES: readonly string[] = [
+  'edit_character_appearance',
+  'edit_character_clothing',
+  'edit_character_jewelry',
+  'edit_character_body_physics',
+];
+
 const props = withDefaults(
   defineProps<{
     /** 与 App 主界面一致：游戏阶段挂 #app-root，避免被主层挡住点击 */
@@ -209,7 +217,10 @@ watch(
         if (a.characterName === undefined) a.characterName = '';
         if (a.ruleSummary === undefined) a.ruleSummary = '';
       }
-      if (copy.action.kind === 'modal_commit' && copy.action.modalType === 'edit_character_appearance') {
+      if (
+        copy.action.kind === 'modal_commit' &&
+        APPEARANCE_CART_MODAL_TYPES.includes(copy.action.modalType)
+      ) {
         const f = copy.action.form as EditCartModalForm;
         f.appearanceClothing = clothingStateFromMvuRaw(f.appearanceClothing ?? {});
         const rows = f.appearanceBodyGarmentRows;
@@ -225,6 +236,12 @@ watch(
         if (copy.action.modalType === 'add_character') {
           if (f.addCharacterName == null) f.addCharacterName = '';
           if (f.addCharacterRelationIdentity == null) f.addCharacterRelationIdentity = '';
+        }
+        if (copy.action.modalType === 'edit_character_background_archive') {
+          if (f.backgroundCharacterIntro == null) f.backgroundCharacterIntro = '';
+          if (f.backgroundDescription == null) f.backgroundDescription = '';
+          if (!f.backgroundSpeechRows) f.backgroundSpeechRows = [];
+          if (!f.backgroundHobbyRows) f.backgroundHobbyRows = [];
         }
       }
       if (copy.action.kind === 'random_add_personal') {

@@ -52,9 +52,25 @@ function hintModalCommit(modalType: string, form: EditCartModalForm, p: Record<s
       const cid = t((pl as { characterId?: unknown })?.characterId);
       return `玩家更新角色外观与服装（${cid}）。`;
     }
+    case 'edit_character_clothing': {
+      const cid = t((pl as { characterId?: unknown })?.characterId);
+      return `玩家更新角色服装槽位（${cid}）。`;
+    }
+    case 'edit_character_jewelry': {
+      const cid = t((pl as { characterId?: unknown })?.characterId);
+      return `玩家更新角色饰品（${cid}）。`;
+    }
+    case 'edit_character_body_physics': {
+      const cid = t((pl as { characterId?: unknown })?.characterId);
+      return `玩家更新角色身体部位物理状态（${cid}）。`;
+    }
     case 'edit_identity_tags': {
       const cid = t((pl as { characterId?: unknown })?.characterId);
       return `玩家编辑身份标签（${cid}）。`;
+    }
+    case 'edit_character_background_archive': {
+      const cid = t((pl as { characterId?: unknown })?.characterId);
+      return `玩家编辑角色背景与档案（${cid}）：角色简介、描写、代表性发言、爱好。`;
     }
     case 'edit_avatar':
       return '';

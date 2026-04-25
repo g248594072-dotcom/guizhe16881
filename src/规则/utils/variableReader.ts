@@ -348,7 +348,34 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       name = id;
     }
 
+    const 角色简介 = typeof value?.['角色简介'] === 'string' ? value['角色简介'] : '';
     const 描写 = value?.['描写'] ?? value?.['description'] ?? '';
+    const rawRep = value?.['代表性发言'];
+    const representativeQuotes: Record<string, string> =
+      rawRep != null && typeof rawRep === 'object' && !Array.isArray(rawRep)
+        ? Object.fromEntries(
+            Object.entries(rawRep as Record<string, unknown>)
+              .filter(([_, v]) => typeof v === 'string')
+              .map(([k, v]) => [k, String(v)]),
+          )
+        : {};
+    const rawHobbies = value?.['爱好'];
+    const hobbies: CharacterData['hobbies'] = {};
+    if (rawHobbies != null && typeof rawHobbies === 'object' && !Array.isArray(rawHobbies)) {
+      for (const [k, v] of Object.entries(rawHobbies as Record<string, unknown>)) {
+        const key = String(k).trim();
+        if (!key) continue;
+        if (v != null && typeof v === 'object' && !Array.isArray(v)) {
+          const o = v as Record<string, unknown>;
+          hobbies[key] = {
+            等级: Math.min(10, Math.max(0, Math.round(Number(o['等级']) || 1))),
+            喜欢的原因: String(o['喜欢的原因'] ?? ''),
+          };
+        } else if (typeof v === 'string') {
+          hobbies[key] = { 等级: 1, 喜欢的原因: v };
+        }
+      }
+    }
     const 状态 = value?.['状态'] ?? '出场中';
 
     const 当前内心想法 = value?.['当前内心想法'] ?? value?.['currentThought'] ?? '';
@@ -472,6 +499,10 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       id,
       name,
       description: 描写,
+      characterIntro: String(角色简介 || '').trim() || undefined,
+      representativeQuotes:
+        Object.keys(representativeQuotes).length > 0 ? representativeQuotes : undefined,
+      hobbies: Object.keys(hobbies).length > 0 ? hobbies : undefined,
       status: 状态 === '出场中' ? 'active' : 'inactive',
       basic,
       stats,

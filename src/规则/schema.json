@@ -253,7 +253,7 @@
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "description": "角色档案键名：须为 CHR- 加三位序号，如 CHR-001"
+        "description": "角色档案键名：必须为 CHR- + 三位十进制序号，如 CHR-001、CHR-002"
       },
       "additionalProperties": {
         "default": {},
@@ -271,8 +271,42 @@
               "暂时退场"
             ]
           },
+          "角色简介": {
+            "type": "string"
+          },
+          "代表性发言": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "描写": {
             "type": "string"
+          },
+          "爱好": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "等级": {
+                  "default": 1,
+                  "type": "number"
+                },
+                "喜欢的原因": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": {}
+            }
           },
           "当前内心想法": {
             "type": "string"
@@ -595,7 +629,7 @@
           "type": "number"
         },
         "最近更新时间": {
-          "default": 1777082736935,
+          "default": 1777113423319,
           "type": "number"
         }
       }

@@ -28,26 +28,54 @@
                 <dt>情感状况</dt>
                 <dd>{{ candidate.情感状况 }}</dd>
               </div>
-              <div class="rcd-row">
-                <dt>爱好</dt>
-                <dd>{{ candidate.爱好 }}</dd>
-              </div>
-              <div class="rcd-row">
-                <dt>性癖</dt>
-                <dd>{{ candidate.性癖 }}</dd>
-              </div>
-              <div class="rcd-row">
-                <dt>敏感点</dt>
-                <dd>{{ candidate.敏感点 }}</dd>
+              <div v-if="hiddenFetishDisplay" class="rcd-row">
+                <dt>隐藏性癖</dt>
+                <dd>{{ hiddenFetishDisplay }}</dd>
               </div>
             </dl>
           </section>
 
-          <section class="rcd-card rcd-card--wide">
+          <section v-if="hobbyRows.length" class="rcd-card rcd-card--wide">
             <span class="rcd-bracket-tl" aria-hidden="true" />
             <span class="rcd-bracket-br" aria-hidden="true" />
-            <h3 class="rcd-card-title">常见穿搭</h3>
-            <p class="rcd-body">{{ candidate.常见穿搭 }}</p>
+            <h3 class="rcd-card-title">爱好</h3>
+            <dl class="rcd-dl">
+              <div v-for="row in hobbyRows" :key="row.name" class="rcd-row rcd-row--stack">
+                <dt>{{ row.name }}</dt>
+                <dd class="rcd-dd-block">{{ row.text }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section v-if="fetishRows.length" class="rcd-card rcd-card--wide">
+            <span class="rcd-bracket-tl" aria-hidden="true" />
+            <span class="rcd-bracket-br" aria-hidden="true" />
+            <h3 class="rcd-card-title">性癖</h3>
+            <dl class="rcd-dl">
+              <div v-for="row in fetishRows" :key="row.name" class="rcd-row rcd-row--stack">
+                <dt>{{ row.name }}</dt>
+                <dd class="rcd-dd-block">{{ row.text }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section v-if="sensitiveRows.length" class="rcd-card rcd-card--wide">
+            <span class="rcd-bracket-tl" aria-hidden="true" />
+            <span class="rcd-bracket-br" aria-hidden="true" />
+            <h3 class="rcd-card-title">敏感点开发</h3>
+            <dl class="rcd-dl">
+              <div v-for="row in sensitiveRows" :key="row.name" class="rcd-row rcd-row--stack">
+                <dt>{{ row.name }}</dt>
+                <dd class="rcd-dd-block">{{ row.text }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section v-if="clothingJsonDisplay" class="rcd-card rcd-card--wide">
+            <span class="rcd-bracket-tl" aria-hidden="true" />
+            <span class="rcd-bracket-br" aria-hidden="true" />
+            <h3 class="rcd-card-title">服装状态</h3>
+            <pre class="rcd-pre">{{ clothingJsonDisplay }}</pre>
           </section>
 
           <section class="rcd-card rcd-card--wide">
@@ -57,13 +85,13 @@
             <p class="rcd-body">{{ candidate.简介 }}</p>
           </section>
 
-          <section class="rcd-card rcd-card--wide">
+          <section v-if="speechRows.length" class="rcd-card rcd-card--wide">
             <span class="rcd-bracket-tl" aria-hidden="true" />
             <span class="rcd-bracket-br" aria-hidden="true" />
             <h3 class="rcd-card-title">代表性发言</h3>
-            <p class="rcd-quote">「{{ candidate.代表性发言一 }}」</p>
-            <p class="rcd-quote">「{{ candidate.代表性发言二 }}」</p>
-            <p class="rcd-quote">「{{ candidate.代表性发言三 }}」</p>
+            <p v-for="row in speechRows" :key="row.scene" class="rcd-quote">
+              <span class="rcd-scene">{{ row.scene }}：</span>「{{ row.line }}」
+            </p>
           </section>
 
           <section v-if="oneLinerText" class="rcd-card rcd-card--wide">
@@ -83,6 +111,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { CompanionCandidateRecord } from '../utils/characterRecruitFromAi';
+import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
+import {
+  normalizeFetishRecord,
+  normalizeHobbyRecord,
+  normalizeRepresentativeSpeechRecord,
+  normalizeSensitivePartRecord,
+} from '../utils/tagMap';
 
 const props = defineProps<{
   candidate: CompanionCandidateRecord;
@@ -97,6 +132,75 @@ const emit = defineEmits<{
 const titleId = computed(() => `rcd-title-${props.index}`);
 
 const oneLinerText = computed(() => String(props.candidate.一句话介绍 ?? '').trim());
+
+const hiddenFetishDisplay = computed(() => String(props.candidate.隐藏性癖 ?? '').trim());
+
+const hobbyRows = computed(() => {
+  try {
+    const raw = JSON.parse(String(props.candidate.爱好 ?? '').trim()) as unknown;
+    const norm = normalizeHobbyRecord(raw);
+    return Object.entries(norm).map(([name, v]) => ({
+      name,
+      text: [`等级：${v.等级}`, v.喜欢的原因 && `原因：${v.喜欢的原因}`].filter(Boolean).join('\n'),
+    }));
+  } catch {
+    return [];
+  }
+});
+
+const speechRows = computed(() => {
+  try {
+    const raw = JSON.parse(String(props.candidate.代表性发言 ?? '').trim()) as unknown;
+    const norm = normalizeRepresentativeSpeechRecord(raw);
+    return Object.entries(norm).map(([scene, line]) => ({ scene, line }));
+  } catch {
+    return [];
+  }
+});
+
+const fetishRows = computed(() => {
+  try {
+    const raw = JSON.parse(String(props.candidate.性癖 ?? '').trim()) as unknown;
+    const norm = normalizeFetishRecord(raw);
+    return Object.entries(norm).map(([name, v]) => ({
+      name,
+      text: [`等级：${v.等级}`, v.细节描述 && `细节：${v.细节描述}`, v.自我合理化 && `自我合理化：${v.自我合理化}`]
+        .filter(Boolean)
+        .join('\n'),
+    }));
+  } catch {
+    return [];
+  }
+});
+
+const sensitiveRows = computed(() => {
+  try {
+    const raw = JSON.parse(String(props.candidate.敏感点开发 ?? '').trim()) as unknown;
+    const norm = normalizeSensitivePartRecord(raw);
+    return Object.entries(norm).map(([name, v]) => ({
+      name,
+      text: [
+        `敏感等级：${v.敏感等级}`,
+        v.生理反应 && `生理反应：${v.生理反应}`,
+        v.开发细节 && `开发细节：${v.开发细节}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    }));
+  } catch {
+    return [];
+  }
+});
+
+const clothingJsonDisplay = computed(() => {
+  try {
+    const raw = JSON.parse(String(props.candidate.服装状态 ?? '').trim()) as unknown;
+    const norm = clothingStateFromMvuRaw(raw);
+    return JSON.stringify(norm, null, 2);
+  } catch {
+    return '';
+  }
+});
 </script>
 
 <style scoped lang="scss">
@@ -279,6 +383,48 @@ const oneLinerText = computed(() => String(props.candidate.一句话介绍 ?? ''
   line-height: 1.45;
 }
 
+.rcd-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.rcd-row--stack dt {
+  flex: none;
+  color: var(--color-neon-cyan, #00f3ff);
+  opacity: 0.95;
+}
+
+.rcd--light .rcd-row--stack dt {
+  color: #0891b2;
+}
+
+.rcd-dd-block {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rcd-pre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(0, 243, 255, 0.15);
+  font-family: var(--font-cyber-mono, 'JetBrains Mono', monospace);
+}
+
+.rcd--light .rcd-pre {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #27272a;
+}
+
 .rcd-body {
   margin: 0;
   font-size: 13px;
@@ -301,6 +447,16 @@ const oneLinerText = computed(() => String(props.candidate.一句话介绍 ?? ''
 
 .rcd-quote + .rcd-quote {
   margin-top: 10px;
+}
+
+.rcd-scene {
+  font-weight: 700;
+  color: var(--color-neon-cyan, #00f3ff);
+  opacity: 0.9;
+}
+
+.rcd--light .rcd-scene {
+  color: #0891b2;
 }
 
 .rcd-foot {

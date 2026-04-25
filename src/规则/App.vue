@@ -915,14 +915,14 @@
                           placeholder="被触碰时的反应"
                         />
                       </div>
-                      <div class="detail-field full-width">
+                      <div class="detail-field full-width detail-field--desc-narrow">
                         <label>开发细节</label>
-                        <textarea
+                        <input
                           v-model="part.devDetails"
-                          class="form-textarea"
-                          rows="2"
+                          type="text"
+                          class="form-input"
                           placeholder="部位的开发进度和细节..."
-                        ></textarea>
+                        />
                       </div>
                     </div>
                   </div>
@@ -990,14 +990,14 @@
                           placeholder="性癖的具体表现"
                         />
                       </div>
-                      <div class="detail-field full-width">
+                      <div class="detail-field full-width detail-field--desc-narrow">
                         <label>自我合理化</label>
-                        <textarea
+                        <input
                           v-model="fetish.justification"
-                          class="form-textarea"
-                          rows="2"
+                          type="text"
+                          class="form-input"
                           placeholder="傲娇的借口或理智与本能的冲突..."
-                        ></textarea>
+                        />
                       </div>
                     </div>
                   </div>
@@ -1089,11 +1089,78 @@
                 添加身份标签
               </button>
             </div>
-            <div v-else-if="modalType === 'edit_character_appearance'" class="rule-form character-appearance-form">
-              <p class="form-hint">
-                编辑 MVU「服装状态」与「身体部位物理状态」。<strong>上装/下装/内衣/腿部/足部</strong>下每件服装为<strong>服装名 → 状态、描述</strong>（服装名为键）；饰品仍以<strong>名字</strong>为键，并填写<strong>部位</strong>与<strong>描述</strong>。
-              </p>
-              <h4 class="appearance-section-title">服装（按槽位多件）</h4>
+            <div v-else-if="modalType === 'edit_character_background_archive'" class="rule-form character-background-archive-form">
+              <section class="character-bg-archive-section">
+                <h4 class="character-bg-archive-section__title">角色简介</h4>
+                <textarea
+                  v-model="modalForm.backgroundCharacterIntro"
+                  class="form-textarea form-textarea--intro-block"
+                  rows="5"
+                  placeholder="角色的一整段背景或简介"
+                />
+              </section>
+              <section class="character-bg-archive-section">
+                <h4 class="character-bg-archive-section__title">描写</h4>
+                <input
+                  v-model="modalForm.backgroundDescription"
+                  type="text"
+                  class="form-input character-bg-desc-line"
+                  placeholder="可与角色简介分工的一句话式描写"
+                />
+              </section>
+              <section class="character-bg-archive-section">
+                <h4 class="character-bg-archive-section__title">代表性发言</h4>
+                <div
+                  v-for="(row, sidx) in modalForm.backgroundSpeechRows"
+                  :key="'bg-sp-' + sidx"
+                  class="background-archive-row"
+                >
+                  <input v-model="row.context" type="text" class="form-input" placeholder="场景或语境标识" />
+                  <input v-model="row.line" type="text" class="form-input" placeholder="具体台词或发言内容" />
+                  <button type="button" class="btn-icon btn-danger" title="删除" @click="modalForm.backgroundSpeechRows.splice(sidx, 1)">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+                <button type="button" class="btn-secondary" @click="modalForm.backgroundSpeechRows.push({ context: '', line: '' })">
+                  <i class="fa-solid fa-plus"></i>
+                  添加代表性发言
+                </button>
+              </section>
+              <section class="character-bg-archive-section">
+                <h4 class="character-bg-archive-section__title">爱好</h4>
+                <div
+                  v-for="(row, hidx) in modalForm.backgroundHobbyRows"
+                  :key="'bg-hb-' + hidx"
+                  class="background-archive-row background-archive-row--hobby"
+                >
+                  <input v-model="row.name" type="text" class="form-input" placeholder="爱好标签名" />
+                  <input
+                    v-model.number="row.level"
+                    type="number"
+                    class="form-input character-bg-hobby-level"
+                    min="0"
+                    max="10"
+                    placeholder="等级"
+                  />
+                  <input v-model="row.reason" type="text" class="form-input" placeholder="喜欢的原因" />
+                  <button type="button" class="btn-icon btn-danger" title="删除" @click="modalForm.backgroundHobbyRows.splice(hidx, 1)">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  @click="modalForm.backgroundHobbyRows.push({ name: '', level: 1, reason: '' })"
+                >
+                  <i class="fa-solid fa-plus"></i>
+                  添加爱好
+                </button>
+              </section>
+            </div>
+            <div v-else-if="showAppearanceFormModal" class="rule-form character-appearance-form">
+              <p class="form-hint">{{ appearanceFormHint }}</p>
+              <template v-if="appearanceFormShowGarments">
+              <h4 id="appearance-section-garments" class="appearance-section-title">服装（按槽位多件）</h4>
               <div
                 v-for="(gr, gidx) in modalForm.appearanceBodyGarmentRows"
                 :key="'bg-' + gidx"
@@ -1125,9 +1192,9 @@
                     <label>状态</label>
                     <input v-model="gr.状态" type="text" class="form-input" placeholder="如：正常" />
                   </div>
-                  <div class="detail-field full-width">
+                  <div class="detail-field full-width detail-field--desc-narrow">
                     <label>描述</label>
-                    <textarea v-model="gr.描述" class="form-textarea" rows="2" placeholder="外观或穿着描述" />
+                    <input v-model="gr.描述" type="text" class="form-input" placeholder="外观或穿着描述" />
                   </div>
                 </div>
               </div>
@@ -1135,7 +1202,9 @@
                 <i class="fa-solid fa-plus"></i>
                 添加服装条目
               </button>
-              <h4 class="appearance-section-title">饰品</h4>
+              </template>
+              <template v-if="appearanceFormShowJewelry">
+              <h4 id="appearance-section-jewelry" class="appearance-section-title">饰品</h4>
               <div
                 v-for="(jw, jidx) in modalForm.appearanceJewelryRows"
                 :key="'jw-' + jidx"
@@ -1171,14 +1240,9 @@
                       placeholder="如：鼻梁、手腕"
                     />
                   </div>
-                  <div class="detail-field full-width">
+                  <div class="detail-field full-width detail-field--desc-narrow">
                     <label>描述</label>
-                    <textarea
-                      v-model="jw.描述"
-                      class="form-textarea"
-                      rows="2"
-                      placeholder="外观或佩戴方式等"
-                    />
+                    <input v-model="jw.描述" type="text" class="form-input" placeholder="外观或佩戴方式等" />
                   </div>
                 </div>
               </div>
@@ -1190,7 +1254,9 @@
                 <i class="fa-solid fa-plus"></i>
                 添加饰品
               </button>
-              <h4 class="appearance-section-title">身体部位物理状态</h4>
+              </template>
+              <template v-if="appearanceFormShowBody">
+              <h4 id="appearance-section-body-parts" class="appearance-section-title">身体部位物理状态</h4>
               <div
                 v-for="(bp, bpidx) in modalForm.appearanceBodyPartRows"
                 :key="bpidx"
@@ -1213,23 +1279,13 @@
                   </button>
                 </div>
                 <div class="detail-edit-fields">
-                  <div class="detail-field full-width">
+                  <div class="detail-field">
                     <label>外观描述</label>
-                    <textarea
-                      v-model="bp.外观描述"
-                      class="form-textarea"
-                      rows="2"
-                      placeholder="形态、颜色等"
-                    />
+                    <input v-model="bp.外观描述" type="text" class="form-input" placeholder="形态、颜色等" />
                   </div>
-                  <div class="detail-field full-width">
+                  <div class="detail-field">
                     <label>当前状态</label>
-                    <textarea
-                      v-model="bp.当前状态"
-                      class="form-textarea"
-                      rows="2"
-                      placeholder="即时物理/体液状态"
-                    />
+                    <input v-model="bp.当前状态" type="text" class="form-input" placeholder="即时物理/体液状态" />
                   </div>
                 </div>
               </div>
@@ -1241,6 +1297,7 @@
                 <i class="fa-solid fa-plus"></i>
                 添加身体部位
               </button>
+              </template>
             </div>
             <div v-else class="modal-placeholder">
               <p>未配置的弹窗类型：<code>{{ modalType }}</code></p>
@@ -1802,11 +1859,31 @@ import {
   jewelryRowsFromClothingState,
   mergeClothingAppearanceSubmit,
   normalizeJewelryEditRow,
+  buildBackgroundArchivePayloadFromModalForm,
   submitEditCharacterAppearance,
+  submitEditCharacterBackgroundArchive,
 } from './utils/dialogAndVariable';
+
+/** 将弹窗内身体部位行转为 MVU「身体部位物理状态」对象（与提交逻辑一致） */
+function bodyPhysicsObjectFromPartRows(
+  rows: Array<{ key?: string; 外观描述?: string; 当前状态?: string }> | undefined,
+): Record<string, { 外观描述: string; 当前状态: string }> {
+  const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
+  for (const row of rows ?? []) {
+    const k = String(row.key ?? '').trim();
+    if (!k) continue;
+    body[k] = {
+      外观描述: String(row.外观描述 ?? ''),
+      当前状态: String(row.当前状态 ?? ''),
+    };
+  }
+  return body;
+}
 import {
   fetishRecordToEditableText,
   getMergedSensitiveDevelopment,
+  normalizeHobbyRecord,
+  normalizeRepresentativeSpeechRecord,
   sensitiveRecordToEditableText,
   tagMapToEditableText,
 } from './utils/tagMap';
@@ -2033,6 +2110,10 @@ const modalForm = ref({
   sensitivePartDetails: [] as Array<{ name: string; level: number; reaction: string; devDetails: string }>,
   // 身份标签编辑
   identityTags: [] as Array<{ category: string; value: string }>,
+  backgroundCharacterIntro: '',
+  backgroundDescription: '',
+  backgroundSpeechRows: [] as Array<{ context: string; line: string }>,
+  backgroundHobbyRows: [] as Array<{ name: string; level: number; reason: string }>,
   avatarUrl: '',
   appearanceClothing: defaultEmptyClothingState(),
   appearanceBodyGarmentRows: [] as ClothingBodyGarmentEditRow[],
@@ -2720,10 +2801,50 @@ const modalTitles: Record<string, string> = {
   edit_character_mind: '编辑心理状态',
   edit_character_fetish: '编辑性癖与敏感带',
   edit_identity_tags: '编辑身份标签',
+  edit_character_background_archive: '编辑背景与档案',
   edit_character_appearance: '编辑服装与身体状态',
+  edit_character_clothing: '编辑服装槽位',
+  edit_character_jewelry: '编辑饰品',
+  edit_character_body_physics: '编辑身体部位物理状态',
   edit_avatar: '编辑角色头像',
 };
 const modalTitle = computed(() => modalTitles[modalType.value] || (modalType.value.includes('add') ? '新增条目' : '编辑条目'));
+
+function appearanceModalSliceFromType(t: string): 'full' | 'clothing' | 'jewelry' | 'body' | null {
+  if (t === 'edit_character_appearance') return 'full';
+  if (t === 'edit_character_clothing') return 'clothing';
+  if (t === 'edit_character_jewelry') return 'jewelry';
+  if (t === 'edit_character_body_physics') return 'body';
+  return null;
+}
+
+const appearanceFormSlice = computed(() => appearanceModalSliceFromType(modalType.value));
+const showAppearanceFormModal = computed(() => appearanceFormSlice.value != null);
+
+const appearanceFormHint = computed(() => {
+  switch (appearanceFormSlice.value) {
+    case 'full':
+      return '编辑 MVU「服装状态」与「身体部位物理状态」。上装/下装/内衣/腿部/足部下每件服装为服装名 → 状态、描述（服装名为键）；饰品以名字为键，填写部位与描述。';
+    case 'clothing':
+      return '仅编辑各槽位下的服装。饰品与身体部位的当前值从存档保留，不会被本弹窗清空。';
+    case 'jewelry':
+      return '仅编辑饰品。各槽位服装与身体部位的当前值从存档保留。';
+    case 'body':
+      return '仅编辑身体部位物理状态。服装与饰品从存档保留。';
+    default:
+      return '';
+  }
+});
+
+const appearanceFormShowGarments = computed(
+  () => appearanceFormSlice.value === 'full' || appearanceFormSlice.value === 'clothing',
+);
+const appearanceFormShowJewelry = computed(
+  () => appearanceFormSlice.value === 'full' || appearanceFormSlice.value === 'jewelry',
+);
+const appearanceFormShowBody = computed(
+  () => appearanceFormSlice.value === 'full' || appearanceFormSlice.value === 'body',
+);
 
 // 防抖：防止短时间内重复点击
 let lastClickTime = 0;
@@ -3038,6 +3159,10 @@ async function openModal(type: string, payload?: Record<string, any>) {
     showSensitivePartDetails: false,
     sensitivePartDetails: [],
     identityTags: [],
+    backgroundCharacterIntro: '',
+    backgroundDescription: '',
+    backgroundSpeechRows: [],
+    backgroundHobbyRows: [],
     avatarUrl: '',
     appearanceClothing: defaultEmptyClothingState(),
     appearanceBodyGarmentRows: [],
@@ -3106,7 +3231,13 @@ async function openModal(type: string, payload?: Record<string, any>) {
     }
   }
 
-  if (type === 'edit_character_appearance' && payload?.characterId) {
+  const appearanceEditModalTypes = new Set([
+    'edit_character_appearance',
+    'edit_character_clothing',
+    'edit_character_jewelry',
+    'edit_character_body_physics',
+  ]);
+  if (appearanceEditModalTypes.has(type) && payload?.characterId) {
     try {
       const store = useDataStore();
       const rawChar = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
@@ -3115,6 +3246,16 @@ async function openModal(type: string, payload?: Record<string, any>) {
       modalForm.value.appearanceBodyGarmentRows = bodyGarmentRowsFromClothingState(cloth);
       modalForm.value.appearanceJewelryRows = jewelryRowsFromClothingState(cloth);
       modalForm.value.appearanceBodyPartRows = bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态);
+      if (type === 'edit_character_clothing') {
+        modalForm.value.appearanceJewelryRows = [];
+        modalForm.value.appearanceBodyPartRows = [];
+      } else if (type === 'edit_character_jewelry') {
+        modalForm.value.appearanceBodyGarmentRows = [];
+        modalForm.value.appearanceBodyPartRows = [];
+      } else if (type === 'edit_character_body_physics') {
+        modalForm.value.appearanceBodyGarmentRows = [];
+        modalForm.value.appearanceJewelryRows = [];
+      }
     } catch (e) {
       console.warn('预填外观与身体状态失败', e);
     }
@@ -3136,6 +3277,31 @@ async function openModal(type: string, payload?: Record<string, any>) {
       console.warn('预填身份标签失败', e);
     }
   }
+
+  if (type === 'edit_character_background_archive' && payload?.characterId) {
+    try {
+      const store = useDataStore();
+      const raw = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
+      const intro = String(raw?.角色简介 ?? raw?.characterIntro ?? '').trim();
+      const desc = String(raw?.描写 ?? raw?.description ?? raw?.desc ?? '').trim();
+      const speech = normalizeRepresentativeSpeechRecord(raw?.代表性发言);
+      const hobbies = normalizeHobbyRecord(raw?.爱好);
+      modalForm.value.backgroundCharacterIntro = intro;
+      modalForm.value.backgroundDescription = desc;
+      modalForm.value.backgroundSpeechRows = Object.entries(speech).map(([context, line]) => ({
+        context,
+        line: String(line ?? ''),
+      }));
+      modalForm.value.backgroundHobbyRows = Object.entries(hobbies).map(([name, v]) => ({
+        name,
+        level: Math.min(10, Math.max(0, Math.round(Number((v as { 等级?: number })?.等级) || 0))),
+        reason: String((v as { 喜欢的原因?: string })?.喜欢的原因 ?? ''),
+      }));
+    } catch (e) {
+      console.warn('预填背景与档案失败', e);
+    }
+  }
+
   if (type === 'add_character') {
     recruitWizard.applyDraftToModalForm(modalForm.value);
   }
@@ -3417,19 +3583,46 @@ async function onModalComplete() {
           devDetails: p.devDetails ?? '',
         })));
       }
-    } else if (type === 'edit_character_appearance' && payload?.characterId) {
-      const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
-      const clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
-      const body: Record<string, { 外观描述: string; 当前状态: string }> = {};
-      for (const row of form.appearanceBodyPartRows ?? []) {
-        const k = String(row.key ?? '').trim();
-        if (!k) continue;
-        body[k] = {
-          外观描述: String(row.外观描述 ?? ''),
-          当前状态: String(row.当前状态 ?? ''),
-        };
+    } else if (
+      (type === 'edit_character_appearance' ||
+        type === 'edit_character_clothing' ||
+        type === 'edit_character_jewelry' ||
+        type === 'edit_character_body_physics') &&
+      payload?.characterId
+    ) {
+      const characterId = String(payload.characterId);
+      const store = useDataStore();
+      const rawChar = store.data.角色档案?.[characterId] as Record<string, unknown> | undefined;
+      const curCloth = clothingStateFromMvuRaw(rawChar?.服装状态);
+
+      let clothing;
+      let body: Record<string, { 外观描述: string; 当前状态: string }>;
+
+      if (type === 'edit_character_clothing') {
+        clothing = mergeClothingAppearanceSubmit(
+          form.appearanceBodyGarmentRows ?? [],
+          jewelryRowsFromClothingState(curCloth).map(normalizeJewelryEditRow),
+        );
+        body = bodyPhysicsObjectFromPartRows(bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态));
+      } else if (type === 'edit_character_jewelry') {
+        clothing = mergeClothingAppearanceSubmit(
+          bodyGarmentRowsFromClothingState(curCloth),
+          (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow),
+        );
+        body = bodyPhysicsObjectFromPartRows(bodyPartRowsFromMvuRaw(rawChar?.身体部位物理状态));
+      } else if (type === 'edit_character_body_physics') {
+        clothing = mergeClothingAppearanceSubmit(
+          bodyGarmentRowsFromClothingState(curCloth),
+          jewelryRowsFromClothingState(curCloth).map(normalizeJewelryEditRow),
+        );
+        body = bodyPhysicsObjectFromPartRows(form.appearanceBodyPartRows);
+      } else {
+        const jewelryRows = (form.appearanceJewelryRows ?? []).map(normalizeJewelryEditRow);
+        clothing = mergeClothingAppearanceSubmit(form.appearanceBodyGarmentRows ?? [], jewelryRows);
+        body = bodyPhysicsObjectFromPartRows(form.appearanceBodyPartRows);
       }
-      messageText = await submitEditCharacterAppearance(payload.characterId, {
+
+      messageText = await submitEditCharacterAppearance(characterId, {
         服装状态: clothing,
         身体部位物理状态: body,
       });
@@ -3442,6 +3635,9 @@ async function onModalComplete() {
       }
       updateCharacterIdentityTags(payload.characterId, tagsObj);
       messageText = formatIdentityTagsMessage(payload.characterId, tagsObj);
+    } else if (type === 'edit_character_background_archive' && payload?.characterId) {
+      const payloadBg = buildBackgroundArchivePayloadFromModalForm(form);
+      messageText = await submitEditCharacterBackgroundArchive(String(payload.characterId), payloadBg);
     } else if (type === 'edit_avatar' && payload?.characterId) {
       const { submitEditCharacterAvatar } = await import('./utils/dialogAndVariable');
       const store = useDataStore();
@@ -4431,6 +4627,13 @@ async function handleRegenerateVariablesOnly() {
           gaps.push('敏感点开发（空对象，需填充；兼容旧键「敏感部位」）');
         }
         if (!c.隐藏性癖 || c.隐藏性癖 === '') gaps.push('隐藏性癖（空字符串，需填充）');
+        if (!c.角色简介 || String(c.角色简介).trim() === '') gaps.push('角色简介（空字符串，需基于正文推断）');
+        if (Object.keys(normalizeHobbyRecord(c.爱好)).length === 0) {
+          gaps.push('爱好（空对象，需至少一条日常兴趣标签）');
+        }
+        if (Object.keys(normalizeRepresentativeSpeechRecord(c.代表性发言)).length === 0) {
+          gaps.push('代表性发言（空对象，需至少一条场景台词）');
+        }
         if (!c.当前内心想法 || c.当前内心想法 === '') gaps.push('当前内心想法（空，需基于正文推断）');
         const loc = c.当前位置;
         const locBad =
@@ -4480,14 +4683,14 @@ ${maintext}
 </maintext>
 
 ## 核心任务（优先级从高到低）
-1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、当前内心想法、**当前位置**、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
+1. **补足现有角色空缺**：检查上述"现有角色档案空缺检测"中的角色，基于正文推断并填充所有空缺字段（性格、性癖、敏感点开发、隐藏性癖、**角色简介**、**爱好**、**代表性发言**、当前内心想法、**当前位置**、当前综合生理描述；**敏感点开发**为新键名，与旧 **敏感部位** 同形）
 2. **更新现有角色数值**：根据正文中的互动，更新好感度、发情值、性癖开发值等数值
 3. **创建新角色**：如果正文出现新角色，生成完整的角色档案（不得遗漏任何字段）
 4. **更新世界规则**：如有新规则生效或规则状态变化
 
 ## 重要原则
 - **优先使用 replace 更新现有角色**；新建路径可用 **add**；**insert** 与本界面合并器中与 **add** 等价（勿与「delta」混淆）
-- **绝对禁止**：让性格、性癖、敏感点开发保持为空对象 {}；让隐藏性癖、当前内心想法保持为空白字符串
+- **绝对禁止**：让性格、性癖、敏感点开发、爱好、代表性发言保持为空对象 {}；让隐藏性癖、当前内心想法、角色简介保持为空白字符串
 - **基于正文推断**：即使没有直接描述，也要根据上下文合理推断角色的心理和生理状态
 
 ## 输出要求
@@ -9982,6 +10185,10 @@ body.has-dragging-fab {
     grid-column: 1 / -1;
   }
 
+  &.detail-field--desc-narrow {
+    max-width: min(100%, 22rem);
+  }
+
   label {
     font-size: 11px;
     color: #71717a;
@@ -10039,6 +10246,74 @@ body.has-dragging-fab {
     color: #71717a;
     margin-bottom: 16px;
     line-height: 1.5;
+  }
+}
+
+// 背景与档案（角色简介、描写、代表性发言、爱好）
+.character-background-archive-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.character-bg-archive-section {
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+
+  &__title {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e4e4e7;
+    letter-spacing: 0.02em;
+  }
+
+  .form-textarea--intro-block {
+    min-height: 6.5rem;
+    max-height: min(40vh, 280px);
+    resize: vertical;
+    width: 100%;
+  }
+
+  .character-bg-desc-line {
+    max-width: min(100%, 22rem);
+  }
+
+  .background-archive-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+
+    .form-input {
+      flex: 1 1 140px;
+      min-width: 0;
+    }
+
+    .btn-icon {
+      flex-shrink: 0;
+    }
+  }
+
+  .character-bg-hobby-level {
+    flex: 0 0 4.5rem;
+    max-width: 5rem;
+  }
+
+  .btn-secondary {
+    margin-top: 4px;
+  }
+}
+
+.light .character-bg-archive-section {
+  border-color: rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+
+  .character-bg-archive-section__title {
+    color: #27272a;
   }
 }
 
