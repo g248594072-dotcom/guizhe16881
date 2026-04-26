@@ -1,3 +1,4 @@
+import CssMinimizerPlugin from 'css-minimizer-webpack-plugin';
 import { FSWatcher, watch } from 'chokidar';
 import HtmlInlineScriptWebpackPlugin from 'html-inline-script-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
@@ -568,6 +569,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 mangle: false,
               },
             }),
+        ...(argv.mode === 'production' ? [new CssMinimizerPlugin()] : []),
       ],
       splitChunks: {
         chunks: 'async',
