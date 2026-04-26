@@ -495,6 +495,14 @@ export interface OtherSettings {
   showGameTimeHud: boolean;
   /** 抢话/防抢话：世界书中四选一；默认一般防抢话 */
   speechIntentWorldbookMode: SpeechIntentWorldbookMode;
+  /**
+   * 招募确认「复制到对话框」时，拼在 `<UpdateVariable>` **前面**的固定句（可留空）。
+   */
+  recruitVariableCopyPrefix: string;
+  /**
+   * 招募复制时拼在变量块**后面**；`{IDS}` 替换为本次新增的 `CHR-001 CHR-002`…（空格分隔，顺序与选人一致）。
+   */
+  recruitVariableCopySuffixTemplate: string;
 }
 
 export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
@@ -505,4 +513,6 @@ export const DEFAULT_OTHER_SETTINGS: OtherSettings = {
   copyStagingChangeHintsToInput: true,
   showGameTimeHud: true,
   speechIntentWorldbookMode: 'anti_soft',
+  recruitVariableCopyPrefix: '(前方可以自由发言，后面别动。)',
+  recruitVariableCopySuffixTemplate: '(接下来必须出场角色{IDS}并且补齐和完善确实的变量！)',
 };

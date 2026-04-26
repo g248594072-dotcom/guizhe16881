@@ -66,6 +66,18 @@ export function getOtherSettings(): OtherSettings {
       speechIntentWorldbookMode: parseSpeechIntentWorldbookMode(
         settings?.speechIntentWorldbookMode ?? local?.speechIntentWorldbookMode,
       ),
+      recruitVariableCopyPrefix:
+        typeof settings?.recruitVariableCopyPrefix === 'string'
+          ? settings.recruitVariableCopyPrefix
+          : typeof local?.recruitVariableCopyPrefix === 'string'
+            ? local.recruitVariableCopyPrefix
+            : DEFAULT_OTHER_SETTINGS.recruitVariableCopyPrefix,
+      recruitVariableCopySuffixTemplate:
+        typeof settings?.recruitVariableCopySuffixTemplate === 'string'
+          ? settings.recruitVariableCopySuffixTemplate
+          : typeof local?.recruitVariableCopySuffixTemplate === 'string'
+            ? local.recruitVariableCopySuffixTemplate
+            : DEFAULT_OTHER_SETTINGS.recruitVariableCopySuffixTemplate,
     };
   } catch (error) {
     console.warn('⚠️ [otherSettings] 获取其他设置失败，使用默认值:', error);

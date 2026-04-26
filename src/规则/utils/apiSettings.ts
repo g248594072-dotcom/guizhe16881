@@ -9,7 +9,7 @@ import { loadOutputMode, loadSecondaryApiConfig } from './localSettings';
 import { normalizeOpenAiUrl, type NormalizedOpenAiUrl } from './openaiUrl';
 import { DEFAULT_SECONDARY_API_CONFIG } from './secondaryApiDefaults';
 import { getMergedSensitiveDevelopment } from './tagMap';
-import { getTavernMainOpenAiCredentials, getTavernMainOpenAiEndpoint } from './tavernMainConnection';
+import { getTavernMainOpenAiEndpoint } from './tavernMainConnection';
 import {
   formatPersonalRuleKeysSection,
   VARIABLE_JSON_PATCH_RUNTIME_RULES,
@@ -274,14 +274,14 @@ export function isSecondaryApiConfigured(config: SecondaryApiConfig | null | und
 }
 
 /**
- * 双 API 模式下实际发送前：第二路是否可调用。
- * - 与酒馆插头相同时：须能读到主对话 OpenAI 兼容凭据；
- * - 自定义时：须有非空 Key，且 API 地址为合法 `http(s)` 并经 `normalizeOpenAiUrl` 校验通过。
+ * 双 API 模式主流程（发消息、第二路 generate 等）发送前：是否允许进入（不因「未读到凭据」拦死）。
+ * - 勾选与主对话相同插头：视为第二路已配置，始终 true；若运行时尚无可用第二路，由实际调用抛错。
+ * - 自定义第二 API：须有非空 Key，且 API 地址为合法 `http(s)` 并经 `normalizeOpenAiUrl` 校验通过。
  */
 export function isSecondaryApiReadyForDualOperation(config: SecondaryApiConfig | null | undefined): boolean {
   if (!config) return false;
   if (config.useTavernMainConnection === true) {
-    return getTavernMainOpenAiCredentials() !== null;
+    return true;
   }
   const key = String(config.key || '').trim();
   const url = String(config.url || '').trim();
@@ -295,14 +295,13 @@ export function isSecondaryApiReadyForDualOperation(config: SecondaryApiConfig |
 }
 
 /**
- * 招募「AI 生成候选人」是否具备调用条件（与 `generateCompanionRecruitBlock` 直连 chat/completions 分支一致）。
- * - 勾选「使用酒馆相同连接」：须能读到主对话 OpenAI 兼容凭据。
- * - 自定义第二 API：须非空 URL、Key、模型名，且 URL 可经 normalizeOpenAiUrl 校验。
+ * 招募「AI 生成候选人」是否具备调用条件（与 `generateCompanionRecruitBlock` 直连 chat/completions 一致）。
+ * - 仅当第二路为自定义 URL（未勾选与主对话相同插头）且非空 URL、Key、模型，且 URL 可经 normalizeOpenAiUrl 校验。勾选酒馆插头、第二路仅走主对话时不可用招募生成。
  */
 export function isRecruitCompanionGenerateReady(): boolean {
   const config = getSecondaryApiConfig();
   if (config.useTavernMainConnection === true) {
-    return getTavernMainOpenAiCredentials() !== null;
+    return false;
   }
   const key = String(config.key || '').trim();
   const url = String(config.url || '').trim();

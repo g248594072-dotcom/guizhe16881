@@ -6,9 +6,8 @@ import { z } from 'zod';
 import { Schema } from '../schema';
 import { clothingStateFromMvuRaw, createEmptyCharacterRecord } from './dialogAndVariable';
 import { allocateNextChrId } from './chrId';
-import { getSecondaryApiConfig, isSecondaryApiReadyForDualOperation } from './apiSettings';
+import { getSecondaryApiConfig, isRecruitCompanionGenerateReady } from './apiSettings';
 import { normalizeOpenAiUrl } from './openaiUrl';
-import { getTavernMainOpenAiCredentials } from './tavernMainConnection';
 import {
   normalizeFetishRecord,
   normalizeHobbyRecord,
@@ -455,17 +454,15 @@ async function parseOpenAiChatCompletionsContent(response: Response): Promise<st
 }
 
 /**
- * 与随机规则生成相同：优先第二 API 自定义地址；若勾选「使用酒馆相同连接」则走当前聊天补全插头。
+ * 与随机规则生成相同：仅使用第二 API 自定义地址直连 chat/completions（第二路为酒馆插头时招募不可用）。
  */
 async function generateCompanionRecruitViaSecondaryChat(
   systemPrompt: string,
   userPrompt: string,
 ): Promise<string> {
   const config = getSecondaryApiConfig();
-  if (!isSecondaryApiReadyForDualOperation(config)) {
-    throw new Error(
-      '未配置可用的第二 API：请填写 URL 与 Key，或勾选「使用酒馆相同连接」并确保能读取主对话 OpenAI 兼容凭据。',
-    );
+  if (!isRecruitCompanionGenerateReady()) {
+    throw new Error('AI 生成候选人需使用自定义第二 API：请取消勾选「使用酒馆当前聊天补全」并填写 URL、Key 与模型。');
   }
 
   const messages: Array<{ role: 'system' | 'user'; content: string }> = [
@@ -477,27 +474,6 @@ async function generateCompanionRecruitViaSecondaryChat(
     temperature: RECRUIT_CHAT_TEMPERATURE,
     max_tokens: RECRUIT_CHAT_MAX_TOKENS,
   };
-
-  if (config.useTavernMainConnection === true) {
-    const creds = getTavernMainOpenAiCredentials();
-    if (!creds) {
-      throw new Error(
-        '已启用「使用酒馆相同连接」，但未读取到主对话 API（例如 Azure 或未填代理密钥）。请改用自定义第二 API URL + Key。',
-      );
-    }
-    const response = await fetch(creds.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${creds.key}`,
-      },
-      body: JSON.stringify({
-        model: creds.model,
-        ...bodyBase,
-      }),
-    });
-    return parseOpenAiChatCompletionsContent(response);
-  }
 
   const url = String(config.url ?? '').trim();
   const key = String(config.key ?? '').trim();

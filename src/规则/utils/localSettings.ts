@@ -160,6 +160,8 @@ const DEFAULT_OTHER_LOCAL: OtherSettings = {
   copyStagingChangeHintsToInput: true,
   showGameTimeHud: true,
   speechIntentWorldbookMode: 'anti_soft',
+  recruitVariableCopyPrefix: '(前方可以自由发言，后面别动。)',
+  recruitVariableCopySuffixTemplate: '(接下来必须出场角色{IDS}并且补齐和完善确实的变量！)',
 };
 
 export function loadOtherSettings(): OtherSettings {
@@ -193,6 +195,14 @@ export function loadOtherSettings(): OtherSettings {
             ? parsed.showGameTimeHud
             : DEFAULT_OTHER_LOCAL.showGameTimeHud,
         speechIntentWorldbookMode: parseSpeechIntentWorldbookMode(parsed.speechIntentWorldbookMode),
+        recruitVariableCopyPrefix:
+          typeof parsed.recruitVariableCopyPrefix === 'string'
+            ? parsed.recruitVariableCopyPrefix
+            : DEFAULT_OTHER_LOCAL.recruitVariableCopyPrefix,
+        recruitVariableCopySuffixTemplate:
+          typeof parsed.recruitVariableCopySuffixTemplate === 'string'
+            ? parsed.recruitVariableCopySuffixTemplate
+            : DEFAULT_OTHER_LOCAL.recruitVariableCopySuffixTemplate,
       };
     }
   } catch (error) {

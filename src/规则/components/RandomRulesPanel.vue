@@ -331,7 +331,6 @@ import {
   stageItem,
 } from '../utils/editCartFlow';
 import { getSecondaryApiConfig } from '../utils/apiSettings';
-import { loadSecondaryApiConfig, saveSecondaryApiConfig } from '../utils/localSettings';
 import { normalizeOpenAiUrl } from '../utils/openaiUrl';
 import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
 import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
@@ -370,9 +369,6 @@ const errorMessage = ref('');
 // 主题输入相关
 const showThemeDialog = ref(false);
 const themeInput = ref('');
-
-/** 与 SettingsPanel 同步：第二 API 从 localStorage 更新后通知侧栏刷新 */
-const SECONDARY_API_SYNC_EVENT = 'rule-modifier-secondary-api-updated';
 
 const showRandomRulesAddressModal = ref(false);
 
@@ -446,22 +442,8 @@ function getActiveRegions(): Array<{ name: string; data: RegionData }> {
     .map(([name, data]) => ({ name: data.名称 || name, data }));
 }
 
-/**
- * 无第二 API 地址时：关回「使用插头」、通知系统设置侧栏、弹出说明（随机规则仅支持填写 URL 的直连）。
- */
-function turnOffTavernPlugIfNeededAndSyncSettings() {
-  const c = loadSecondaryApiConfig();
-  if (c.useTavernMainConnection) {
-    c.useTavernMainConnection = false;
-    saveSecondaryApiConfig(c);
-  }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(SECONDARY_API_SYNC_EVENT));
-  }
-}
-
+/** 无非空第二 API 直连地址时：仅弹窗说明（不修改「使用酒馆插头」开关）。 */
 function openRandomRulesAddressRequiredModal() {
-  turnOffTavernPlugIfNeededAndSyncSettings();
   showRandomRulesAddressModal.value = true;
 }
 

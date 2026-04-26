@@ -186,7 +186,8 @@
           @change="onSecondaryTavernPlugChange"
         />
         <span
-          >使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效；未填下方 API URL 时勾选将提示与随机规则、招募生成相关说明）</span
+          >使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效；下方 API
+          URL 可留空。随机规则与「AI 生成候选人」需先取消本勾并另填第二 API 直连、密钥与模型。）</span
         >
       </label>
 
@@ -494,7 +495,7 @@
 
       <p class="option-behavior-hint">
         点击剧情选项（A / B / C 等）时，将选项文本<strong>直接发送给 AI</strong>，或
-        <strong>仅填入本界面底部输入框</strong>（可再编辑后手动发送），在此选择行为。
+        <strong>插入本界面底部输入框最前面</strong>（其后保留你已输入的内容，可再编辑后手动发送），在此选择行为。
       </p>
       <div class="mode-cards mode-cards--standalone">
         <div
@@ -545,12 +546,50 @@
             </div>
           </div>
           <div class="mode-body">
-            <p class="mode-desc">将选项文本写入前端对话框，不自动发送</p>
+            <p class="mode-desc">将选项文本插到输入框<strong>开头</strong>，不自动发送</p>
             <ul class="mode-features">
+              <li><i class="fa-solid fa-check"></i> 已有正文会排在选项后面</li>
               <li><i class="fa-solid fa-check"></i> 可修改、补充后再发送</li>
-              <li><i class="fa-solid fa-check"></i> 更安全，避免误点</li>
             </ul>
           </div>
+        </div>
+      </div>
+
+      <div
+        class="edit-staging-cart-toggle recruit-copy-wrap-card"
+        :class="{ dark: isDarkMode, light: !isDarkMode }"
+      >
+        <div class="shujuku-master-section-head">
+          <div class="shujuku-master-icon">
+            <i class="fa-solid fa-user-plus"></i>
+          </div>
+          <div class="shujuku-master-section-titles">
+            <span class="shujuku-master-section-title">招募复制到对话框时的首尾句</span>
+            <p class="shujuku-master-section-lead">
+              确认选择候选人并复制时，会在 <code>&lt;UpdateVariable&gt;</code> 块<strong>前</strong>加首句、<strong>后</strong>加尾句。尾句模板中的
+              <code>{IDS}</code> 会替换为本次新增的编号（空格分隔，如 <code>CHR-001 CHR-002</code>），顺序与勾选一致。
+            </p>
+          </div>
+        </div>
+        <div class="recruit-copy-wrap-fields">
+          <label class="recruit-copy-wrap-label" for="recruit-copy-prefix">前缀（变量块之前）</label>
+          <textarea
+            id="recruit-copy-prefix"
+            v-model="recruitVariableCopyPrefix"
+            class="recruit-copy-wrap-textarea"
+            rows="2"
+            :class="{ dark: isDarkMode, light: !isDarkMode }"
+            @blur="persistRecruitVariableCopyWrap"
+          />
+          <label class="recruit-copy-wrap-label" for="recruit-copy-suffix">后缀模板（变量块之后）</label>
+          <textarea
+            id="recruit-copy-suffix"
+            v-model="recruitVariableCopySuffixTemplate"
+            class="recruit-copy-wrap-textarea"
+            rows="2"
+            :class="{ dark: isDarkMode, light: !isDarkMode }"
+            @blur="persistRecruitVariableCopyWrap"
+          />
         </div>
       </div>
 
@@ -820,6 +859,10 @@ const showGameTimeHud = ref(true);
 /** 抢话/防抢话世界书四选一（与 OtherSettings 一致，默认一般防抢话） */
 const speechIntentWorldbookMode = ref<SpeechIntentWorldbookMode>('anti_soft');
 
+/** 招募复制到对话框：变量块前的固定句、块后模板（含 {IDS}） */
+const recruitVariableCopyPrefix = ref('');
+const recruitVariableCopySuffixTemplate = ref('');
+
 const speechIntentWorldModes = SPEECH_INTENT_WORLD_MODES;
 
 function speechIntentOptionLabel(mode: SpeechIntentWorldbookMode): string {
@@ -831,31 +874,15 @@ const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG }
 async function onSecondaryTavernPlugChange() {
   const urlEmpty = !String(secondaryApi.value.url ?? '').trim();
   if (secondaryApi.value.useTavernMainConnection && urlEmpty) {
-    secondaryApi.value.useTavernMainConnection = false;
-    const r = await Swal.fire({
+    await Swal.fire({
       title: '提示',
       text: '如果空着第二API地址不填写的话，无法使用随机规则和AI生成角色喵~',
       icon: 'info',
       confirmButtonText: '知道了',
     });
-    if (r.isConfirmed) {
-      secondaryApi.value.useTavernMainConnection = true;
-      persistSecondaryApi();
-    }
-    return;
   }
   persistSecondaryApi();
 }
-
-watch(
-  () => String(secondaryApi.value.url ?? '').trim(),
-  trimmed => {
-    if (!trimmed && secondaryApi.value.useTavernMainConnection) {
-      secondaryApi.value.useTavernMainConnection = false;
-      persistSecondaryApi();
-    }
-  },
-);
 
 const SECONDARY_API_SYNC_EVENT = 'rule-modifier-secondary-api-updated';
 const OUTPUT_MODE_SYNC_EVENT = 'rule-modifier-output-mode-updated';
@@ -873,10 +900,6 @@ function reloadSecondaryApiFromStorage() {
     const loaded = loadSecondaryApiConfig();
     loaded.maxRetries = clampSecondaryApiRetries(loaded.maxRetries);
     secondaryApi.value = loaded;
-    if (!String(secondaryApi.value.url || '').trim() && secondaryApi.value.useTavernMainConnection) {
-      secondaryApi.value.useTavernMainConnection = false;
-      saveSecondaryApiConfig(secondaryApi.value);
-    }
   } catch (e) {
     console.warn('[SettingsPanel] reloadSecondaryApiFromStorage failed:', e);
   }
@@ -1156,10 +1179,6 @@ function loadSettings() {
     const loaded = loadSecondaryApiConfig();
     loaded.maxRetries = clampSecondaryApiRetries(loaded.maxRetries);
     secondaryApi.value = loaded;
-    if (!String(secondaryApi.value.url || '').trim() && secondaryApi.value.useTavernMainConnection) {
-      secondaryApi.value.useTavernMainConnection = false;
-      saveSecondaryApiConfig(secondaryApi.value);
-    }
     const other = getOtherSettings();
     inputActionMode.value = other.inputActionMode;
     enableShujukuPlotAdvance.value = other.enableShujukuPlotAdvance;
@@ -1168,6 +1187,8 @@ function loadSettings() {
     copyStagingChangeHintsToInput.value = other.copyStagingChangeHintsToInput;
     showGameTimeHud.value = other.showGameTimeHud;
     speechIntentWorldbookMode.value = other.speechIntentWorldbookMode;
+    recruitVariableCopyPrefix.value = other.recruitVariableCopyPrefix ?? '';
+    recruitVariableCopySuffixTemplate.value = other.recruitVariableCopySuffixTemplate ?? '';
     fontSettings.value = loadFontSettings();
     applyFont(fontSettings.value.currentFontId);
     console.log('✅ [SettingsPanel] 设置从 localStorage 加载成功:', {
@@ -1264,6 +1285,8 @@ function saveSettings(layoutSnapshot?: UiLayoutSettings) {
       copyStagingChangeHintsToInput: copyStagingChangeHintsToInput.value,
       showGameTimeHud: showGameTimeHud.value,
       speechIntentWorldbookMode: speechIntentWorldbookMode.value,
+      recruitVariableCopyPrefix: recruitVariableCopyPrefix.value,
+      recruitVariableCopySuffixTemplate: recruitVariableCopySuffixTemplate.value,
     });
     showSaveSuccess.value = true;
     setTimeout(() => {
@@ -1382,6 +1405,17 @@ async function persistEnableEditStagingCart() {
   );
 }
 
+function persistRecruitVariableCopyWrap() {
+  if (!saveOtherSettings({
+    recruitVariableCopyPrefix: recruitVariableCopyPrefix.value,
+    recruitVariableCopySuffixTemplate: recruitVariableCopySuffixTemplate.value,
+  })) {
+    throttledErrorToast('变量不可写，招募首尾句未保存');
+    return;
+  }
+  toastr.success('已保存：招募复制首尾句');
+}
+
 function selectInputActionMode(mode: InputActionMode) {
   if (inputActionMode.value === mode) return;
   inputActionMode.value = mode;
@@ -1390,7 +1424,9 @@ function selectInputActionMode(mode: InputActionMode) {
   setTimeout(() => {
     showSaveSuccess.value = false;
   }, 2000);
-  toastr.success(mode === 'send' ? '已设为：点击选项直接发送' : '已设为：点击选项填入输入框');
+  toastr.success(
+    mode === 'send' ? '已设为：点击选项直接发送' : '已设为：点击选项插入输入框开头',
+  );
 }
 
 async function selectMode(mode: OutputMode) {
@@ -1621,6 +1657,58 @@ async function selectMode(mode: OutputMode) {
 
 .staging-summary-settings-card__icon {
   background: linear-gradient(135deg, #2563eb, #60a5fa) !important;
+}
+
+.recruit-copy-wrap-card {
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.dark .recruit-copy-wrap-card {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.light .recruit-copy-wrap-card {
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.recruit-copy-wrap-card .shujuku-master-icon {
+  background: linear-gradient(135deg, #059669, #34d399);
+}
+
+.recruit-copy-wrap-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.recruit-copy-wrap-label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.recruit-copy-wrap-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 44px;
+}
+
+.recruit-copy-wrap-textarea.light {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+}
+
+.recruit-copy-wrap-textarea.dark {
+  border: 1px solid rgba(248, 250, 252, 0.12);
+  background: rgba(15, 23, 42, 0.55);
+  color: #f1f5f9;
 }
 
 .shujuku-toggle-row {

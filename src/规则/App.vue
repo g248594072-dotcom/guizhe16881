@@ -2290,8 +2290,15 @@ async function confirmRecruitToArchive() {
     });
     if (!confirmCopy.isConfirmed) return;
 
+    const { applyRecruitVariableCopyWrap } = await import('./utils/recruitVariableCopyWrap');
+    const { getOtherSettings } = await import('./utils/otherSettings');
+    const other = getOtherSettings();
+    const wrapped = applyRecruitVariableCopyWrap(built.text, built.newIds, {
+      prefix: other.recruitVariableCopyPrefix,
+      suffixTemplate: other.recruitVariableCopySuffixTemplate,
+    });
     const { sendToDialog } = await import('./utils/dialogAndVariable');
-    await sendToDialog(built.text, true, { suppressSuccessToast: true });
+    await sendToDialog(wrapped, true, { suppressSuccessToast: true });
     toastr.success(`已填入对话框：${ids}（发送后由 MVU 应用）`);
     closeModal();
     recruitWizard.clear();
@@ -4247,14 +4254,14 @@ async function selectOption(optionId: string) {
     userInput.value = option.text;
     await sendMessage();
   } else {
-    // 追加到输入框模式（默认）：追加到现有内容
+    // 填入输入框模式（默认）：插到**最前面**，其后为原有内容
     const currentInput = userInput.value.trim();
     if (currentInput) {
-      userInput.value = currentInput + '\n\n' + option.text;
+      userInput.value = option.text + '\n\n' + currentInput;
     } else {
       userInput.value = option.text;
     }
-    toastr.success('选项已追加到输入框');
+    toastr.success('选项已插入到输入框开头');
   }
 }
 
