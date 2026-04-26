@@ -153,16 +153,16 @@ const emptyClothingSlot = () => ({}) as Record<string, { 状态: string; 描述:
 
 /**
  * 新建一条「角色档案」条目的默认骨架（与 `addCharacterToVariables` 写入形状一致），供招募解析或本地拼装后 `Schema.safeParse` 再写入。
+ * @param 角色简介初始 可选；写入 **角色简介**（不再写入已废弃的「描写」键）
  */
-export function createEmptyCharacterRecord(姓名: string, 描写: string): Record<string, unknown> {
+export function createEmptyCharacterRecord(姓名: string, 角色简介初始?: string): Record<string, unknown> {
   const n = String(姓名 ?? '').trim() || '未命名';
-  const desc = String(描写 ?? '').trim();
+  const intro = String(角色简介初始 ?? '').trim();
   return {
     姓名: n,
     状态: '出场中',
-    角色简介: '',
+    角色简介: intro,
     代表性发言: {},
-    描写: desc,
     爱好: {},
     当前内心想法: '',
     当前位置: {
@@ -265,7 +265,7 @@ export function updateCharacterInVariables(characterId: string, updates: Partial
   if (!char) return;
 
   if (updates.name != null) char.姓名 = updates.name;
-  if (updates.description != null) char.描写 = updates.description;
+  if (updates.description != null) char.角色简介 = updates.description;
 
   if (updates.basic) {
     const b = updates.basic;
@@ -367,10 +367,38 @@ function formatSensitivePsychLine(rec: Record<string, SensitiveEntryZh> | undefi
   return `敏感点开发：${s}`;
 }
 
+function formatHobbyLineForEditPsych(
+  爱好: Record<string, { 等级: number; 喜欢的原因: string }> | undefined,
+): string | null {
+  if (!爱好 || Object.keys(爱好).length === 0) return null;
+  const s = Object.entries(爱好)
+    .map(([k, o]) => {
+      const r = (o.喜欢的原因 ?? '').trim();
+      return r ? `「${k}」Lv.${o.等级}：${r}` : `「${k}」Lv.${o.等级}`;
+    })
+    .join('；');
+  return `爱好：${s}`;
+}
+
+export function buildHobbyRecordFromModalRows(
+  rows: Array<{ name?: string; level?: number; reason?: string }> | undefined,
+): Record<string, { 等级: number; 喜欢的原因: string }> {
+  const 爱好: Record<string, { 等级: number; 喜欢的原因: string }> = {};
+  for (const r of rows ?? []) {
+    const k = String(r.name ?? '').trim();
+    if (!k) continue;
+    const lv = Math.round(Number(r.level));
+    const 等级 = Number.isFinite(lv) ? Math.max(0, Math.min(10, lv)) : 1;
+    爱好[k] = { 等级, 喜欢的原因: String(r.reason ?? '') };
+  }
+  return 爱好;
+}
+
 export function formatEditCharacterPsychMessage(payload: {
   characterId: string;
   当前内心想法?: string;
   性格?: Record<string, string>;
+  爱好?: Record<string, { 等级: number; 喜欢的原因: string }>;
   性癖?: Record<string, FetishEntryZh>;
   敏感点开发?: Record<string, SensitiveEntryZh>;
   隐藏性癖?: string;
@@ -379,6 +407,8 @@ export function formatEditCharacterPsychMessage(payload: {
   if (payload.当前内心想法 != null) lines.push(`当前内心想法：${String(payload.当前内心想法)}`);
   const t1 = formatTagMapLine('性格', payload.性格);
   if (t1) lines.push(t1);
+  const tH = formatHobbyLineForEditPsych(payload.爱好);
+  if (tH) lines.push(tH);
   const t2 = formatFetishPsychLine(payload.性癖);
   if (t2) lines.push(t2);
   const t3 = formatSensitivePsychLine(payload.敏感点开发);
@@ -392,6 +422,7 @@ export function updateCharacterPsychInChineseVariables(
   updates: {
     当前内心想法?: string;
     性格?: Record<string, string>;
+    爱好?: Record<string, { 等级: number; 喜欢的原因: string }>;
     性癖?: Record<string, FetishEntryZh>;
     敏感点开发?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
@@ -404,6 +435,7 @@ export function updateCharacterPsychInChineseVariables(
 
   if (updates.当前内心想法 != null) char.当前内心想法 = updates.当前内心想法;
   if (updates.性格 != null) char.性格 = updates.性格;
+  if (updates.爱好 != null) char.爱好 = { ...updates.爱好 };
   if (updates.性癖 != null) char.性癖 = updates.性癖;
   if (updates.敏感点开发 != null) char.敏感点开发 = updates.敏感点开发;
   if (updates.隐藏性癖 != null) char.隐藏性癖 = updates.隐藏性癖;
@@ -416,6 +448,7 @@ export async function submitEditCharacterPsych(
   payload: {
     thought?: string;
     traitsText?: string;
+    hobbyRows?: Array<{ name?: string; level?: number; reason?: string }>;
     fetishesText?: string;
     sensitivePartsText?: string;
     hiddenFetish?: string;
@@ -425,6 +458,7 @@ export async function submitEditCharacterPsych(
   const updates: {
     当前内心想法?: string;
     性格?: Record<string, string>;
+    爱好?: Record<string, { 等级: number; 喜欢的原因: string }>;
     性癖?: Record<string, FetishEntryZh>;
     敏感点开发?: Record<string, SensitiveEntryZh>;
     隐藏性癖?: string;
@@ -432,6 +466,9 @@ export async function submitEditCharacterPsych(
 
   if (payload.thought !== undefined) updates.当前内心想法 = String(payload.thought ?? '');
   if (payload.traitsText !== undefined) updates.性格 = parseEditableTextToTagMap(payload.traitsText ?? '');
+  if (payload.hobbyRows !== undefined) {
+    updates.爱好 = normalizeHobbyRecord(buildHobbyRecordFromModalRows(payload.hobbyRows));
+  }
   if (payload.fetishesText !== undefined) updates.性癖 = parseEditableTextToFetishRecord(payload.fetishesText ?? '');
   if (payload.sensitivePartsText !== undefined) {
     updates.敏感点开发 = parseEditableTextToSensitiveRecord(payload.sensitivePartsText ?? '');
@@ -530,15 +567,13 @@ export function updateCharacterIdentityTags(characterId: string, tags: Record<st
 }
 
 /**
- * 写入 MVU「角色简介」「描写」「代表性发言」「爱好」（与 schema 键名一致）
+ * 写入 MVU「角色简介」「代表性发言」（与 schema 键名一致；「爱好」在「编辑性格」中写入）。不再写入「描写」；若旧档存在该键则删除。
  */
 export function updateCharacterBackgroundArchiveInVariables(
   characterId: string,
   payload: {
     角色简介: string;
-    描写: string;
     代表性发言: Record<string, string>;
-    爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
   },
 ): void {
   if (isRulesMvuArchiveSnapshot()) return;
@@ -547,49 +582,39 @@ export function updateCharacterBackgroundArchiveInVariables(
   if (!char || typeof char !== 'object') return;
 
   char.角色简介 = payload.角色简介;
-  char.描写 = payload.描写;
   char.代表性发言 = { ...payload.代表性发言 };
-  char.爱好 = { ...payload.爱好 };
+  delete char.描写;
 
   bumpUpdateTime();
 }
 
 export function formatEditCharacterBackgroundArchiveMessage(characterId: string): string {
-  return ['[编辑背景与档案]', `角色ID：${characterId}`, '已更新：角色简介、描写、代表性发言、爱好。'].join('\n');
+  return ['[编辑背景与档案]', `角色ID：${characterId}`, '已更新：角色简介、代表性发言。'].join('\n');
 }
 
 export async function submitEditCharacterBackgroundArchive(
   characterId: string,
   payload: {
     角色简介: string;
-    描写: string;
     代表性发言: Record<string, string>;
-    爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
   },
 ): Promise<string> {
   if (!tryRulesMvuWritable()) return '';
   const 代表性发言 = normalizeRepresentativeSpeechRecord(payload.代表性发言);
-  const 爱好 = normalizeHobbyRecord(payload.爱好);
   updateCharacterBackgroundArchiveInVariables(characterId, {
     角色简介: String(payload.角色简介 ?? ''),
-    描写: String(payload.描写 ?? ''),
     代表性发言,
-    爱好,
   });
   return formatEditCharacterBackgroundArchiveMessage(characterId);
 }
 
-/** 将弹窗/暂存表单行合并为写入 MVU 的 payload（再经 submit 内 normalize） */
+/** 将弹窗/暂存表单行合并为写入 MVU 的 payload（再经 submit 内 normalize；不含「爱好」） */
 export function buildBackgroundArchivePayloadFromModalForm(form: {
   backgroundCharacterIntro?: string;
-  backgroundDescription?: string;
   backgroundSpeechRows?: Array<{ context?: string; line?: string }>;
-  backgroundHobbyRows?: Array<{ name?: string; level?: number; reason?: string }>;
 }): {
   角色简介: string;
-  描写: string;
   代表性发言: Record<string, string>;
-  爱好: Record<string, { 等级: number; 喜欢的原因: string }>;
 } {
   const 代表性发言: Record<string, string> = {};
   for (const r of form.backgroundSpeechRows ?? []) {
@@ -597,19 +622,9 @@ export function buildBackgroundArchivePayloadFromModalForm(form: {
     if (!k) continue;
     代表性发言[k] = String(r.line ?? '');
   }
-  const 爱好: Record<string, { 等级: number; 喜欢的原因: string }> = {};
-  for (const r of form.backgroundHobbyRows ?? []) {
-    const k = String(r.name ?? '').trim();
-    if (!k) continue;
-    const lv = Math.round(Number(r.level));
-    const 等级 = Number.isFinite(lv) ? Math.max(0, Math.min(10, lv)) : 1;
-    爱好[k] = { 等级, 喜欢的原因: String(r.reason ?? '') };
-  }
   return {
     角色简介: String(form.backgroundCharacterIntro ?? ''),
-    描写: String(form.backgroundDescription ?? ''),
     代表性发言,
-    爱好,
   };
 }
 

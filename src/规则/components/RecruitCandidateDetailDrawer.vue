@@ -71,11 +71,58 @@
             </dl>
           </section>
 
-          <section v-if="clothingJsonDisplay" class="rcd-card rcd-card--wide">
+          <section v-if="clothingStatusLine" class="rcd-card rcd-card--wide rcd-card--clothing">
             <span class="rcd-bracket-tl" aria-hidden="true" />
             <span class="rcd-bracket-br" aria-hidden="true" />
             <h3 class="rcd-card-title">服装状态</h3>
-            <pre class="rcd-pre">{{ clothingJsonDisplay }}</pre>
+            <p v-if="clothingJsonInvalid" class="rcd-clothing-error">无法解析服装状态 JSON，请检查 AI 输出。</p>
+            <template v-else>
+              <div class="rcd-clothing-grid">
+                <div v-for="block in clothingSlotBlocks" :key="'slot-' + block.slotKey" class="rcd-clothing-slot-card">
+                  <div class="rcd-clothing-slot-head">
+                    <span class="rcd-clothing-slot-title">{{ block.slotKey }}</span>
+                  </div>
+                  <div class="rcd-clothing-slot-items">
+                    <template v-if="block.items.length">
+                      <div v-for="row in block.items" :key="block.slotKey + '-' + row.name" class="rcd-clothing-item">
+                        <span class="rcd-clothing-name-pill">{{ row.name }}</span>
+                        <div class="rcd-clothing-meta-row">
+                          <span class="rcd-meta-k">状态</span>
+                          <span class="rcd-meta-v">{{ row.状态 }}</span>
+                        </div>
+                        <div v-if="row.描述" class="rcd-clothing-meta-row">
+                          <span class="rcd-meta-k">描述</span>
+                          <span class="rcd-meta-v">{{ row.描述 }}</span>
+                        </div>
+                      </div>
+                    </template>
+                    <p v-else class="rcd-clothing-empty">暂无</p>
+                  </div>
+                </div>
+              </div>
+              <div v-if="recruitJewelryRows.length" class="rcd-clothing-jewelry-wrap">
+                <div class="rcd-clothing-slot-head rcd-clothing-slot-head--jewelry">
+                  <span class="rcd-clothing-slot-title">饰品</span>
+                </div>
+                <div class="rcd-clothing-jewelry-strip">
+                  <div v-for="jw in recruitJewelryRows" :key="'jw-' + jw.name" class="rcd-clothing-item rcd-clothing-item--jewelry">
+                    <span class="rcd-clothing-name-pill rcd-clothing-name-pill--jewelry">{{ jw.name }}</span>
+                    <div v-if="jw.部位" class="rcd-clothing-meta-row">
+                      <span class="rcd-meta-k">部位</span>
+                      <span class="rcd-meta-v">{{ jw.部位 }}</span>
+                    </div>
+                    <div class="rcd-clothing-meta-row">
+                      <span class="rcd-meta-k">状态</span>
+                      <span class="rcd-meta-v">{{ jw.状态 }}</span>
+                    </div>
+                    <div v-if="jw.描述" class="rcd-clothing-meta-row">
+                      <span class="rcd-meta-k">描述</span>
+                      <span class="rcd-meta-v">{{ jw.描述 }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
           </section>
 
           <section class="rcd-card rcd-card--wide">
@@ -113,11 +160,39 @@ import { computed } from 'vue';
 import type { CompanionCandidateRecord } from '../utils/characterRecruitFromAi';
 import { clothingStateFromMvuRaw } from '../utils/dialogAndVariable';
 import {
+  CLOTHING_BODY_SLOT_KEYS,
+  type ClothingBodySlotKeyZh,
+  type ClothingStateZh,
+  type JewelryItemZh,
+} from '../types';
+import {
   normalizeFetishRecord,
   normalizeHobbyRecord,
   normalizeRepresentativeSpeechRecord,
   normalizeSensitivePartRecord,
 } from '../utils/tagMap';
+
+const clothingSlotKeys = CLOTHING_BODY_SLOT_KEYS;
+
+function garmentEntriesForSlot(
+  state: ClothingStateZh | null,
+  slotKey: ClothingBodySlotKeyZh,
+): Array<{ name: string; 状态: string; 描述: string }> {
+  if (!state) return [];
+  const rec = state[slotKey];
+  if (!rec || typeof rec !== 'object') return [];
+  return Object.entries(rec)
+    .filter(([k]) => String(k).trim())
+    .map(([name, raw]) => {
+      const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+      return {
+        name,
+        状态: String(o.状态 ?? '正常').trim() || '正常',
+        描述: String(o.描述 ?? '').trim(),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+}
 
 const props = defineProps<{
   candidate: CompanionCandidateRecord;
@@ -192,14 +267,50 @@ const sensitiveRows = computed(() => {
   }
 });
 
-const clothingJsonDisplay = computed(() => {
+const clothingStatusLine = computed(() => String(props.candidate.服装状态 ?? '').trim());
+
+const clothingJsonInvalid = computed(() => {
+  if (!clothingStatusLine.value) return false;
   try {
-    const raw = JSON.parse(String(props.candidate.服装状态 ?? '').trim()) as unknown;
-    const norm = clothingStateFromMvuRaw(raw);
-    return JSON.stringify(norm, null, 2);
+    JSON.parse(clothingStatusLine.value);
+    return false;
   } catch {
-    return '';
+    return true;
   }
+});
+
+const recruitClothingState = computed((): ClothingStateZh | null => {
+  if (!clothingStatusLine.value || clothingJsonInvalid.value) return null;
+  try {
+    return clothingStateFromMvuRaw(JSON.parse(clothingStatusLine.value));
+  } catch {
+    return null;
+  }
+});
+
+const clothingSlotBlocks = computed(() => {
+  const s = recruitClothingState.value;
+  return clothingSlotKeys.map(slotKey => ({
+    slotKey,
+    items: garmentEntriesForSlot(s, slotKey),
+  }));
+});
+
+const recruitJewelryRows = computed(() => {
+  const acc = recruitClothingState.value?.饰品;
+  if (!acc || typeof acc !== 'object') return [];
+  return Object.entries(acc)
+    .filter(([k]) => String(k).trim().length > 0)
+    .map(([name, raw]) => {
+      const o = raw as JewelryItemZh;
+      return {
+        name,
+        部位: String(o?.部位 ?? '').trim(),
+        状态: String(o?.状态 ?? '正常').trim() || '正常',
+        描述: String(o?.描述 ?? '').trim(),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
 });
 </script>
 
@@ -225,7 +336,7 @@ const clothingJsonDisplay = computed(() => {
 }
 
 .rcd-panel {
-  width: min(640px, 100%);
+  width: min(880px, 100%);
   max-height: min(88vh, 900px);
   overflow-y: auto;
   margin-top: 4vh;
@@ -319,6 +430,197 @@ const clothingJsonDisplay = computed(() => {
   width: 100%;
 }
 
+.rcd-card--clothing {
+  padding-top: 12px;
+}
+
+.rcd-clothing-error {
+  margin: 0;
+  font-size: 12px;
+  color: #f87171;
+  line-height: 1.5;
+}
+
+.rcd--light .rcd-clothing-error {
+  color: #dc2626;
+}
+
+.rcd-clothing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .rcd-clothing-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rcd-clothing-slot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.rcd--light .rcd-clothing-slot-card {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.rcd-clothing-slot-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rcd-clothing-slot-head--jewelry {
+  margin-bottom: 6px;
+}
+
+.rcd-clothing-slot-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e4e4e7;
+}
+
+.rcd--light .rcd-clothing-slot-title {
+  color: #18181b;
+}
+
+.rcd-clothing-slot-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rcd-clothing-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.rcd--light .rcd-clothing-item {
+  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.rcd-clothing-name-pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: rgba(167, 139, 250, 0.12);
+  color: #e9d5ff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rcd--light .rcd-clothing-name-pill {
+  color: #5b21b6;
+  border-color: rgba(124, 58, 237, 0.4);
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.rcd-clothing-name-pill--jewelry {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fecaca;
+}
+
+.rcd--light .rcd-clothing-name-pill--jewelry {
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.rcd-clothing-meta-row {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #d4d4d8;
+}
+
+.rcd-meta-k {
+  display: inline-block;
+  min-width: 3em;
+  margin-right: 6px;
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.rcd-meta-v {
+  color: #e4e4e7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.rcd--light .rcd-clothing-meta-row {
+  color: #3f3f46;
+}
+
+.rcd--light .rcd-meta-k {
+  color: #71717a;
+}
+
+.rcd--light .rcd-meta-v {
+  color: #18181b;
+}
+
+.rcd-clothing-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.rcd--light .rcd-clothing-empty {
+  color: #71717a;
+}
+
+.rcd-clothing-jewelry-wrap {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.rcd--light .rcd-clothing-jewelry-wrap {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.rcd-clothing-jewelry-strip {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: stretch;
+}
+
+.rcd-clothing-item--jewelry {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: min(100%, 280px);
+  padding: 8px 10px;
+  gap: 4px;
+}
+
 .rcd-bracket-tl,
 .rcd-bracket-br {
   position: absolute;
@@ -403,26 +705,6 @@ const clothingJsonDisplay = computed(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
-}
-
-.rcd-pre {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(0, 243, 255, 0.15);
-  font-family: var(--font-cyber-mono, 'JetBrains Mono', monospace);
-}
-
-.rcd--light .rcd-pre {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: #27272a;
 }
 
 .rcd-body {

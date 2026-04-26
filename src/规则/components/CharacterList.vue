@@ -4,7 +4,18 @@
       <p class="desc">管理当前世界中的所有角色实体。</p>
       <div class="actions">
         <button
+          id="btn-refresh-characters"
+          type="button"
+          class="action-btn cyber-button cyber-button-cyan"
+          title="从酒馆变量重新拉取当前楼层的角色档案（含角色卡/第 0 层合并）"
+          @click="refreshCharactersFromVariables"
+        >
+          <i class="fa-solid fa-rotate"></i>
+          <span>刷新角色</span>
+        </button>
+        <button
           id="btn-add-character"
+          type="button"
           class="action-btn cyber-button cyber-button-cyan"
           @click="$emit('openModal', 'add_character')"
         >
@@ -60,7 +71,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useCharacters } from '../store';
+import { isEqual } from 'lodash';
+import { klona } from 'klona';
+import { useCharacters, useDataStore } from '../store';
 import {
   loadCharacterAvatarOverrides,
   PHONE_CHARACTER_AVATARS_CHANGED,
@@ -155,6 +168,32 @@ function toDisplayName(name: unknown, fallback: string) {
 function formatAffection(v: number) {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '0';
   return String(Math.round(v));
+}
+
+const ZERO_CHAR_REFRESH_HINT =
+  '现在角色获取出现了问题喵！现在点击右上角的铅笔然后再点绿色√就可以解决问题了喵！';
+
+function refreshCharactersFromVariables() {
+  const store = useDataStore();
+  const prevArchive = klona(store.data.角色档案 ?? {});
+  const ok = store.refreshFromVariables();
+  if (!ok) {
+    toastr.error('变量校验失败，无法刷新角色');
+    return;
+  }
+  const ra = store.data.角色档案 as Record<string, unknown> | undefined;
+  const n =
+    ra != null && typeof ra === 'object' && !Array.isArray(ra) ? Object.keys(ra).length : 0;
+  if (n === 0) {
+    window.alert(ZERO_CHAR_REFRESH_HINT);
+    return;
+  }
+  const nextArchive = store.data.角色档案 ?? {};
+  if (isEqual(prevArchive, nextArchive)) {
+    toastr.success('好了，不要点了，就这些喵');
+  } else {
+    toastr.success('已从变量重新读取角色');
+  }
 }
 </script>
 

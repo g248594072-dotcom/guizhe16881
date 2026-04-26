@@ -93,8 +93,9 @@ async function tryGetLatestMvuRoleSnapshot(maxChars: number): Promise<string> {
       if (!c || typeof c !== 'object') continue;
       const name = String(c['姓名'] ?? id);
       const 状态 = String(c['状态'] ?? '');
-      const 描写 = String(c['描写'] ?? '').slice(0, 180);
-      const line = `- ${name}（${状态}）：${描写}`;
+      const 摘录 =
+        String(c['角色简介'] ?? c['描写'] ?? '').slice(0, 180);
+      const line = `- ${name}（${状态}）：${摘录}`;
       if (used + line.length > maxChars) break;
       lines.push(line);
       used += line.length + 1;
@@ -125,10 +126,10 @@ function buildInactiveCharacterArchiveExcerpt(
       const name = String(c['姓名'] ?? id);
       if (name !== displayName && id !== displayName) continue;
       const 状态 = String(c['状态'] ?? '');
-      const 描写 = String(c['描写'] ?? '').slice(0, 320);
+      const 摘录 = String(c['角色简介'] ?? c['描写'] ?? '').slice(0, 320);
       const 性格 = formatTagMapBrief(c['性格'], 10);
       const 内心 = String(c['当前内心想法'] ?? '').slice(0, 220);
-      const block = `### ${name}（键：${id}，状态：${状态}）\n- 描写摘录：${描写}\n- 性格：${性格}\n- 当前内心想法摘录：${内心}`;
+      const block = `### ${name}（键：${id}，状态：${状态}）\n- 角色简介摘录：${摘录}\n- 性格：${性格}\n- 当前内心想法摘录：${内心}`;
       if (used + block.length > maxTotal) {
         blocks.push('…（档案摘录已达长度上限，余下角色从略）');
         return blocks.join('\n\n');

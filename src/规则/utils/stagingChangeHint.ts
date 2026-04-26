@@ -42,7 +42,7 @@ function hintModalCommit(modalType: string, form: EditCartModalForm, p: Record<s
     }
     case 'edit_character_mind': {
       const cid = t((pl as { characterId?: unknown })?.characterId);
-      return `玩家编辑角色心理（${cid}）：内心「${t(form.characterPsychThought)}」；性格标签「${t(form.characterPsychTraits)}」。`;
+      return `玩家编辑角色心理（${cid}）：内心「${t(form.characterPsychThought)}」；性格与爱好（已提交）。`;
     }
     case 'edit_character_fetish': {
       const cid = t((pl as { characterId?: unknown })?.characterId);
@@ -70,7 +70,7 @@ function hintModalCommit(modalType: string, form: EditCartModalForm, p: Record<s
     }
     case 'edit_character_background_archive': {
       const cid = t((pl as { characterId?: unknown })?.characterId);
-      return `玩家编辑角色背景与档案（${cid}）：角色简介、描写、代表性发言、爱好。`;
+      return `玩家编辑角色背景与档案（${cid}）：角色简介、代表性发言。`;
     }
     case 'edit_avatar':
       return '';
@@ -119,7 +119,7 @@ export function buildStagingHintFromEditCartItem(item: EditCartItem): string {
     case 'tactical_map_commit':
       return `玩家确认战术地图变更：${t(a.label) || '战术地图'}。`;
     case 'meta_world_info':
-      return `玩家更新世界元信息：世界类型「${t(a.世界类型)}」；世界简介已同步。`;
+      return `玩家更新世界类型设定：世界类型「${t(a.世界类型)}」；世界简介已同步。`;
     default:
       return '';
   }

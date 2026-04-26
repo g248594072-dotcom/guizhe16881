@@ -27,7 +27,9 @@ export function extractMvuStatData(variables: any): Record<string, unknown> {
  * 合并「区域数据 / 建筑数据 / 活动数据 / 角色档案」的 record 层后再交给 schema：
  * - 剧情层消息上的 stat_data 往往只有 ID 引用或小 patch，**词典式定义**常在角色卡或第 0 层消息。
  * - 绑定 **message** 时：先铺 **角色卡**，再（仅最新层时）铺 **0 层**，最后叠 **当前层**（同 id 后者覆盖前者）。
- * - 历史楼层：仅 **角色卡 → 当前层**，不把 0 层套进旧快照（与 `游戏时间` 分支一致）。
+ * - 历史楼层：**区域/建筑/活动**仍为 **角色卡 → 当前历史层**（不把 0 层套进旧快照，与 `游戏时间` 一致）。
+ * - 历史楼层 **仅 `角色档案`**：在 **角色卡 → 当前历史层** 之后再叠 **`message_id: latest` 一层**（同 CHR id 以后者为准），
+ *   避免角色只写在最新楼层时历史 iframe 里「刷新」永远 0 条；**不写回**时仍只绑定历史层，不会把合并结果写进 latest。
  */
 export function mergeMessageRefRecordsWithCharacterAndMaybeMessage0(
   statData: Record<string, unknown>,
@@ -74,13 +76,33 @@ export function mergeMessageRefRecordsWithCharacterAndMaybeMessage0(
     }
   }
 
+  /** 仅用于历史层 + `角色档案`：叠 latest，与 `mid === -1` 路径互不重复（latest 已是当前 statData 来源）。 */
+  const layersFromLatestStatForArchive: unknown[] = [];
+  if (mid !== -1) {
+    try {
+      const vLatest = getVariables({ type: 'message', message_id: 'latest' });
+      const sdLatest = sanitizeStatDataRoleArchivesNestedMaps(extractMvuStatData(vLatest)) as Record<
+        string,
+        unknown
+      >;
+      layersFromLatestStatForArchive.push(sdLatest);
+    } catch {
+      /* 无 latest 等 */
+    }
+  }
+
   let changed = false;
   const out = { ...statData };
   for (const key of mergeKeys) {
+    const tailLatestArchiveLayers =
+      key === '角色档案' && mid !== -1
+        ? layersFromLatestStatForArchive.map(sd => (sd as Record<string, unknown>)?.[key])
+        : [];
     const merged = shallowMergeRecordLayers(
       ...layersFromChar.map(sd => (sd as Record<string, unknown>)?.[key]),
       ...layersFrom0.map(sd => (sd as Record<string, unknown>)?.[key]),
       statData[key],
+      ...tailLatestArchiveLayers,
     );
     const prev = statData[key];
     if (Object.keys(merged).length === 0 && (prev == null || prev === undefined)) {
@@ -174,7 +196,10 @@ export function defineMvuDataStore<T extends z.ZodObject>(
   variable_option: VariableOption | (() => VariableOption),
   additional_setup?: (data: Ref<z.infer<T>>) => void,
   store_opts?: DefineMvuDataStoreOptions | (() => DefineMvuDataStoreOptions),
-): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
+): StoreDefinition<
+  `mvu_data.${string}`,
+  { data: Ref<z.infer<T>>; refreshFromVariables: () => boolean }
+> {
   const isDeferredOption = typeof variable_option === 'function';
   const storeId = isDeferredOption
     ? `mvu_data.message.__iframe_current__`
@@ -237,38 +262,23 @@ export function defineMvuDataStore<T extends z.ZodObject>(
       const data = ref(
         schema.parse(statData, { reportInput: true }),
       ) as Ref<z.infer<T>>;
+
+      /** 用于日志：当 schema 含 `角色档案` 时统计人数（其它项目为 0）。 */
+      function count角色档案条数(snapshot: z.infer<T> | null | undefined): number {
+        const s = snapshot as unknown as Record<string, unknown> | null | undefined;
+        const ra = s?.['角色档案'];
+        if (ra && typeof ra === 'object' && !Array.isArray(ra)) {
+          return Object.keys(ra as Record<string, unknown>).length;
+        }
+        return 0;
+      }
+      console.info('[mvu] 从变量拉取 角色档案 → 前端 store（首次初始化）', {
+        条数: count角色档案条数(data.value),
+        变量绑定: resolvedOption,
+      });
       if (additional_setup) {
         additional_setup(data);
       }
-
-      useIntervalFn(() => {
-        const variables = getVariables(resolvedOption);
-        const rawStatData = getStatData(variables);
-        const sanitizedOnly = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
-        const hadCorruption = !_.isEqual(rawStatData, sanitizedOnly);
-        let stat_data = mergeMessageRefRecordsWithCharacterAndMaybeMessage0(sanitizedOnly, resolvedOption);
-        stat_data = mergeMessageGameTimeWithCharacter(stat_data, resolvedOption);
-        const result = schema.safeParse(stat_data);
-        if (result.error) {
-          return;
-        }
-        if (!_.isEqual(data.value, result.data)) {
-          ignoreUpdates(() => {
-            data.value = result.data;
-          });
-          if (
-            writeBack &&
-            (!_.isEqual(stat_data, result.data) || hadCorruption)
-          ) {
-            updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
-          }
-        } else if (hadCorruption && writeBack) {
-          console.warn('[mvu] 检测到嵌套对象污染 ([object Object])，强制写回修复');
-          updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
-        } else if (hadCorruption && !writeBack) {
-          console.warn('[mvu] 检测到嵌套对象污染，但 writeBack=false 跳过写回');
-        }
-      }, 2000);
 
       const { ignoreUpdates } = watchIgnorable(
         data,
@@ -289,7 +299,64 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         { deep: true },
       );
 
-      return { data };
+      /** 与 2s 轮询相同：从 `getVariables(resolvedOption)` 合并后写回本地 `data`（必要时写回酒馆）。 */
+      function pullStatDataFromVariables(source: 'poll' | 'manual' = 'poll'): boolean {
+        const prev角色档案 = (data.value as unknown as Record<string, unknown>)?.['角色档案'];
+        const variables = getVariables(resolvedOption);
+        const rawStatData = getStatData(variables);
+        const sanitizedOnly = sanitizeStatDataRoleArchivesNestedMaps(rawStatData) as Record<string, unknown>;
+        const hadCorruption = !_.isEqual(rawStatData, sanitizedOnly);
+        let stat_data = mergeMessageRefRecordsWithCharacterAndMaybeMessage0(sanitizedOnly, resolvedOption);
+        stat_data = mergeMessageGameTimeWithCharacter(stat_data, resolvedOption);
+        const result = schema.safeParse(stat_data);
+        if (result.error) {
+          console.warn('[mvu] pullStatDataFromVariables: 校验失败', result.error);
+          return false;
+        }
+        const next角色档案 = (result.data as unknown as Record<string, unknown>)?.['角色档案'];
+        const 角色档变化 = !_.isEqual(prev角色档案, next角色档案);
+        if (!_.isEqual(data.value, result.data)) {
+          ignoreUpdates(() => {
+            data.value = result.data;
+          });
+          if (
+            writeBack &&
+            (!_.isEqual(stat_data, result.data) || hadCorruption)
+          ) {
+            updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+          }
+        } else if (hadCorruption && writeBack) {
+          console.warn('[mvu] 检测到嵌套对象污染 ([object Object])，强制写回修复');
+          updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
+        } else if (hadCorruption && !writeBack) {
+          console.warn('[mvu] 检测到嵌套对象污染，但 writeBack=false 跳过写回');
+        }
+
+        const 条 = count角色档案条数(result.data);
+        if (source === 'manual') {
+          console.info('[mvu] 从变量拉取 角色档案 → 前端（手动刷新）', {
+            条数: 条,
+            变量绑定: resolvedOption,
+            相对上次合并: 角色档变化 ? '角色档案 有变化' : '无变化',
+          });
+        } else if (source === 'poll' && 角色档变化) {
+          console.info('[mvu] 从变量拉取 角色档案 → 前端（定时轮询检测到变化）', {
+            条数: 条,
+            变量绑定: resolvedOption,
+          });
+        }
+
+        return true;
+      }
+
+      useIntervalFn(() => {
+        pullStatDataFromVariables('poll');
+      }, 2000);
+
+      return {
+        data,
+        refreshFromVariables: () => pullStatDataFromVariables('manual'),
+      };
     }),
   );
 }

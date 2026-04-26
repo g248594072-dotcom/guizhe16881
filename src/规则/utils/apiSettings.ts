@@ -294,6 +294,28 @@ export function isSecondaryApiReadyForDualOperation(config: SecondaryApiConfig |
   }
 }
 
+/**
+ * 招募「AI 生成候选人」是否具备调用条件（与 `generateCompanionRecruitBlock` 直连 chat/completions 分支一致）。
+ * - 勾选「使用酒馆相同连接」：须能读到主对话 OpenAI 兼容凭据。
+ * - 自定义第二 API：须非空 URL、Key、模型名，且 URL 可经 normalizeOpenAiUrl 校验。
+ */
+export function isRecruitCompanionGenerateReady(): boolean {
+  const config = getSecondaryApiConfig();
+  if (config.useTavernMainConnection === true) {
+    return getTavernMainOpenAiCredentials() !== null;
+  }
+  const key = String(config.key || '').trim();
+  const url = String(config.url || '').trim();
+  const model = String(config.model || '').trim();
+  if (!key || !url || !model) return false;
+  try {
+    normalizeOpenAiUrl(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const SECONDARY_SYSTEM_PROMPT =
   '你是一个专业的游戏变量更新助手。必须严格遵守用户消息中的变量更新规则、世界书中以 [mvu] / [mvu_update] 开头的条目全文，以及 JSON Patch 约定：path 相对 stat_data 根，仅使用 replace/add/remove/move，禁止使用 delta；路径与字段名须与当前变量 JSON 的 schema 一致。';
 

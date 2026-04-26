@@ -1,6 +1,6 @@
 <template>
   <section id="panel-world-rules" class="world-rules-panel">
-    <div class="wrm-tabs" role="tablist" aria-label="世界规则与元信息">
+    <div class="wrm-tabs" role="tablist" aria-label="世界规则与世界类型设定">
       <button
         type="button"
         role="tab"
@@ -19,7 +19,7 @@
         :class="{ 'wrm-tab--active': activeTab === 'meta' }"
         @click="activeTab = 'meta'"
       >
-        世界元信息
+        世界类型设定
       </button>
     </div>
 
@@ -258,7 +258,7 @@ function onSaveMeta() {
   if (messageText) {
     emit('copyToInput', messageText);
   }
-  toastr.success('已更新世界元信息');
+  toastr.success('已更新世界类型设定');
   metaEditMode.value = false;
 }
 </script>

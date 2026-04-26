@@ -239,9 +239,7 @@ watch(
         }
         if (copy.action.modalType === 'edit_character_background_archive') {
           if (f.backgroundCharacterIntro == null) f.backgroundCharacterIntro = '';
-          if (f.backgroundDescription == null) f.backgroundDescription = '';
           if (!f.backgroundSpeechRows) f.backgroundSpeechRows = [];
-          if (!f.backgroundHobbyRows) f.backgroundHobbyRows = [];
         }
       }
       if (copy.action.kind === 'random_add_personal') {

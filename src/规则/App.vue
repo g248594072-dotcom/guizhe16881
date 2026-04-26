@@ -576,7 +576,7 @@
             </button>
           </div>
           <div class="modal-body">
-            <!-- 新增角色（招募：静默 generate → 选人 → 写入当前消息层 MVU） -->
+            <!-- 新增角色（招募：第二 API chat/completions → 选人 → 写入当前消息层 MVU） -->
             <div v-if="modalType === 'add_character'" class="rule-form recruit-character-modal">
               <div class="recruit-tabs" role="tablist">
                 <button
@@ -818,23 +818,59 @@
                 placeholder="输入个人规则细节..."
               />
             </div>
-            <!-- 编辑心理状态 -->
-            <div v-else-if="modalType === 'edit_character_mind'" class="rule-form">
+            <!-- 编辑性格（当前内心想法 + 性格特征 + 爱好） -->
+            <div v-else-if="modalType === 'edit_character_mind'" class="rule-form character-mind-form">
               <label class="form-label">当前内心想法</label>
               <textarea
                 v-model="modalForm.characterPsychThought"
-                class="form-textarea"
-                rows="3"
+                class="form-textarea form-textarea--character-thought"
+                rows="2"
                 placeholder="输入该角色当前的内心想法..."
               />
 
               <label class="form-label">性格（每行一条「名称：描述」，或单独一行描述）</label>
               <textarea
                 v-model="modalForm.characterPsychTraits"
-                class="form-textarea"
-                rows="3"
+                class="form-textarea form-textarea--character-traits"
+                rows="1"
                 placeholder="例如：&#10;傲娇：口是心非&#10;高自尊：在意他人眼光"
               />
+
+              <div class="character-mind-hobbies">
+                <h4 class="character-mind-hobbies__title">爱好</h4>
+                <div
+                  v-for="(row, hidx) in modalForm.characterPsychHobbyRows"
+                  :key="'psych-hb-' + hidx"
+                  class="background-archive-row background-archive-row--hobby"
+                >
+                  <input v-model="row.name" type="text" class="form-input" placeholder="爱好标签名" />
+                  <input
+                    v-model.number="row.level"
+                    type="number"
+                    class="form-input character-bg-hobby-level"
+                    min="0"
+                    max="10"
+                    placeholder="等级"
+                  />
+                  <input v-model="row.reason" type="text" class="form-input" placeholder="喜欢的原因" />
+                  <button
+                    type="button"
+                    class="btn-icon btn-danger"
+                    title="删除"
+                    @click="modalForm.characterPsychHobbyRows.splice(hidx, 1)"
+                  >
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  class="btn-secondary"
+                  @click="modalForm.characterPsychHobbyRows.push({ name: '', level: 1, reason: '' })"
+                >
+                  <i class="fa-solid fa-plus"></i>
+                  添加爱好
+                </button>
+              </div>
             </div>
             <!-- 编辑性癖与敏感带 -->
             <div v-else-if="modalType === 'edit_character_fetish'" class="rule-form">
@@ -1100,15 +1136,6 @@
                 />
               </section>
               <section class="character-bg-archive-section">
-                <h4 class="character-bg-archive-section__title">描写</h4>
-                <input
-                  v-model="modalForm.backgroundDescription"
-                  type="text"
-                  class="form-input character-bg-desc-line"
-                  placeholder="可与角色简介分工的一句话式描写"
-                />
-              </section>
-              <section class="character-bg-archive-section">
                 <h4 class="character-bg-archive-section__title">代表性发言</h4>
                 <div
                   v-for="(row, sidx) in modalForm.backgroundSpeechRows"
@@ -1124,36 +1151,6 @@
                 <button type="button" class="btn-secondary" @click="modalForm.backgroundSpeechRows.push({ context: '', line: '' })">
                   <i class="fa-solid fa-plus"></i>
                   添加代表性发言
-                </button>
-              </section>
-              <section class="character-bg-archive-section">
-                <h4 class="character-bg-archive-section__title">爱好</h4>
-                <div
-                  v-for="(row, hidx) in modalForm.backgroundHobbyRows"
-                  :key="'bg-hb-' + hidx"
-                  class="background-archive-row background-archive-row--hobby"
-                >
-                  <input v-model="row.name" type="text" class="form-input" placeholder="爱好标签名" />
-                  <input
-                    v-model.number="row.level"
-                    type="number"
-                    class="form-input character-bg-hobby-level"
-                    min="0"
-                    max="10"
-                    placeholder="等级"
-                  />
-                  <input v-model="row.reason" type="text" class="form-input" placeholder="喜欢的原因" />
-                  <button type="button" class="btn-icon btn-danger" title="删除" @click="modalForm.backgroundHobbyRows.splice(hidx, 1)">
-                    <i class="fa-solid fa-trash"></i>
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  class="btn-secondary"
-                  @click="modalForm.backgroundHobbyRows.push({ name: '', level: 1, reason: '' })"
-                >
-                  <i class="fa-solid fa-plus"></i>
-                  添加爱好
                 </button>
               </section>
             </div>
@@ -1804,6 +1801,7 @@ import {
 import {
   updateWorldbookEntriesByMode,
   isSecondaryApiConfigured,
+  isRecruitCompanionGenerateReady,
   SECONDARY_API_END_EVENT,
   SECONDARY_API_START_EVENT,
   type SecondaryApiEndDetail,
@@ -2111,9 +2109,8 @@ const modalForm = ref({
   // 身份标签编辑
   identityTags: [] as Array<{ category: string; value: string }>,
   backgroundCharacterIntro: '',
-  backgroundDescription: '',
   backgroundSpeechRows: [] as Array<{ context: string; line: string }>,
-  backgroundHobbyRows: [] as Array<{ name: string; level: number; reason: string }>,
+  characterPsychHobbyRows: [] as Array<{ name: string; level: number; reason: string }>,
   avatarUrl: '',
   appearanceClothing: defaultEmptyClothingState(),
   appearanceBodyGarmentRows: [] as ClothingBodyGarmentEditRow[],
@@ -2193,6 +2190,21 @@ async function runRecruitGenerate() {
   const form = recruitDraftAsModalForm();
   if (!String(form.addCharacterDescription ?? '').trim()) {
     toastr.warning('请先填写角色简介（必填）');
+    return;
+  }
+  if (!isRecruitCompanionGenerateReady()) {
+    const r = await Swal.fire({
+      title: '无法生成',
+      text: '没有设置第二API的信息喵~所以你不能用这个功能！',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: '去第二 API 设置',
+      cancelButtonText: '取消',
+    });
+    if (r.isConfirmed) {
+      closeModal();
+      activeTab.value = 'settings';
+    }
     return;
   }
   const brief = buildAddCharacterCombinedBrief(form);
@@ -2798,7 +2810,7 @@ const modalTitles: Record<string, string> = {
   edit_region_rule: '编辑区域规则',
   add_personal_rule: '新增个人规则',
   edit_personal_rule: '编辑个人规则',
-  edit_character_mind: '编辑心理状态',
+  edit_character_mind: '编辑性格（想法、特征与爱好）',
   edit_character_fetish: '编辑性癖与敏感带',
   edit_identity_tags: '编辑身份标签',
   edit_character_background_archive: '编辑背景与档案',
@@ -3160,9 +3172,8 @@ async function openModal(type: string, payload?: Record<string, any>) {
     sensitivePartDetails: [],
     identityTags: [],
     backgroundCharacterIntro: '',
-    backgroundDescription: '',
     backgroundSpeechRows: [],
-    backgroundHobbyRows: [],
+    characterPsychHobbyRows: [],
     avatarUrl: '',
     appearanceClothing: defaultEmptyClothingState(),
     appearanceBodyGarmentRows: [],
@@ -3203,6 +3214,15 @@ async function openModal(type: string, payload?: Record<string, any>) {
           getMergedSensitiveDevelopment(rawChar ?? {}),
         );
         modalForm.value.characterPsychHiddenFetish = String(c.hiddenFetish ?? '');
+
+        if (type === 'edit_character_mind' && rawChar) {
+          const hobbies = normalizeHobbyRecord(rawChar.爱好);
+          modalForm.value.characterPsychHobbyRows = Object.entries(hobbies).map(([name, v]) => ({
+            name,
+            level: Math.min(10, Math.max(0, Math.round(Number((v as { 等级?: number })?.等级) || 0))),
+            reason: String((v as { 喜欢的原因?: string })?.喜欢的原因 ?? ''),
+          }));
+        }
 
         // 预填性癖详情
         if (c.fetishDetails && typeof c.fetishDetails === 'object') {
@@ -3283,19 +3303,11 @@ async function openModal(type: string, payload?: Record<string, any>) {
       const store = useDataStore();
       const raw = store.data.角色档案?.[payload.characterId] as Record<string, unknown> | undefined;
       const intro = String(raw?.角色简介 ?? raw?.characterIntro ?? '').trim();
-      const desc = String(raw?.描写 ?? raw?.description ?? raw?.desc ?? '').trim();
       const speech = normalizeRepresentativeSpeechRecord(raw?.代表性发言);
-      const hobbies = normalizeHobbyRecord(raw?.爱好);
       modalForm.value.backgroundCharacterIntro = intro;
-      modalForm.value.backgroundDescription = desc;
       modalForm.value.backgroundSpeechRows = Object.entries(speech).map(([context, line]) => ({
         context,
         line: String(line ?? ''),
-      }));
-      modalForm.value.backgroundHobbyRows = Object.entries(hobbies).map(([name, v]) => ({
-        name,
-        level: Math.min(10, Math.max(0, Math.round(Number((v as { 等级?: number })?.等级) || 0))),
-        reason: String((v as { 喜欢的原因?: string })?.喜欢的原因 ?? ''),
       }));
     } catch (e) {
       console.warn('预填背景与档案失败', e);
@@ -3541,6 +3553,7 @@ async function onModalComplete() {
       messageText = await submitEditCharacterPsych(payload.characterId, {
         thought: form.characterPsychThought,
         traitsText: form.characterPsychTraits,
+        hobbyRows: form.characterPsychHobbyRows,
       });
     } else if (type === 'edit_character_fetish' && payload?.characterId) {
       const { submitEditCharacterPsych, updateCharacterFetishDetails, updateCharacterSensitivePartDetails, formatFetishDetailMessage, formatSensitivePartDetailMessage } = await import('./utils/dialogAndVariable');
@@ -10249,7 +10262,42 @@ body.has-dragging-fab {
   }
 }
 
-// 背景与档案（角色简介、描写、代表性发言、爱好）
+// 性格（内心想法、性格多行、爱好表）
+.character-mind-form {
+  // 覆写全局 .form-textarea{ min-height: 120px }，默认约两行
+  .form-textarea--character-thought {
+    min-height: calc(2 * 1.4em + 1.15rem);
+    max-height: min(50vh, 24rem);
+    resize: vertical;
+    line-height: 1.4;
+    overflow-y: auto;
+  }
+
+  .form-textarea--character-traits {
+    min-height: 2.5rem;
+    max-height: min(50vh, 24rem);
+    resize: vertical;
+    overflow-y: auto;
+  }
+
+  .character-mind-hobbies {
+    margin-top: 4px;
+  }
+
+  .character-mind-hobbies__title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e4e4e7;
+    letter-spacing: 0.02em;
+  }
+}
+
+.light .character-mind-form .character-mind-hobbies__title {
+  color: #3f3f46;
+}
+
+// 背景与档案（角色简介、代表性发言；爱好在性格弹窗）
 .character-background-archive-form {
   display: flex;
   flex-direction: column;

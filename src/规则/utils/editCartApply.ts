@@ -98,6 +98,7 @@ export async function runModalCommit(
     messageText = await submitEditCharacterPsych(String(p.characterId), {
       thought: form.characterPsychThought,
       traitsText: form.characterPsychTraits,
+      hobbyRows: form.characterPsychHobbyRows,
     });
   } else if (type === 'edit_character_fetish' && p?.characterId) {
     const {

@@ -22,6 +22,7 @@ let rulesMvuLiveHostAtInit: boolean | null = null;
  * **分层读写（避免多 iframe 争用 latest）**
  * - iframe 挂在**当前聊天最后一条消息**（`getCurrentMessageId() === getLastMessageId()`）时：绑定 `message_id: -1` 并 **写回**，与「总状态在最后一层」一致。
  * - 挂在**历史楼层**时：绑定 `getCurrentMessageId()` 且 **writeBack: false**，只读该层快照，不向酒馆写入，避免旧层顶掉最新层变量。
+ *   （`角色档案` 在合并时会多读 `latest` 一层以便列表与刷新能显示当前局角色，见 `util/mvu.ts` 中 `mergeMessageRefRecordsWithCharacterAndMaybeMessage0`。）
  *
  * 见 `@types/function/variables.d.ts`：负数下标 `-1` 为最新楼层。
  */
@@ -73,7 +74,12 @@ export function useCharacters() {
       const name = (char.姓名 && char.姓名 !== '未知' && char.姓名.trim() !== '')
         ? char.姓名
         : (char.name || id);
-      const description = char.描写 || char.description || char.desc || '';
+      const description =
+        (typeof char.角色简介 === 'string' && char.角色简介.trim()
+          ? char.角色简介
+          : typeof char.描写 === 'string' && char.描写.trim()
+            ? char.描写
+            : char.description || char.desc || '') || '';
       const characterIntro =
         typeof char.角色简介 === 'string' ? char.角色简介 : typeof char.characterIntro === 'string' ? char.characterIntro : '';
       const rawQuotes = char.代表性发言;

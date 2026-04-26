@@ -1,12 +1,14 @@
 /**
- * 招募式新增角色：`generateRaw` 短上下文（无酒馆整卡预设）→ 解析 `<companion>` → 映射 `角色档案` 并 Schema 校验。
+ * 招募式新增角色：直连第二 API（OpenAI 兼容 `chat/completions`，与随机规则生成一致）→ 解析 `<companion>` → 映射 `角色档案` 并 Schema 校验。
  */
 import { klona } from 'klona';
 import { z } from 'zod';
 import { Schema } from '../schema';
 import { clothingStateFromMvuRaw, createEmptyCharacterRecord } from './dialogAndVariable';
 import { allocateNextChrId } from './chrId';
-import { traceWrappedGenerateRaw } from './generationTrace';
+import { getSecondaryApiConfig, isSecondaryApiReadyForDualOperation } from './apiSettings';
+import { normalizeOpenAiUrl } from './openaiUrl';
+import { getTavernMainOpenAiCredentials } from './tavernMainConnection';
 import {
   normalizeFetishRecord,
   normalizeHobbyRecord,
@@ -56,20 +58,6 @@ export interface CompanionCandidateRecord {
   代表性发言: string;
 }
 
-/** 简介前若干字拼入「描写」，与一句话介绍组合，避免与角色简介全文重复 */
-const RECRUIT_DESCRIPTION_INTRO_SLICE = 400;
-
-function buildRecruitMergedDescription(oneLiner: string, introFull: string): string {
-  const one = String(oneLiner ?? '').trim();
-  const intro = String(introFull ?? '').trim();
-  const slice =
-    intro.length > RECRUIT_DESCRIPTION_INTRO_SLICE
-      ? `${intro.slice(0, RECRUIT_DESCRIPTION_INTRO_SLICE)}…`
-      : intro;
-  if (one && slice) return `${one}\n${slice}`;
-  return one || slice || '';
-}
-
 function buildRecruitSystemPrompt(): string {
   const n = String(RECRUIT_COMPANION_CANDIDATE_COUNT);
   const keyList = FIELD_KEYS.join('、');
@@ -115,6 +103,7 @@ function buildRecruitSystemPrompt(): string {
     '- 根据用户招募说明（含名字、关系、角色简介等）设计外貌、职业、气质与剧情钩子；五位之间要有明显差异（年龄层、性格、职业/来历、与说明契合度等至少两维不同）。',
     '- **代表性发言（JSON 行）**：\`Record<场景或语境标识, \\"台词\\">\`，**至少一条**键。',
     '- **成人向（R18）**：若用户需求涉及情色、性暗示、肉体描写、支配/服从、成人关系等，允许在「简介」「性癖」「敏感点开发」「服装状态」「代表性发言」JSON 的文案中写入与需求强度匹配的露骨虚构描写；「爱好」JSON 仍须非性化日常兴趣。若需求明显全年龄：性癖/敏感点暧昧暗示，爱好可正常写。',
+    '- **未要求成人向时**：若用户招募说明未明确提出上述 R18 类需求，则「简介」与「爱好」JSON 文案须全年龄适宜，不得写入露骨或强烈性暗示内容（爱好仍须为与性兴奋无关的日常兴趣）。',
     '- 世界观：尊重用户给出的世界类型与地点摘要；不要编造与摘要冲突的硬设定。',
     '',
     '# 禁忌与偏好',
@@ -395,10 +384,9 @@ export function mergeCandidateIntoCharacterEntry(
   const name = String(c.名字 ?? '').trim() || '未命名';
   const oneLiner = String(c.一句话介绍 ?? '').trim();
   const introFull = String(c.简介 ?? '').trim();
-  const mergedDesc = buildRecruitMergedDescription(oneLiner, introFull);
-  const base = createEmptyCharacterRecord(name, mergedDesc) as Record<string, unknown>;
+  const base = createEmptyCharacterRecord(name) as Record<string, unknown>;
 
-  /** 招募「简介」全文进入 MVU「角色简介」；「描写」为一句话介绍 + 简介前段（见 buildRecruitMergedDescription） */
+  /** 招募「简介」全文进入 MVU「角色简介」；一句话介绍可写入身份标签等，不再写入「描写」 */
   base.角色简介 = introFull;
 
   if (recruitBrief.trim()) {
@@ -432,6 +420,9 @@ export function mergeCandidateIntoCharacterEntry(
     .map(s => s.trim())
     .filter(Boolean);
   const 身份标签: Record<string, string> = { ...(base.身份标签 as Record<string, string>) };
+  if (oneLiner) {
+    身份标签['一句话介绍'] = oneLiner;
+  }
   tags.slice(0, 8).forEach((t, i) => {
     身份标签[`招募标签${i + 1}`] = t;
   });
@@ -440,10 +431,97 @@ export function mergeCandidateIntoCharacterEntry(
 }
 
 /** 十二字段 + 多段 JSON，略提高上限以降低截断概率 */
-const RECRUIT_GENERATE_RAW_MAX_TOKENS = 12288;
+const RECRUIT_CHAT_MAX_TOKENS = 12288;
+
+const RECRUIT_CHAT_TEMPERATURE = 0.78;
+
+async function parseOpenAiChatCompletionsContent(response: Response): Promise<string> {
+  if (!response.ok) {
+    let detail = '';
+    try {
+      detail = (await response.text()).trim().slice(0, 500);
+    } catch {
+      /* noop */
+    }
+    throw new Error(`招募 API 请求失败: HTTP ${response.status}${detail ? ` — ${detail}` : ''}`);
+  }
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+    error?: { message?: string };
+  };
+  const apiErr = data.error?.message;
+  if (apiErr) throw new Error(String(apiErr));
+  return String(data.choices?.[0]?.message?.content ?? '').trim();
+}
 
 /**
- * 使用 `generateRaw` + `ordered_prompts`，不拼接酒馆角色卡/世界书/聊天预设，避免被「正文四件套」格式带偏。
+ * 与随机规则生成相同：优先第二 API 自定义地址；若勾选「使用酒馆相同连接」则走当前聊天补全插头。
+ */
+async function generateCompanionRecruitViaSecondaryChat(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<string> {
+  const config = getSecondaryApiConfig();
+  if (!isSecondaryApiReadyForDualOperation(config)) {
+    throw new Error(
+      '未配置可用的第二 API：请填写 URL 与 Key，或勾选「使用酒馆相同连接」并确保能读取主对话 OpenAI 兼容凭据。',
+    );
+  }
+
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ];
+  const bodyBase = {
+    messages,
+    temperature: RECRUIT_CHAT_TEMPERATURE,
+    max_tokens: RECRUIT_CHAT_MAX_TOKENS,
+  };
+
+  if (config.useTavernMainConnection === true) {
+    const creds = getTavernMainOpenAiCredentials();
+    if (!creds) {
+      throw new Error(
+        '已启用「使用酒馆相同连接」，但未读取到主对话 API（例如 Azure 或未填代理密钥）。请改用自定义第二 API URL + Key。',
+      );
+    }
+    const response = await fetch(creds.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${creds.key}`,
+      },
+      body: JSON.stringify({
+        model: creds.model,
+        ...bodyBase,
+      }),
+    });
+    return parseOpenAiChatCompletionsContent(response);
+  }
+
+  const url = String(config.url ?? '').trim();
+  const key = String(config.key ?? '').trim();
+  if (!url || !key) {
+    throw new Error('第二 API 须填写 URL 与 API Key。');
+  }
+  const chatUrl = normalizeOpenAiUrl(url).chatCompletionsUrl;
+  const model = String(config.model ?? '').trim() || 'gpt-3.5-turbo';
+  const response = await fetch(chatUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model,
+      ...bodyBase,
+    }),
+  });
+  return parseOpenAiChatCompletionsContent(response);
+}
+
+/**
+ * 直连第二 API（`chat/completions`），不经酒馆 `generateRaw`，避免走后台整卡预设与正文流。
  */
 export async function generateCompanionRecruitBlock(
   userBrief: string,
@@ -451,26 +529,7 @@ export async function generateCompanionRecruitBlock(
 ): Promise<string> {
   const systemPrompt = buildRecruitSystemPrompt();
   const userPrompt = buildRecruitUserPrompt(userBrief, worldSummary);
-  const genConfig: Parameters<typeof generateRaw>[0] = {
-    user_input: '',
-    should_stream: false,
-    should_silence: true,
-    max_chat_history: 0,
-    automatic_trigger: true,
-    ordered_prompts: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    custom_api: {
-      max_tokens: RECRUIT_GENERATE_RAW_MAX_TOKENS,
-    },
-  };
-  const result = (await traceWrappedGenerateRaw(
-    '角色招募·候选人 generateRaw',
-    genConfig as unknown as Record<string, unknown>,
-    () => generateRaw(genConfig),
-  )) as string;
-  return String(result ?? '').trim();
+  return generateCompanionRecruitViaSecondaryChat(systemPrompt, userPrompt);
 }
 
 export interface CommitRecruitSelectionOptions {

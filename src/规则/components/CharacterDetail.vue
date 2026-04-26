@@ -138,11 +138,11 @@
         </template>
       </article>
 
-      <!-- Psychology -->
-      <article class="detail-card" :class="{ 'cyber-card': isDarkMode }">
+      <!-- 性格：特征在上；当前想法与爱好合并横排（窄屏纵向堆叠） -->
+      <article class="detail-card character-personality-card" :class="{ 'cyber-card': isDarkMode }">
         <div class="card-title">
-          <i class="fa-solid fa-brain"></i>
-          <h3>心理状态</h3>
+          <i class="fa-solid fa-face-smile"></i>
+          <h3>性格</h3>
           <button
             type="button"
             class="edit-mini-btn"
@@ -151,14 +151,8 @@
             编辑
           </button>
         </div>
-        <div class="psych-content">
-          <div class="thought-section">
-            <span class="section-label">当前想法</span>
-            <p class="thought-text">
-              {{ displayThought }}
-            </p>
-          </div>
-          <div class="traits-section">
+        <div class="psych-content psych-content--personality-layout">
+          <div class="traits-section traits-section--personality-top">
             <span class="section-label">性格特征</span>
             <div class="badges">
               <template v-if="displayTraits.length > 0">
@@ -172,6 +166,25 @@
               <template v-else>
                 <span class="empty-hint">暂无</span>
               </template>
+            </div>
+          </div>
+          <div class="personality-lower-merge">
+            <div class="thought-section">
+              <span class="section-label">当前想法</span>
+              <p class="thought-text">
+                {{ displayThought }}
+              </p>
+            </div>
+            <div class="hobby-section-in-personality">
+              <span class="section-label">爱好</span>
+              <ul v-if="hobbyRows.length > 0" class="hobby-list hobby-list--in-personality">
+                <li v-for="h in hobbyRows" :key="'h-personality-' + h.name">
+                  <span class="hobby-name">{{ h.name }}</span>
+                  <span class="hobby-meta">Lv.{{ h.level }}</span>
+                  <p v-if="h.reason" class="hobby-reason">{{ h.reason }}</p>
+                </li>
+              </ul>
+              <span v-else class="empty-hint">暂无爱好</span>
             </div>
           </div>
         </div>
@@ -558,7 +571,7 @@
                 编辑
               </button>
             </div>
-            <div class="narrative-three-boxes">
+            <div class="narrative-bg-archive-grid">
               <div class="appearance-narrative-subbox">
                 <span class="section-label">角色简介</span>
                 <p v-if="displayCharacterIntro" class="thought-text narrative-prose">
@@ -566,21 +579,7 @@
                 </p>
                 <span v-else class="empty-hint">暂无角色简介</span>
               </div>
-              <div class="appearance-narrative-subbox">
-                <span class="section-label">描写</span>
-                <p
-                  v-if="displayCharacterDescription && !introCoversDescription"
-                  class="thought-text narrative-prose"
-                >
-                  {{ displayCharacterDescription }}
-                </p>
-                <span
-                  v-else-if="introCoversDescription && displayCharacterDescription"
-                  class="empty-hint"
-                >与角色简介相同，未单独列出</span>
-                <span v-else class="empty-hint">暂无描写</span>
-              </div>
-              <div class="appearance-narrative-subbox appearance-narrative-subbox--speech-hobby">
+              <div class="appearance-narrative-subbox appearance-narrative-subbox--speech-only">
                 <div class="narrative-subbox-block">
                   <span class="section-label">代表性发言</span>
                   <ul v-if="representativeQuoteRows.length > 0" class="quote-list">
@@ -590,17 +589,6 @@
                     </li>
                   </ul>
                   <span v-else class="empty-hint">暂无代表性发言</span>
-                </div>
-                <div class="narrative-subbox-block narrative-subbox-block--hobby">
-                  <span class="section-label">爱好</span>
-                  <ul v-if="hobbyRows.length > 0" class="hobby-list">
-                    <li v-for="h in hobbyRows" :key="'h-' + h.name">
-                      <span class="hobby-name">{{ h.name }}</span>
-                      <span class="hobby-meta">Lv.{{ h.level }}</span>
-                      <p v-if="h.reason" class="hobby-reason">{{ h.reason }}</p>
-                    </li>
-                  </ul>
-                  <span v-else class="empty-hint">暂无爱好</span>
                 </div>
               </div>
             </div>
@@ -972,7 +960,6 @@ const appearanceSlotKeys = CLOTHING_BODY_SLOT_KEYS;
 const currentExtra = ref<{
   currentThought?: string;
   characterIntro?: string;
-  characterDescription?: string;
   representativeQuotes?: Record<string, string>;
   hobbies?: Record<string, { 等级: number; 喜欢的原因?: string }>;
   traits?: string[];
@@ -1381,16 +1368,6 @@ const displayThought = computed(() => {
 });
 
 const displayCharacterIntro = computed(() => String(currentExtra.value.characterIntro ?? '').trim());
-const displayCharacterDescription = computed(() =>
-  String(currentExtra.value.characterDescription ?? '').trim(),
-);
-/** 简介与描写全文相同则不再单独展示「描写」块 */
-const introCoversDescription = computed(() => {
-  const a = displayCharacterIntro.value;
-  const b = displayCharacterDescription.value;
-  if (!a || !b) return false;
-  return a === b;
-});
 const representativeQuoteRows = computed(() => {
   const q = currentExtra.value.representativeQuotes;
   if (!q || typeof q !== 'object') return [];
@@ -1524,7 +1501,6 @@ onMounted(() => {
       currentExtra.value = {
         currentThought: (current as any).currentThought,
         characterIntro: (current as any).characterIntro,
-        characterDescription: (current as any).description,
         representativeQuotes: { ...((current as any).representativeQuotes || {}) },
         hobbies: { ...((current as any).hobbies || {}) },
         traits: (current as any).traits,
@@ -2295,6 +2271,57 @@ const emit = defineEmits<{
   gap: 16px;
 }
 
+.psych-content--personality-layout {
+  gap: 18px;
+}
+
+.traits-section--personality-top .section-label {
+  margin-bottom: 10px;
+}
+
+.personality-lower-merge {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+
+  @media (min-width: 640px) {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 18px 20px;
+
+    > .thought-section,
+    > .hobby-section-in-personality {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+  }
+}
+
+:global(.light) .personality-lower-merge {
+  border-top-color: rgba(0, 0, 0, 0.1);
+}
+
+.hobby-section-in-personality {
+  min-width: 0;
+
+  .section-label {
+    display: block;
+    font-size: 12px;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+}
+
+.hobby-list--in-personality {
+  max-height: min(320px, 42vh);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .fetish-content {
   display: flex;
   flex-direction: column;
@@ -2738,6 +2765,20 @@ const emit = defineEmits<{
   }
 }
 
+/* 性癖 / 敏感点：展开后字段横排（窄屏自动换行） */
+.character-fetish-card .detail-expand-panel .detail-body {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px 16px;
+
+  .detail-row {
+    flex: 1 1 160px;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
 @keyframes slideDown {
   from {
     opacity: 0;
@@ -2825,11 +2866,16 @@ const emit = defineEmits<{
   background: rgba(0, 0, 0, 0.1);
 }
 
-.narrative-three-boxes {
-  display: flex;
-  flex-direction: column;
+.narrative-bg-archive-grid {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
   min-width: 0;
+
+  @media (min-width: 720px) {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
 }
 
 .appearance-narrative-subbox {
@@ -2844,25 +2890,14 @@ const emit = defineEmits<{
     margin-bottom: 8px;
   }
 
-  &--speech-hobby {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+  &--speech-only {
+    display: block;
   }
-}
-
-.narrative-subbox-block--hobby {
-  padding-top: 4px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.12);
 }
 
 :global(.light) .appearance-narrative-subbox {
   border-color: rgba(0, 0, 0, 0.1);
   background: rgba(255, 255, 255, 0.65);
-
-  .narrative-subbox-block--hobby {
-    border-top-color: rgba(0, 0, 0, 0.12);
-  }
 }
 
 .appearance-content {

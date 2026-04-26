@@ -73,9 +73,25 @@
 
     <template v-else-if="modalType === 'edit_character_mind'">
       <label class="eci-label">当前内心想法</label>
-      <textarea v-model="form.characterPsychThought" class="eci-textarea" rows="3" />
-      <label class="eci-label">性格（每行一条）</label>
-      <textarea v-model="form.characterPsychTraits" class="eci-textarea" rows="3" />
+      <textarea v-model="form.characterPsychThought" class="eci-textarea eci-textarea--thought-min" rows="2" />
+      <label class="eci-label">性格（每行一条，默认可拉高一格）</label>
+      <textarea v-model="form.characterPsychTraits" class="eci-textarea eci-textarea--traits-min" rows="1" />
+      <h4 class="ecf-mind-hobby-title">爱好</h4>
+      <div
+        v-for="(row, hidx) in form.characterPsychHobbyRows"
+        :key="'ecf-psych-hb-' + hidx"
+        class="ecf-detail-row ecf-bg-hobby-row"
+      >
+        <input v-model="row.name" type="text" class="eci-input" placeholder="爱好标签名" />
+        <input v-model.number="row.level" type="number" class="eci-input eci-input-level" min="0" max="10" />
+        <input v-model="row.reason" type="text" class="eci-input" placeholder="喜欢的原因" />
+        <button type="button" class="ecf-icon-btn" @click="form.characterPsychHobbyRows.splice(hidx, 1)">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+      <button type="button" class="ecf-add-btn" @click="form.characterPsychHobbyRows.push({ name: '', level: 1, reason: '' })">
+        + 爱好
+      </button>
     </template>
 
     <template v-else-if="modalType === 'edit_character_fetish'">
@@ -235,10 +251,6 @@
           <textarea v-model="form.backgroundCharacterIntro" class="eci-textarea eci-textarea--intro" rows="4" placeholder="一整段背景或简介" />
         </section>
         <section class="ecf-bg-archive-section">
-          <h4 class="ecf-bg-archive-section__title">描写</h4>
-          <input v-model="form.backgroundDescription" type="text" class="eci-input eci-input-desc-narrow" placeholder="一句话式描写" />
-        </section>
-        <section class="ecf-bg-archive-section">
           <h4 class="ecf-bg-archive-section__title">代表性发言</h4>
           <div
             v-for="(row, sidx) in form.backgroundSpeechRows"
@@ -253,28 +265,6 @@
           </div>
           <button type="button" class="ecf-add-btn" @click="form.backgroundSpeechRows.push({ context: '', line: '' })">
             + 发言
-          </button>
-        </section>
-        <section class="ecf-bg-archive-section">
-          <h4 class="ecf-bg-archive-section__title">爱好</h4>
-          <div
-            v-for="(row, hidx) in form.backgroundHobbyRows"
-            :key="'ecf-hb-' + hidx"
-            class="ecf-detail-row ecf-bg-hobby-row"
-          >
-            <input v-model="row.name" type="text" class="eci-input" placeholder="爱好标签名" />
-            <input v-model.number="row.level" type="number" class="eci-input eci-input-level" min="0" max="10" />
-            <input v-model="row.reason" type="text" class="eci-input" placeholder="喜欢的原因" />
-            <button type="button" class="ecf-icon-btn" @click="form.backgroundHobbyRows.splice(hidx, 1)">
-              <i class="fa-solid fa-trash"></i>
-            </button>
-          </div>
-          <button
-            type="button"
-            class="ecf-add-btn"
-            @click="form.backgroundHobbyRows.push({ name: '', level: 1, reason: '' })"
-          >
-            + 爱好
           </button>
         </section>
       </div>
@@ -394,6 +384,25 @@ const appearanceCartHint = computed(() => {
   min-height: 5rem;
   max-height: min(36vh, 220px);
   resize: vertical;
+}
+
+.eci-textarea--traits-min {
+  min-height: 2.25rem;
+  max-height: min(50vh, 20rem);
+  resize: vertical;
+}
+
+.eci-textarea--thought-min {
+  min-height: calc(2 * 1.4em + 0.8rem);
+  line-height: 1.4;
+  max-height: min(50vh, 20rem);
+}
+
+.ecf-mind-hobby-title {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .eci-input-level {

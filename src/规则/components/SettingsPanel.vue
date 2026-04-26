@@ -183,13 +183,10 @@
         <input
           v-model="secondaryApi.useTavernMainConnection"
           type="checkbox"
-          :disabled="!secondaryApiUrlTrimmed"
           @change="onSecondaryTavernPlugChange"
         />
         <span
-          >使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效）<template v-if="!secondaryApiUrlTrimmed"
-            >— <strong class="secondary-plug-need-url">须先填写下方 API URL</strong> 才可开启</template
-          ></span
+          >使用酒馆当前聊天补全连接（与主对话同一插头与<strong>同一模型</strong>，密钥不写入本地；勾选时「输入模型名 / 可用模型」不生效；未填下方 API URL 时勾选将提示与随机规则、招募生成相关说明）</span
         >
       </label>
 
@@ -831,12 +828,21 @@ function speechIntentOptionLabel(mode: SpeechIntentWorldbookMode): string {
 
 const secondaryApi = ref<SecondaryApiConfig>({ ...DEFAULT_SECONDARY_API_CONFIG });
 
-/** 有非空 API URL 时才允许勾选「使用酒馆当前聊天补全」；随机规则等也依赖填写地址的直连 */
-const secondaryApiUrlTrimmed = computed(() => String(secondaryApi.value.url || '').trim().length > 0);
-
-function onSecondaryTavernPlugChange() {
-  if (!secondaryApiUrlTrimmed.value) {
+async function onSecondaryTavernPlugChange() {
+  const urlEmpty = !String(secondaryApi.value.url ?? '').trim();
+  if (secondaryApi.value.useTavernMainConnection && urlEmpty) {
     secondaryApi.value.useTavernMainConnection = false;
+    const r = await Swal.fire({
+      title: '提示',
+      text: '如果空着第二API地址不填写的话，无法使用随机规则和AI生成角色喵~',
+      icon: 'info',
+      confirmButtonText: '知道了',
+    });
+    if (r.isConfirmed) {
+      secondaryApi.value.useTavernMainConnection = true;
+      persistSecondaryApi();
+    }
+    return;
   }
   persistSecondaryApi();
 }

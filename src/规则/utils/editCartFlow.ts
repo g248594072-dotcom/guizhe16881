@@ -283,7 +283,7 @@ export function buildMetaWorldInfoCartItem(世界类型: string, 世界简介: s
   return {
     id: newId(),
     dedupeKey: 'meta:world_info',
-    label: `世界元信息：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
+    label: `世界类型设定：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
     category: 'world',
     action: { kind: 'meta_world_info', 世界类型: t, 世界简介: intro },
   };
@@ -455,7 +455,7 @@ export function refreshEditCartItem(item: EditCartItem): EditCartItem {
       return {
         ...item,
         dedupeKey: 'meta:world_info',
-        label: `世界元信息：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
+        label: `世界类型设定：${t.length > 20 ? `${t.slice(0, 20)}…` : t}`,
         category: 'world',
         action: { kind: 'meta_world_info', 世界类型: t, 世界简介: intro },
       };

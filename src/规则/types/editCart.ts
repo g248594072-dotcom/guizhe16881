@@ -32,11 +32,11 @@ export interface EditCartModalForm {
   showSensitivePartDetails: boolean;
   sensitivePartDetails: Array<{ name: string; level: number; reaction: string; devDetails: string }>;
   identityTags: Array<{ category: string; value: string }>;
-  /** 编辑背景与档案（角色简介、描写、代表性发言、爱好） */
+  /** 编辑性格（想法/性格标签/爱好多行表） */
+  characterPsychHobbyRows: Array<{ name: string; level: number; reason: string }>;
+  /** 编辑背景与档案（角色简介、代表性发言；爱好在「编辑性格」弹窗） */
   backgroundCharacterIntro: string;
-  backgroundDescription: string;
   backgroundSpeechRows: Array<{ context: string; line: string }>;
-  backgroundHobbyRows: Array<{ name: string; level: number; reason: string }>;
   avatarUrl: string;
   /** 编辑服装状态 + 身体部位物理状态（身体槽用多行；饰品仍用 appearanceJewelryRows） */
   appearanceClothing: ClothingStateZh;

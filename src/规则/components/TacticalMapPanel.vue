@@ -972,16 +972,54 @@ function activityScopeLabel(a: Activity): string {
 const MAP_SIZE = 4000;
 const MAP_HALF = MAP_SIZE / 2;
 
+/**
+ * 将视口对准「区域 + 建筑」包围盒中心（与 navigateToRegion 使用同一套 map 坐标）。
+ * MVU 占位格往往在 (4,4) 一带，而默认 pan=0 对准画布中心 (2000,2000)，会导致「有数据但地图一片空白」。
+ */
+function computePanToCenterWorld(w: World): { panX: number; panY: number } | null {
+  const regs = w.regions ?? [];
+  const blds = w.buildings ?? [];
+  if (!regs.length && !blds.length) return null;
+
+  let minGx = Infinity;
+  let minGy = Infinity;
+  let maxGx = -Infinity;
+  let maxGy = -Infinity;
+
+  for (const r of regs) {
+    minGx = Math.min(minGx, r.x);
+    minGy = Math.min(minGy, r.y);
+    maxGx = Math.max(maxGx, r.x + r.width);
+    maxGy = Math.max(maxGy, r.y + r.height);
+  }
+  for (const b of blds) {
+    minGx = Math.min(minGx, b.x);
+    minGy = Math.min(minGy, b.y);
+    maxGx = Math.max(maxGx, b.x + b.width);
+    maxGy = Math.max(maxGy, b.y + b.height);
+  }
+  if (!Number.isFinite(minGx)) return null;
+
+  const cx = ((minGx + maxGx) / 2) * CELL_SIZE;
+  const cy = ((minGy + maxGy) / 2) * CELL_SIZE;
+  return { panX: MAP_HALF - cx, panY: MAP_HALF - cy };
+}
+
+function countMapEntities(w: World): number {
+  return (w.regions?.length ?? 0) + (w.buildings?.length ?? 0);
+}
+
 /** 无浏览器档：空白图 + 当前 MVU 语义（与 buildWorldFromMvuStat 一致） */
 function tacticalPersistedWhenNoBrowser(): TacticalMapPersisted {
   const store = useDataStore();
   const world = buildWorldFromMvuStat(store.data);
+  const panHint = computePanToCenterWorld(world);
   return {
     schemaVersion: 2,
     world: klona(world) as World,
     mapUiTheme: world.theme,
-    panX: 0,
-    panY: 0,
+    panX: panHint?.panX ?? 0,
+    panY: panHint?.panY ?? 0,
     scale: 1,
   };
 }
@@ -993,20 +1031,33 @@ const dataStore = useDataStore();
 const initialWorld: World = initLoaded
   ? syncWorldFromMvu(normalizeWorld(klona(initLoaded.world)), dataStore.data)
   : buildWorldFromMvuStat(dataStore.data);
+
+const initialPanHint = computePanToCenterWorld(initialWorld);
+const persistedWorldWasEmpty =
+  !!initLoaded && !(initLoaded.world.regions?.length) && !(initLoaded.world.buildings?.length);
+
 const initialPersisted: TacticalMapPersisted = initLoaded
-  ? { ...initLoaded, world: initialWorld }
+  ? {
+      ...initLoaded,
+      world: initialWorld,
+      ...(persistedWorldWasEmpty && initialPanHint
+        ? { panX: initialPanHint.panX, panY: initialPanHint.panY }
+        : {}),
+    }
   : {
       schemaVersion: 2,
       world: initialWorld,
       mapUiTheme: initialWorld.theme,
-      panX: 0,
-      panY: 0,
+      panX: initialPanHint?.panX ?? 0,
+      panY: initialPanHint?.panY ?? 0,
       scale: 1,
     };
 
 const mapWorld = ref<World>(normalizeWorld(klona(initialPersisted.world)));
 /** 上次「确认应用」后的地图快照；与 mapWorld 比较得到是否有未提交草稿 */
 const committedMapWorld = ref<World>(normalizeWorld(klona(mapWorld.value)));
+/** 用于 MVU 首次写入区域/建筑时自动把镜头从「画布中心」移到实体包围盒（避免看起来像空图） */
+const prevEntityCountForMvuAutoPan = ref(countMapEntities(mapWorld.value));
 const tacticalMapDraftDirty = computed(
   () => !isEqual(normalizeWorld(klona(mapWorld.value)), normalizeWorld(klona(committedMapWorld.value))),
 );
@@ -1245,9 +1296,23 @@ function scheduleApplyMvuToMap() {
   mvuToMapTimer = setTimeout(() => {
     mvuToMapTimer = null;
     applyingMvuToMap.value = true;
+    const beforeN = prevEntityCountForMvuAutoPan.value;
     mapWorld.value = normalizeWorld(
       syncWorldFromMvu(normalizeWorld(klona(mapWorld.value)), dataStore.data),
     );
+    const nextN = countMapEntities(mapWorld.value);
+    if (beforeN === 0 && nextN > 0) {
+      const panHint = computePanToCenterWorld(mapWorld.value);
+      if (panHint) {
+        panX.value = panHint.panX;
+        panY.value = panHint.panY;
+        if (scale.value < ZOOM_THRESHOLD) {
+          zoomTo(ZOOM_THRESHOLD);
+        }
+        clampPan();
+      }
+    }
+    prevEntityCountForMvuAutoPan.value = nextN;
     committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
     void nextTick(() => {
       applyingMvuToMap.value = false;
@@ -1288,11 +1353,24 @@ function applyPersistedPayload(data: TacticalMapPersisted | null) {
   panTween?.kill();
   panTween = null;
   if (data) {
+    const preSyncEmpty = !(data.world.regions?.length) && !(data.world.buildings?.length);
     mapWorld.value = normalizeWorld(syncWorldFromMvu(normalizeWorld(klona(data.world)), dataStore.data));
     mapUiTheme.value = data.mapUiTheme;
     panX.value = data.panX;
     panY.value = data.panY;
     scale.value = data.scale;
+    if (preSyncEmpty) {
+      const panHint = computePanToCenterWorld(mapWorld.value);
+      if (panHint) {
+        panX.value = panHint.panX;
+        panY.value = panHint.panY;
+        if (scale.value < ZOOM_THRESHOLD) {
+          zoomTo(ZOOM_THRESHOLD);
+        }
+        clampPan();
+      }
+    }
+    prevEntityCountForMvuAutoPan.value = countMapEntities(mapWorld.value);
   } else {
     const boot = tacticalPersistedWhenNoBrowser();
     mapWorld.value = normalizeWorld(klona(boot.world));
@@ -1300,6 +1378,7 @@ function applyPersistedPayload(data: TacticalMapPersisted | null) {
     panX.value = boot.panX;
     panY.value = boot.panY;
     scale.value = boot.scale;
+    prevEntityCountForMvuAutoPan.value = countMapEntities(mapWorld.value);
   }
   clampPan();
   committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
@@ -1415,6 +1494,7 @@ function onPullVariablesToMap() {
     if (scale.value < ZOOM_THRESHOLD) {
       zoomTo(ZOOM_THRESHOLD);
     }
+    prevEntityCountForMvuAutoPan.value = countMapEntities(mapWorld.value);
     flushPersistCurrentScopeToBrowser();
     committedMapWorld.value = normalizeWorld(klona(mapWorld.value));
     toastr.success('已从变量合并区域与建筑到地图');

@@ -348,8 +348,10 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
       name = id;
     }
 
-    const 角色简介 = typeof value?.['角色简介'] === 'string' ? value['角色简介'] : '';
-    const 描写 = value?.['描写'] ?? value?.['description'] ?? '';
+    const 角色简介 =
+      typeof value?.['角色简介'] === 'string' && String(value['角色简介']).trim()
+        ? String(value['角色简介'])
+        : String(value?.['描写'] ?? value?.['description'] ?? '').trim();
     const rawRep = value?.['代表性发言'];
     const representativeQuotes: Record<string, string> =
       rawRep != null && typeof rawRep === 'object' && !Array.isArray(rawRep)
@@ -498,7 +500,7 @@ function mapCharactersFromChinese(stat: Record<string, any>): CharacterData[] {
     return {
       id,
       name,
-      description: 描写,
+      description: 角色简介,
       characterIntro: String(角色简介 || '').trim() || undefined,
       representativeQuotes:
         Object.keys(representativeQuotes).length > 0 ? representativeQuotes : undefined,
