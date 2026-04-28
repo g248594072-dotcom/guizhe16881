@@ -1,5 +1,6 @@
 {
   "scripts": {
+<<<<<<< HEAD
     "build:phone:vite": "npm install --prefix src/手机 && npm run build --prefix src/手机",
     "build:phone": "pnpm run build:phone:vite && node scripts/sync-phone-dist.mjs",
     "build:dev": "webpack --mode development",
@@ -13,6 +14,15 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "dump": "tsx dump_schema.ts",
+=======
+    "build:dev": "webpack --mode development",
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch --progress",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,scss,html,vue}\" --no-error-on-unmatched-pattern",
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "dump": "node dump_schema.ts",
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     "sync": "node tavern_sync.mjs"
   },
   "browserslist": [
@@ -33,7 +43,10 @@
     "autoprefixer": "^10.5.0",
     "chokidar": "^4.0.3",
     "css-loader": "^7.1.4",
+<<<<<<< HEAD
     "css-minimizer-webpack-plugin": "^8.0.0",
+=======
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
@@ -70,7 +83,10 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths-webpack-plugin": "^4.2.0",
     "tslib": "^2.8.1",
+<<<<<<< HEAD
     "tsx": "^4.21.0",
+=======
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     "type-fest": "^4.41.0",
     "typescript": "6.0.0-dev.20250807",
     "typescript-eslint": "^8.59.1",
@@ -91,6 +107,10 @@
     "@vueuse/integrations": "^13.9.0",
     "@vueuse/shared": "^13.9.0",
     "async-wait-until": "^2.0.31",
+<<<<<<< HEAD
+=======
+    "axios": "1.14.0",
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     "compare-versions": "^6.1.1",
     "dedent": "^1.7.2",
     "gsap": "^3.15.0",
@@ -104,7 +124,10 @@
     "pixi.js": "^8.18.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+<<<<<<< HEAD
     "sweetalert2": "^11.26.24",
+=======
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     "toastr": "^2.1.4",
     "vue": "^3.5.33",
     "vue-final-modal": "^4.5.5",

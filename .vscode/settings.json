@@ -1,6 +1,9 @@
 {
+<<<<<<< HEAD
   // dist/ 仅由构建生成（pnpm build），已在 .gitignore 中且不应再被 Git 跟踪。
   // 若历史提交曾跟踪过 dist/，会导致 VS Code 执行 git add 时出现 “ignored by .gitignore” 报错；已用 `git rm -r --cached dist` 从索引移除，本地 dist 文件仍在。
+=======
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.addMissingImports.ts": "explicit",
@@ -51,6 +54,10 @@
   "[vue]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+<<<<<<< HEAD
   "typescript.tsdk": "node_modules/typescript/lib",
   "liveServer.settings.port": 5501
+=======
+  "typescript.tsdk": "node_modules/typescript/lib"
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
 }

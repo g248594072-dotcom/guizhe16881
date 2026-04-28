@@ -1,4 +1,5 @@
 import { StoreDefinition } from 'pinia';
+<<<<<<< HEAD
 import { sanitizeStatDataRoleArchivesNestedMaps } from '@/规则/utils/tagMap';
 
 /** 从变量表中取出 MVU stat_data（单层；遇双层嵌套则取内层） */
@@ -276,10 +277,54 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         条数: count角色档案条数(data.value),
         变量绑定: resolvedOption,
       });
+=======
+
+export function defineMvuDataStore<T extends z.ZodObject>(
+  schema: T,
+  variable_option: VariableOption,
+  additional_setup?: (data: Ref<z.infer<T>>) => void,
+): StoreDefinition<`mvu_data.${string}`, { data: Ref<z.infer<T>> }> {
+  if (
+    variable_option.type === 'message' &&
+    (variable_option.message_id === undefined || variable_option.message_id === 'latest')
+  ) {
+    variable_option.message_id = -1;
+  }
+
+  return defineStore(
+    `mvu_data.${_(variable_option)
+      .entries()
+      .sortBy(entry => entry[0])
+      .map(entry => entry[1])
+      .join('.')}`,
+    errorCatched(() => {
+      const data = ref(
+        schema.parse(_.get(getVariables(variable_option), 'stat_data', {}), { reportInput: true }),
+      ) as Ref<z.infer<T>>;
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
       if (additional_setup) {
         additional_setup(data);
       }
 
+<<<<<<< HEAD
+=======
+      useIntervalFn(() => {
+        const stat_data = _.get(getVariables(variable_option), 'stat_data', {});
+        const result = schema.safeParse(stat_data);
+        if (result.error) {
+          return;
+        }
+        if (!_.isEqual(data.value, result.data)) {
+          ignoreUpdates(() => {
+            data.value = result.data;
+          });
+          if (!_.isEqual(stat_data, result.data)) {
+            updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+          }
+        }
+      }, 2000);
+
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
       const { ignoreUpdates } = watchIgnorable(
         data,
         new_data => {
@@ -292,13 +337,18 @@ export function defineMvuDataStore<T extends z.ZodObject>(
               data.value = result.data;
             });
           }
+<<<<<<< HEAD
           if (writeBack) {
             updateVariablesWith(variables => setStatData(variables, result.data), resolvedOption);
           }
+=======
+          updateVariablesWith(variables => _.set(variables, 'stat_data', result.data), variable_option);
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
         },
         { deep: true },
       );
 
+<<<<<<< HEAD
       /** 与 2s 轮询相同：从 `getVariables(resolvedOption)` 合并后写回本地 `data`（必要时写回酒馆）。 */
       function pullStatDataFromVariables(source: 'poll' | 'manual' = 'poll'): boolean {
         const prev角色档案 = (data.value as unknown as Record<string, unknown>)?.['角色档案'];
@@ -357,6 +407,9 @@ export function defineMvuDataStore<T extends z.ZodObject>(
         data,
         refreshFromVariables: () => pullStatDataFromVariables('manual'),
       };
+=======
+      return { data };
+>>>>>>> dc79e70c2b507a4984bc1620b1a875e1a4ff083d
     }),
   );
 }
