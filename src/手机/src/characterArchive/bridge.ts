@@ -11,11 +11,14 @@ const MSG = {
   WRITE_CHARACTER_ANALYSIS_RESULT: 'tavern-phone:write-character-analysis-result',
   REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
   SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
+  REQUEST_ANALYSIS_WORLDBOOK_EXCERPT: 'tavern-phone:request-analysis-worldbook-excerpt',
+  ANALYSIS_WORLDBOOK_EXCERPT_RESULT: 'tavern-phone:analysis-worldbook-excerpt-result',
 } as const;
 
 /** 监听器是否已初始化 */
 let archiveListenerInitialized = false;
 let writeAnalysisListenerInitialized = false;
+let analysisWbListenerInitialized = false;
 
 /** 挂起的请求 */
 type PendingArchive = {
@@ -31,6 +34,9 @@ type PendingWriteAnalysis = {
 };
 
 const pendingWriteAnalysis = new Map<string, PendingWriteAnalysis>();
+
+/** 挂起的世界书节选请求 */
+const pendingAnalysisWb = new Map<string, { resolve: (v: string) => void; timeout: number }>();
 
 /**
  * 初始化角色档案读取监听器
@@ -79,6 +85,44 @@ function ensureWriteAnalysisListener(): void {
         ok: Boolean(d.ok),
         error: typeof d.error === 'string' ? d.error : undefined,
       });
+    }
+  });
+}
+
+function ensureAnalysisWorldbookListener(): void {
+  if (analysisWbListenerInitialized) return;
+  analysisWbListenerInitialized = true;
+  window.addEventListener('message', (e: MessageEvent) => {
+    const d = e.data as { type?: string; requestId?: string; text?: string };
+    if (d?.type !== MSG.ANALYSIS_WORLDBOOK_EXCERPT_RESULT || typeof d.requestId !== 'string') {
+      return;
+    }
+    const p = pendingAnalysisWb.get(d.requestId);
+    if (!p) return;
+    clearTimeout(p.timeout);
+    pendingAnalysisWb.delete(d.requestId);
+    p.resolve(typeof d.text === 'string' ? d.text : '');
+  });
+}
+
+/**
+ * 向壳脚本请求当前角色卡绑定世界书中「角色定义前」条目节选（供角色分析提示词）
+ */
+export function requestAnalysisWorldbookExcerptFromShell(): Promise<string> {
+  ensureAnalysisWorldbookListener();
+  const requestId = crypto.randomUUID();
+  return new Promise(resolve => {
+    const timeout = window.setTimeout(() => {
+      pendingAnalysisWb.delete(requestId);
+      resolve('');
+    }, 12000);
+    pendingAnalysisWb.set(requestId, { resolve, timeout });
+    try {
+      window.parent.postMessage({ type: MSG.REQUEST_ANALYSIS_WORLDBOOK_EXCERPT, requestId }, '*');
+    } catch {
+      clearTimeout(timeout);
+      pendingAnalysisWb.delete(requestId);
+      resolve('');
     }
   });
 }
@@ -374,6 +418,8 @@ export async function syncCharacterAnalysisToWorldbook(
     数值?: Record<string, number>;
     身份标签?: Record<string, string>;
     当前综合生理描述?: string;
+    /** 动态报告：本回合正文摘要句，供壳合并时间戳列表 */
+    正文摘要本回合?: string;
   },
   options?: {
     position?: string;

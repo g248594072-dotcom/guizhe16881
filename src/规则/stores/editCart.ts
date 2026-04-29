@@ -4,8 +4,7 @@ import { ref, computed } from 'vue';
 import type { EditCartItem } from '../types/editCart';
 import { useDataStore } from '../store';
 import { applyEditCartAction } from '../utils/editCartApply';
-import { appendPendingUpdateVariablePatches } from '../utils/pendingUpdateVariableQueue';
-import { diffValueToJsonPatches } from '../utils/tacticalMapCommitSendBox';
+import { diffValueToJsonPatches, type TacticalMapCommitPatchOp } from '../utils/tacticalMapCommitSendBox';
 import { buildStagingHintsFromCartItems } from '../utils/stagingChangeHint';
 
 const CAT_ORDER = ['world', 'region', 'character', 'personal', 'avatar'] as const;
@@ -50,24 +49,22 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
   }
 
   /**
-   * 按分区顺序执行；全部成功后清空购物车，合并说明经 App 的 copyToInput（写入输入框或待发变量块摘要）。
+   * 按分区顺序执行；全部成功后清空购物车，合并说明经 App 的 copyToInput（唯一 `<UpdateVariable>` + 本批整体 diff）。
    * 中途失败：已执行项已从购物车移除，未执行项保留。
    */
-  async function applyAll(copyToInput: (text: string, mode: 'append' | 'replace') => void): Promise<boolean> {
+  async function applyAll(
+    copyToInput: (text: string, mode: 'append' | 'replace', opts?: { patches?: TacticalMapCommitPatchOp[] }) => void,
+  ): Promise<boolean> {
     const list = sortedItems();
     const hintText = buildStagingHintsFromCartItems(list);
     const store = useDataStore();
     const dialogChunks: string[] = [];
+    const beforeAll = klona(store.data);
     for (let i = 0; i < list.length; i++) {
       try {
-        const beforeItem = klona(store.data);
         const msg = await applyEditCartAction(list[i].action);
         const m = String(msg ?? '').trim();
         if (m) dialogChunks.push(m);
-        const itemPatches = diffValueToJsonPatches('', beforeItem, klona(store.data));
-        if (itemPatches.length > 0) {
-          appendPendingUpdateVariablePatches(itemPatches);
-        }
       } catch (e) {
         console.error('[editCart] applyAll 在第', i + 1, '项失败:', e);
         const keepIds = new Set(list.slice(i).map(x => x.id));
@@ -76,11 +73,12 @@ export const useEditCartStore = defineStore('ruleEditCart', () => {
         return false;
       }
     }
+    const allPatches = diffValueToJsonPatches('', beforeAll, klona(store.data));
     const drafted = dialogChunks.join('\n\n').trim();
     const hint = hintText.trim();
     const body = [drafted, hint].filter(Boolean).join('\n\n');
-    if (body) {
-      copyToInput(body, 'append');
+    if (body || allPatches.length > 0) {
+      copyToInput(body, 'append', { patches: allPatches });
     }
     clear();
     return true;

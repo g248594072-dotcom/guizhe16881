@@ -79,7 +79,7 @@
       "label": "开始监听源代码并编译（含手机）",
       "type": "shell",
       "command": "pnpm",
-      "args": ["run", "watch"],
+      "args": ["run", "watch:rules-phone"],
       "problemMatcher": [
         {
           "pattern": [

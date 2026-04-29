@@ -43,6 +43,10 @@ export const TAVERN_PHONE_MSG = {
   REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
   /** 壳脚本 → 前端：世界书同步结果响应 */
   SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
+  /** 前端 → 壳脚本：请求角色分析用的世界书节选（角色定义前） */
+  REQUEST_ANALYSIS_WORLDBOOK_EXCERPT: 'tavern-phone:request-analysis-worldbook-excerpt',
+  /** 壳脚本 → 前端：世界书节选结果 */
+  ANALYSIS_WORLDBOOK_EXCERPT_RESULT: 'tavern-phone:analysis-worldbook-excerpt-result',
   /** 前端 → 壳脚本：保存自动分析间隔设置 */
   SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
   /** 壳脚本 → 前端：通知自动触发分析全部角色 */

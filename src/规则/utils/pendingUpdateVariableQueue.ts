@@ -1,6 +1,6 @@
 /**
  * 待发 `<UpdateVariable>`：地图确认、购物车批量确认、购物车关闭时的单次编辑等共用。
- * 多次 append 的 JSON Patch 在 take 时合并为**一个** `<JSONPatch>` 数组；可选一条 `<PlayerStagingSummary>` 与补丁同处**唯一**闭合 `<UpdateVariable>` 内。
+ * 多次 append 的 JSON Patch 在 take 时合并为**一个** `<JSONPatch>` 数组；可选摘要写在 `<UpdateVariable>` 外，块内仅 `<JSONPatch>`（仍兼容旧消息内嵌 `<PlayerStagingSummary>` 的解析）。
  */
 
 import type { TacticalMapCommitPatchOp } from './tacticalMapCommitSendBox';

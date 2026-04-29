@@ -62,8 +62,28 @@ export function innerBodyOfUpdateVariableBlock(block: string): string {
   return rest.slice(0, close).trim();
 }
 
+/** 所有成对闭合 `<UpdateVariable>` 块之外的片段（块前/块间/块后），与 `singleUpdateVariableInput.splitFreeTextAndUpdateVariableBlocks` 的 freeText 一致。 */
+export function extractFreeTextOutsideUpdateVariableBlocks(text: string): string {
+  const s = String(text || '');
+  const ranges = extractAllClosedUpdateVariableBlockRanges(s);
+  if (ranges.length === 0) {
+    return s.trim();
+  }
+  const parts: string[] = [];
+  let i = 0;
+  for (const r of ranges) {
+    const gap = s.slice(i, r.start);
+    if (gap.trim()) parts.push(gap.trim());
+    i = r.end;
+  }
+  const tail = s.slice(i);
+  if (tail.trim()) parts.push(tail.trim());
+  return parts.join('\n\n').trim();
+}
+
 /**
  * 从整段文本取出所有块的**内部**正文，去重后拼接（先 chat 再 fallback 独有项）。
+ * 同时合并各来源中位于变量块**外**的说明文字（去重），置于内文之前，供第二 API「玩家附加」提示。
  * @param maxChars 总长度上限（超出截断并附说明）
  */
 export function mergeUpdateVariableInnerBodiesForPrompt(
@@ -71,6 +91,19 @@ export function mergeUpdateVariableInnerBodiesForPrompt(
   fallbackBody: string,
   maxChars: number,
 ): string {
+  const freeA = extractFreeTextOutsideUpdateVariableBlocks(chatBody);
+  const freeB = extractFreeTextOutsideUpdateVariableBlocks(fallbackBody);
+  const freeParts: string[] = [];
+  const seenFree = new Set<string>();
+  for (const x of [freeA, freeB]) {
+    const k = x.trim();
+    if (!k) continue;
+    if (seenFree.has(k)) continue;
+    seenFree.add(k);
+    freeParts.push(x.trim());
+  }
+  const freeJoined = freeParts.join('\n\n---\n\n');
+
   const innersA = extractAllClosedUpdateVariableBlocks(chatBody).map(innerBodyOfUpdateVariableBlock);
   const innersB = extractAllClosedUpdateVariableBlocks(fallbackBody).map(innerBodyOfUpdateVariableBlock);
   const out: string[] = [];
@@ -82,7 +115,15 @@ export function mergeUpdateVariableInnerBodiesForPrompt(
     seen.add(k);
     out.push(x.trim());
   }
-  let joined = out.join('\n\n---\n\n');
+  const innerJoined = out.join('\n\n---\n\n');
+
+  let joined = '';
+  if (freeJoined && innerJoined) {
+    joined = `${freeJoined}\n\n---\n\n${innerJoined}`;
+  } else {
+    joined = freeJoined || innerJoined;
+  }
+
   if (joined.length <= maxChars) return joined;
   return `${joined.slice(0, maxChars)}\n\n…（以上内容已截断，仍以已展示部分为准：勿删改其中 path/取值意图）`;
 }

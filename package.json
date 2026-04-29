@@ -8,6 +8,7 @@
     "watch:webpack": "webpack --mode production --watch --progress",
     "watch:webpack:dev": "webpack --mode development --watch --progress",
     "watch": "node scripts/watch-all.mjs",
+    "watch:rules-phone": "node scripts/watch-all-rules-phone.mjs",
     "watch:phone": "node scripts/watch-phone-sync.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,css,scss,html,vue}\" --no-error-on-unmatched-pattern",
     "lint": "eslint",

@@ -3,8 +3,12 @@
  * 供第二 API 变量路、NPC 生活、附加任务等共用。
  */
 
+function stripLegacyPlayerStagingSummary(inner: string): string {
+  return String(inner || '').replace(/<PlayerStagingSummary>[\s\S]*?<\/PlayerStagingSummary>/gi, '').trim();
+}
+
 function tryParseJsonPatchArrayFromInner(inner: string): unknown[] | null {
-  const t = inner.trim();
+  const t = stripLegacyPlayerStagingSummary(inner).trim();
   const jp = t.match(/^<JSONPatch>([\s\S]*?)<\/JSONPatch>/i);
   const jsonStr = jp ? jp[1].trim() : t;
   try {

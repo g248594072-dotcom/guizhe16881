@@ -5,7 +5,11 @@
  */
 
 import { getAnalysisScheduler, type AnalysisTask } from './analysisScheduler';
-import { requestCharacterArchiveFromShell, syncCharacterAnalysisToWorldbook } from './bridge';
+import {
+  requestCharacterArchiveFromShell,
+  syncCharacterAnalysisToWorldbook,
+  requestAnalysisWorldbookExcerptFromShell,
+} from './bridge';
 import { loadWeChatThreadForScope } from '../weChatStorage';
 import { getChatScopeId } from '../tavernPhoneBridge';
 import { getTavernContextForAnalysis } from '../chatContext';
@@ -54,6 +58,8 @@ export interface CharacterAnalysisResult {
 export interface CharacterDynamicsResult {
   characterId: string;
   characterName: string;
+  /** 本回合从酒馆正文/聊天概括的、与该角色相关的近期事件（一句，供世界书「正文摘要」合并） */
+  mainStorySummary?: string;
   // 行为变化
   behaviorChange?: string;
   // 性格微调
@@ -138,8 +144,17 @@ class CharacterAnalyzer {
 
       const { promptBlock: momentsPromptBlock } = await this.loadMomentsContextForCharacter(characterId);
 
+      const worldbookExcerpt = await this.getAnalysisWorldbookExcerpt();
+
       // 构建分析提示词（包含聊天记录上下文）
-      const prompt = this.buildAnalysisPrompt(characterName, profile, recentMessages, tavernContext, momentsPromptBlock);
+      const prompt = this.buildAnalysisPrompt(
+        characterName,
+        profile,
+        recentMessages,
+        tavernContext,
+        momentsPromptBlock,
+        worldbookExcerpt,
+      );
       const raw = await this.callApi(prompt, {
         apiBaseUrl: (window as unknown as Record<string, string>).__PHONE_API_BASE__ || '',
         apiKey: (window as unknown as Record<string, string>).__PHONE_API_KEY__ || '',
@@ -257,12 +272,21 @@ class CharacterAnalyzer {
       const { promptBlock: momentsPromptBlock, worldbookAppend: momentsWorldbookAppend } =
         await this.loadMomentsContextForCharacter(characterId);
 
+      const worldbookExcerpt = await this.getAnalysisWorldbookExcerpt();
+
       // 使用预计算的关键词（从角色档案分析传入），如果没有则自行提取
       const keywords = precomputedKeywords ?? this.extractCharacterKeywords(profile, characterName);
       console.log(`[analyzer] 使用关键词: ${keywords}`);
 
       // 构建动态分析提示词
-      const prompt = this.buildDynamicsPrompt(characterName, profile, recentMessages, tavernContext, momentsPromptBlock);
+      const prompt = this.buildDynamicsPrompt(
+        characterName,
+        profile,
+        recentMessages,
+        tavernContext,
+        momentsPromptBlock,
+        worldbookExcerpt,
+      );
       console.log('[analyzer] 动态分析提示词长度:', prompt.length);
       console.log('[analyzer] 动态分析提示词前200字符:', prompt.substring(0, 200));
 
@@ -291,6 +315,7 @@ class CharacterAnalyzer {
           姓名: `${characterName}的近期动态`,
           当前内心想法: dynamicsContent,
           身份标签: { 类型: '动态报告' },
+          正文摘要本回合: result.mainStorySummary ?? '',
         },
         {
           position: 'afterCharDef', // 角色定义后
@@ -344,7 +369,7 @@ class CharacterAnalyzer {
         const relation = tags['关系'];
         if (relation && typeof relation === 'string') {
           // 提取斜杠后的称呼或整个关系
-          const parts = relation.split(/[\/\\]/);
+          const parts = relation.split(/[/\\]/);
           parts.forEach(p => {
             const trimmed = p.trim();
             if (trimmed && trimmed.length >= 2 && trimmed.length <= 6) keywords.add(trimmed);
@@ -482,6 +507,7 @@ class CharacterAnalyzer {
     chatHistory: Array<{ role: string; content: string; time?: number }> = [],
     tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = [],
     momentsContext: string = '（暂无该角色的朋友圈动态）',
+    worldbookExcerpt: string = '',
   ): string {
     const profileJson = JSON.stringify(profile, null, 2);
 
@@ -501,8 +527,16 @@ class CharacterAnalyzer {
         }).join('\n')
       : '（暂无酒馆正文上下文）';
 
+    const wbBlock =
+      worldbookExcerpt.length > 0
+        ? `\`\`\`\n${worldbookExcerpt}\n\`\`\``
+        : '（暂无或未绑定世界书，或无任何「角色定义前」条目）';
+
     return `你是一位专门分析虚拟角色心理与行为变化的 AI 助手。
 请根据以下角色档案和近期互动记录，生成角色的【近期动态】分析报告。
+
+## 当前角色卡绑定世界书（角色定义前，节选）
+${wbBlock}
 
 ## 角色档案（JSON）
 \`\`\`json
@@ -531,6 +565,7 @@ ${momentsContext}
 {
   "characterId": "${characterName}的ID",
   "characterName": "${characterName}",
+  "mainStorySummary": "用一句话（20～80字）概括该角色在近期酒馆正文与聊天中与 TA 相关的关键事件，第三人称客观叙述",
   "behaviorChange": "行为变化：描述角色近期在行为模式上的变化，如对新环境、新人物的适应方式，日常行为的改变等",
   "personalityTweak": "性格微调：描述角色性格上的细微变化，如由于事件影响导致的性格转变、新的心理防御机制等",
   "languageStyle": "语言风格：描述角色近期说话风格的特点，语气变化、用词习惯、与其他角色互动时的语言模式",
@@ -540,6 +575,7 @@ ${momentsContext}
 
 注意：
 - 只输出 JSON，不要有其他内容
+- **mainStorySummary** 必填：紧扣该角色，依据酒馆正文与微信对话中能观察到的事实
 - 分析要具体、有细节，不要泛泛而谈
 - 要结合聊天记录、酒馆正文与朋友圈中可观察到的具体表达
 - 体现角色的成长、变化或心理转折
@@ -553,7 +589,7 @@ ${momentsContext}
 
       // 尝试提取 JSON 代码块
       let jsonStr = '';
-      const codeBlockMatch = raw.match(/\`\`\`json\s*([\s\S]*?)\s*\`\`\`/);
+      const codeBlockMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
       if (codeBlockMatch) {
         jsonStr = codeBlockMatch[1];
       } else {
@@ -608,6 +644,11 @@ ${momentsContext}
       const result: CharacterDynamicsResult = {
         characterId,
         characterName: parsed.characterName || characterName,
+        mainStorySummary:
+          parsed.mainStorySummary ||
+          parsed.main_story_summary ||
+          parsed.正文摘要 ||
+          undefined,
         behaviorChange: parsed.behaviorChange || parsed.behavior || parsed.行为变化,
         personalityTweak: parsed.personalityTweak || parsed.personality || parsed.性格微调,
         languageStyle: parsed.languageStyle || parsed.language || parsed.语言风格,
@@ -630,7 +671,13 @@ ${momentsContext}
         ? `\n\n---\n【朋友圈摘录】（角色自发动态，新→旧节选）\n${momentsWorldbookAppend.trim()}`
         : '';
 
+    const storyLine = (result.mainStorySummary || '').trim() || '（本回合暂无摘要）';
+
     return `【${result.characterName}的近期动态】
+
+## 正文摘要
+
+${storyLine}
 
 行为变化：
 ${result.behaviorChange || '（暂无变化记录）'}
@@ -646,6 +693,16 @@ ${result.personalGoal || '（暂无目标记录）'}
 
 ---
 生成时间：${new Date(result.generatedAt).toLocaleString('zh-CN')}${momentsTail}`;
+  }
+
+  /** 获取当前角色卡绑定世界书中「角色定义前」条目节选（经小手机壳聚合） */
+  private async getAnalysisWorldbookExcerpt(): Promise<string> {
+    try {
+      const text = await requestAnalysisWorldbookExcerptFromShell();
+      return typeof text === 'string' ? text.trim() : '';
+    } catch {
+      return '';
+    }
   }
 
   /** 获取角色基础档案 */
@@ -667,6 +724,7 @@ ${result.personalGoal || '（暂无目标记录）'}
     chatHistory: Array<{ role: string; content: string; time?: number }> = [],
     tavernContext: Array<{ role: string; name: string; content: string; message_id?: number }> = [],
     momentsContext: string = '（暂无该角色的朋友圈动态）',
+    worldbookExcerpt: string = '',
   ): string {
     const profileJson = JSON.stringify(profile, null, 2);
 
@@ -686,8 +744,16 @@ ${result.personalGoal || '（暂无目标记录）'}
         }).join('\n')
       : '（暂无酒馆正文上下文）';
 
+    const wbBlock =
+      worldbookExcerpt.length > 0
+        ? `\`\`\`\n${worldbookExcerpt}\n\`\`\``
+        : '（暂无或未绑定世界书，或无任何「角色定义前」条目）';
+
     return `你是一位专门分析虚拟角色心理与状态的 AI 助手。
 请根据以下角色档案和微信聊天记录，生成角色的完整分析档案。
+
+## 当前角色卡绑定世界书（角色定义前，节选）
+${wbBlock}
 
 ## 角色档案（JSON）
 \`\`\`json
@@ -871,6 +937,7 @@ ${momentsContext}
         console.warn('[analyzer] 第一次解析失败，尝试清理后的再次解析:', parseError);
 
         // 更激进的清理：移除控制字符
+        // eslint-disable-next-line no-control-regex -- 兜底去除非法 JSON 控制字符
         jsonStr = jsonStr.replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
           // 保留一些常见空白字符的转义形式
           if (char === '\n') return '\\n';

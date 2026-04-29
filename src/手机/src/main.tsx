@@ -70,12 +70,24 @@ async function initCharacterAnalyzer(): Promise<void> {
   const analyzer = getCharacterAnalyzer();
 
   analyzer.setApiCaller(async (prompt, opts) => {
-    return postPhoneOpenAiChatCompletions({
-      model: opts.model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7,
-      max_tokens: 4096,
-    });
+    try {
+      return await postPhoneOpenAiChatCompletions({
+        model: opts.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 4096,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('请先在「设置」中填写')) {
+        try {
+          toastr.error(msg);
+        } catch {
+          /* 父页面未注入 toastr 时忽略 */
+        }
+      }
+      throw e;
+    }
   });
 }
 

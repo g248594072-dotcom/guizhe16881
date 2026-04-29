@@ -1780,7 +1780,12 @@ import {
   takePendingUpdateVariableBlock,
   hasPendingUpdateVariableToMerge,
 } from './utils/pendingUpdateVariableQueue';
-import { diffValueToJsonPatches } from './utils/tacticalMapCommitSendBox';
+import { diffValueToJsonPatches, type TacticalMapCommitPatchOp } from './utils/tacticalMapCommitSendBox';
+import {
+  buildSendMessageContent,
+  mergeAppendOrReplaceUpdateVariableInInput,
+  collapseMultipleUpdateVariableBlocksInText,
+} from './utils/singleUpdateVariableInput';
 import { queuePendingPatchesFromBeforeSnapshot } from './utils/queueStatDataPatchesFromDiff';
 import {
   GamePhase,
@@ -3376,25 +3381,34 @@ async function onAvatarFileSelected(event: Event) {
 
 /**
  * 将修改说明写入本界面输入框，或（关闭「修改是否写入对话框」时）写入待发 `<UpdateVariable>` 摘要，随发送合并。
+ * 写入输入框时：说明与 JSON Patch 合并为**唯一**一对 `<UpdateVariable>…`（见 `mergeAppendOrReplaceUpdateVariableInInput`）。
  * @param text 要复制的文本
  * @param mode 模式：'replace' 替换，'append' 追加（默认）
- * @param bypassVariableHintGate 为 true 时强制写入输入框（如恢复用户发言），忽略「修改是否写入对话框」
+ * @param bypassVariableHintGate 为 true 时强制写入输入框（如恢复用户发言），忽略「修改是否写入对话框」；**不做**单块合并，整段原样写回
  * @param suppressSuccessToast 为 true 时不弹出「已复制」类成功提示（由调用方自定义，如招募复制）
+ * @param opts 与本次说明同批的 `stat_data` JSON Patch；若已并入输入则勿再对同一批调用 `appendPendingUpdateVariablePatches`
  */
 function copyToInput(
   text: string,
   mode: 'replace' | 'append' = 'append',
   bypassVariableHintGate = false,
   suppressSuccessToast = false,
+  opts?: { patches?: TacticalMapCommitPatchOp[] },
 ) {
   const messageText = String(text ?? '').trim();
-  if (!messageText) return;
+  const extraPatches = opts?.patches ?? [];
+  if (!messageText && extraPatches.length === 0) return;
 
   if (!bypassVariableHintGate && getOtherSettings().copyStagingChangeHintsToInput === false) {
-    if (mode === 'replace') {
-      setStagingSummaryForNextPendingUvBlock(messageText);
-    } else {
-      appendStagingSummaryForNextPendingUvBlock(messageText);
+    if (messageText) {
+      if (mode === 'replace') {
+        setStagingSummaryForNextPendingUvBlock(messageText);
+      } else {
+        appendStagingSummaryForNextPendingUvBlock(messageText);
+      }
+    }
+    if (extraPatches.length > 0) {
+      appendPendingUpdateVariablePatches(extraPatches);
     }
     if (!suppressSuccessToast) {
       toastr.success('修改说明已暂存，发送消息时将并入变量块');
@@ -3404,12 +3418,41 @@ function copyToInput(
 
   const currentInput = userInput.value.trim();
 
+  // 招募 [新增角色] 纯文本、恢复用户发言等：不包进单一变量块，保持整段原样接龙
+  if (
+    bypassVariableHintGate &&
+    extraPatches.length === 0 &&
+    !/<UpdateVariable(\s|>)/i.test(messageText)
+  ) {
+    if (mode === 'replace' || !currentInput) {
+      userInput.value = messageText;
+    } else {
+      userInput.value = currentInput + '\n\n' + messageText;
+    }
+    if (!suppressSuccessToast) {
+      toastr.success('修改信息已复制进入对话框');
+    }
+    return;
+  }
+
   if (mode === 'replace' || !currentInput) {
-    // 替换模式：直接替换现有内容
-    userInput.value = messageText;
+    if (messageText && /<UpdateVariable(\s|>)/i.test(messageText)) {
+      userInput.value = collapseMultipleUpdateVariableBlocksInText(messageText);
+    } else {
+      userInput.value = mergeAppendOrReplaceUpdateVariableInInput('', {
+        summary: messageText,
+        patches: extraPatches,
+        mode: 'replace',
+      });
+    }
+  } else if (messageText && /<UpdateVariable(\s|>)/i.test(messageText)) {
+    userInput.value = buildSendMessageContent(currentInput, messageText);
   } else {
-    // 追加模式：在现有内容后添加，用换行分隔
-    userInput.value = currentInput + '\n\n' + messageText;
+    userInput.value = mergeAppendOrReplaceUpdateVariableInInput(currentInput, {
+      summary: messageText,
+      patches: extraPatches,
+      mode: 'append',
+    });
   }
 
   if (!suppressSuccessToast) {
@@ -3462,7 +3505,7 @@ async function onEditCartApply() {
   if (editCartPendingCount.value === 0 || editCartApplying.value) return;
   editCartApplying.value = true;
   try {
-    const ok = await editCartStore.applyAll((text, mode) => copyToInput(text, mode, true));
+    const ok = await editCartStore.applyAll((text, mode, opts) => copyToInput(text, mode, true, false, opts));
     if (ok) {
       editCartPanelOpen.value = false;
       toastr.success('已批量提交暂存');
@@ -3669,17 +3712,18 @@ async function onModalComplete() {
       return;
     }
 
+    let modalPatches: TacticalMapCommitPatchOp[] = [];
     if (capturePendingUv && statBeforeModal) {
       const after = klona(useDataStore().data);
       const patches = diffValueToJsonPatches('', statBeforeModal, after);
       if (patches.length > 0) {
-        appendPendingUpdateVariablePatches(patches);
+        modalPatches = patches;
       }
     }
 
-    // 将生成的说明写入前端输入框，或（开关关）并入待发变量块；头像编辑不写。不再二次 sendToDialog，避免重复。
-    if (messageText && type !== 'edit_avatar') {
-      copyToInput(messageText, 'append');
+    // 将生成的说明与 diff 批合并进**唯一** `<UpdateVariable>`（写输入框时）或经 copyToInput 分发给摘要+待发队列（开关关）；头像编辑不写
+    if ((messageText || modalPatches.length > 0) && type !== 'edit_avatar') {
+      copyToInput(messageText, 'append', false, false, { patches: modalPatches });
     }
     closeModal();
   } catch (e) {
@@ -3987,7 +4031,7 @@ async function sendMessage() {
   }
 
   const pendingUv = takePendingUpdateVariableBlock();
-  const content = pendingUv ? (typed ? `${typed}\n\n${pendingUv}` : pendingUv) : typed;
+  const content = buildSendMessageContent(typed, pendingUv);
   if (!content) return;
 
   console.log('🎮 [App] 发送消息:', content.substring(0, 80) + '...');

@@ -89,6 +89,10 @@ const MSG = {
   REQUEST_SYNC_CHARACTER_TO_WORLDBOOK: 'tavern-phone:request-sync-character-to-worldbook',
   /** 壳脚本 → 小手机前端：世界书同步结果响应 */
   SYNC_CHARACTER_TO_WORLDBOOK_RESULT: 'tavern-phone:sync-character-to-worldbook-result',
+  /** 小手机前端 → 壳脚本：请求角色分析用的世界书节选（角色定义前） */
+  REQUEST_ANALYSIS_WORLDBOOK_EXCERPT: 'tavern-phone:request-analysis-worldbook-excerpt',
+  /** 壳脚本 → 前端：返回世界书节选文本 */
+  ANALYSIS_WORLDBOOK_EXCERPT_RESULT: 'tavern-phone:analysis-worldbook-excerpt-result',
   /** 小手机前端 → 壳脚本：保存自动分析间隔设置 */
   SAVE_AUTO_ANALYZE_INTERVAL: 'tavern-phone:save-auto-analyze-interval',
   /** 壳脚本 → 小手机前端：通知自动触发分析全部角色 */
@@ -1064,7 +1068,7 @@ function filterWeChatSnippetLines(raw: string): string {
     if (!L) {
       continue;
     }
-    if (/^[A-Ha-hＡ-Ｈ][\.．、:：]\s*\S/.test(L)) {
+    if (/^[A-Ha-hＡ-Ｈ][.．、:：]\s*\S/.test(L)) {
       continue;
     }
     if (/^[①②③④⑤⑥⑦⑧⑨⑩]/.test(L)) {
@@ -1993,6 +1997,128 @@ function sanitizeWorldbookEntryName(s: string): string {
   return t.length > 180 ? `${t.slice(0, 177)}…` : t;
 }
 
+/** 角色分析提示词注入：单卡世界书节选最大字符数 */
+const ANALYSIS_WB_EXCERPT_MAX_CHARS = 28000;
+
+/** 动态报告「正文摘要」合并后最多保留条数 */
+const DYNAMICS_STORY_SUMMARY_MAX_LINES = 10;
+
+function entryInsertionIsBeforeCharacterDefinition(entry: WorldbookEntry): boolean {
+  const pos = entry.position as unknown;
+  if (pos && typeof pos === 'object' && pos !== null && 'type' in (pos as object)) {
+    return (pos as { type: string }).type === 'before_character_definition';
+  }
+  if (typeof pos === 'string') {
+    return pos === 'before_character_definition';
+  }
+  return false;
+}
+
+/** 排除小手机同步生成的条目，避免节选自我引用 */
+function isWorldbookEntryExcludedFromAnalysisExcerpt(entry: WorldbookEntry): boolean {
+  const extra = entry.extra as Record<string, unknown> | undefined;
+  if (extra?.tavernPhoneCharacterId != null) return true;
+  if (extra?.tavernPhoneCharacterList === true) return true;
+  const name = (entry.name || '').trim();
+  if (name === '【角色列表】') return true;
+  if (/^【.+】角色档案$/.test(name)) return true;
+  if (/^【.+】动态报告$/.test(name)) return true;
+  return false;
+}
+
+/**
+ * 聚合当前角色卡绑定世界书中「角色定义之前」且已启用的条目全文，供副 API 角色分析注入。
+ * 书名解析与 {@link syncCharacterAnalysisToWorldbook} 一致。
+ */
+async function collectWorldbookExcerptForAnalysis(): Promise<string> {
+  try {
+    const chatScopeId = getChatScopeId() ?? 'local-offline';
+    const scopeTrim = chatScopeId.trim() || 'local-offline';
+    const cfg = getWbSyncScriptCfg();
+    let worldbookName: string | null = null;
+    if (cfg) {
+      worldbookName = resolveWorldbookNameForWbSync(cfg, scopeTrim);
+    } else if (scopeTrim && scopeTrim !== 'local-offline') {
+      worldbookName = scopeTrim;
+    } else {
+      try {
+        const w = getCharWorldbookNames('current');
+        worldbookName = w?.primary?.trim() || w?.additional?.[0]?.trim() || null;
+      } catch {
+        worldbookName = null;
+      }
+    }
+    if (!worldbookName) {
+      console.warn('[tavern-phone] collectWorldbookExcerptForAnalysis: 无法确定世界书名');
+      return '';
+    }
+    const entries = await getWorldbook(worldbookName);
+    const filtered = entries.filter(
+      e =>
+        e.enabled &&
+        entryInsertionIsBeforeCharacterDefinition(e) &&
+        !isWorldbookEntryExcludedFromAnalysisExcerpt(e),
+    );
+    filtered.sort((a, b) => (a.position?.order ?? 0) - (b.position?.order ?? 0));
+    const parts: string[] = [];
+    for (const e of filtered) {
+      const title = (e.name || '').trim() || `uid-${e.uid}`;
+      const body = String(e.content || '').trim();
+      if (!body) continue;
+      parts.push(`### ${title}\n${body}`);
+    }
+    let out = parts.join('\n\n---\n\n');
+    if (out.length > ANALYSIS_WB_EXCERPT_MAX_CHARS) {
+      console.warn(
+        '[tavern-phone] 世界书节选已截断',
+        out.length,
+        '→',
+        ANALYSIS_WB_EXCERPT_MAX_CHARS,
+      );
+      out = `${out.slice(0, ANALYSIS_WB_EXCERPT_MAX_CHARS)}\n\n…（已截断）`;
+    }
+    return out;
+  } catch (err) {
+    console.warn('[tavern-phone] collectWorldbookExcerptForAnalysis 失败:', err);
+    return '';
+  }
+}
+
+function extractStoryBulletLinesFromExisting(existingContent: string): string[] {
+  const re = /## 正文摘要\s*\n([\s\S]*?)(?=\n行为变化：|\n---|\n## |$)/;
+  const m = existingContent.match(re);
+  if (!m) return [];
+  return m[1]
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.startsWith('- '));
+}
+
+/**
+ * 将本回合「正文摘要」以时间戳条目追加进动态报告，并与旧条目合并截断。
+ */
+function mergeDynamicsReportStorySummarySection(
+  existingContent: string,
+  incomingContent: string,
+  newSummaryPlain: string | undefined,
+): string {
+  const plain = (newSummaryPlain || '').trim();
+  if (!plain) return incomingContent;
+  const oldBullets = extractStoryBulletLinesFromExisting(existingContent);
+  const ts = new Date();
+  const tsStr = `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`;
+  const newBullet = `- ${tsStr} ${plain}`;
+  const merged = [...oldBullets, newBullet].slice(-DYNAMICS_STORY_SUMMARY_MAX_LINES);
+  const block = `## 正文摘要\n\n${merged.join('\n')}`;
+  if (incomingContent.includes('## 正文摘要')) {
+    return incomingContent.replace(/## 正文摘要\s*\n[\s\S]*?(?=\n行为变化：|\n---)/, `${block}\n`);
+  }
+  if (incomingContent.includes('\n行为变化：')) {
+    return incomingContent.replace(/\n行为变化：/, `\n\n${block}\n\n行为变化：`);
+  }
+  return `${incomingContent}\n\n${block}\n`;
+}
+
 /** 将角色分析 updates 格式化为世界书正文（与手动条目风格一致） */
 function formatCharacterAnalysisWorldbookContent(updates: Record<string, unknown>): string {
   const lines: string[] = [];
@@ -2103,16 +2229,14 @@ async function syncCharacterAnalysisToWorldbook(
     let worldbookName: string | null = null;
     if (cfg) {
       worldbookName = resolveWorldbookNameForWbSync(cfg, scopeTrim);
+    } else if (scopeTrim && scopeTrim !== 'local-offline') {
+      worldbookName = scopeTrim;
     } else {
-      if (scopeTrim && scopeTrim !== 'local-offline') {
-        worldbookName = scopeTrim;
-      } else {
-        try {
-          const w = getCharWorldbookNames('current');
-          worldbookName = w?.primary?.trim() || w?.additional?.[0]?.trim() || null;
-        } catch {
-          worldbookName = null;
-        }
+      try {
+        const w = getCharWorldbookNames('current');
+        worldbookName = w?.primary?.trim() || w?.additional?.[0]?.trim() || null;
+      } catch {
+        worldbookName = null;
       }
     }
     if (!worldbookName) {
@@ -2209,6 +2333,16 @@ async function syncCharacterAnalysisToWorldbook(
             e.name === entryName ||
             ((e.extra as Record<string, unknown> | undefined)?.tavernPhoneCharacterId === characterId),
         );
+
+    if (isDynamicsReport) {
+      const storyPlain =
+        typeof updates['正文摘要本回合'] === 'string' ? updates['正文摘要本回合'].trim() : '';
+      if (storyPlain) {
+        const prevFull =
+          existingIdx >= 0 ? String(existingEntries[existingIdx]?.content ?? '') : '';
+        content = mergeDynamicsReportStorySummarySection(prevFull, content, storyPlain);
+      }
+    }
 
     const baseExtra = isCharacterList
       ? { tavernPhoneCharacterList: true }
@@ -2933,12 +3067,10 @@ $(() => {
           $overlay.appendTo(fsElement);
           $phoneRoot.appendTo(fsElement);
         }
-      } else {
+      } else if ($overlay && $phoneRoot) {
         // 退出全屏：移回 body
-        if ($overlay && $phoneRoot) {
-          $overlay.appendTo(parentDoc.body);
-          $phoneRoot.appendTo(parentDoc.body);
-        }
+        $overlay.appendTo(parentDoc.body);
+        $phoneRoot.appendTo(parentDoc.body);
       }
     };
     parentDoc.addEventListener('fullscreenchange', fullscreenHandler);
@@ -3260,6 +3392,30 @@ $(() => {
               type: MSG.SYNC_CHARACTER_TO_WORLDBOOK_RESULT,
               requestId,
               ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            },
+            '*',
+          );
+        }
+      })();
+      return;
+    }
+    if (t === MSG.REQUEST_ANALYSIS_WORLDBOOK_EXCERPT) {
+      const requestId = (e.data as { requestId?: string })?.requestId;
+      const source = e.source as Window | null;
+      if (typeof requestId !== 'string') {
+        return;
+      }
+      void (async () => {
+        try {
+          const text = await collectWorldbookExcerptForAnalysis();
+          source?.postMessage({ type: MSG.ANALYSIS_WORLDBOOK_EXCERPT_RESULT, requestId, text }, '*');
+        } catch (err) {
+          source?.postMessage(
+            {
+              type: MSG.ANALYSIS_WORLDBOOK_EXCERPT_RESULT,
+              requestId,
+              text: '',
               error: err instanceof Error ? err.message : String(err),
             },
             '*',

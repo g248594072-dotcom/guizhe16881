@@ -84,17 +84,10 @@ export function formatTacticalMapCommitForSendBox(patches: TacticalMapCommitPatc
   return `<UpdateVariable>\n<JSONPatch>\n${inner}\n</JSONPatch>\n</UpdateVariable>`;
 }
 
-function escapeXmlText(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 /**
- * 单条 `<UpdateVariable>`：可选 `<PlayerStagingSummary>` + `<JSONPatch>`（path 仍相对 stat_data）。
+ * 单条待发内容：人话摘要写在 `<UpdateVariable>` **外**；块内仅 `<JSONPatch>`（path 仍相对 stat_data）。
  * 无摘要且 patches 非空时与 `formatTacticalMapCommitForSendBox` 等价。
+ * 仅有摘要、无 patch 时只返回摘要（不落空变量块）。
  */
 export function formatMergedUpdateVariableBlock(opts: {
   summary?: string;
@@ -106,6 +99,10 @@ export function formatMergedUpdateVariableBlock(opts: {
   if (!summary) {
     return formatTacticalMapCommitForSendBox(patches);
   }
+  if (patches.length === 0) {
+    return summary;
+  }
   const patchInner = JSON.stringify(patches, null, 2);
-  return `<UpdateVariable>\n<PlayerStagingSummary>${escapeXmlText(summary)}</PlayerStagingSummary>\n<JSONPatch>\n${patchInner}\n</JSONPatch>\n</UpdateVariable>`;
+  const uv = `<UpdateVariable>\n<JSONPatch>\n${patchInner}\n</JSONPatch>\n</UpdateVariable>`;
+  return `${summary}\n\n${uv}`;
 }

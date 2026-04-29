@@ -81,7 +81,26 @@ function common_path(lhs: string, rhs: string) {
   return lhs_parts.join(path.sep);
 }
 
+/**
+ * 设置 `TAVERN_HELPER_WEBPACK_ENTRIES=rules-shell` 时仅打包规则界面与小手机壳脚本，
+ * 用于调试启动（与 `.vscode` 中「含手机」任务一致）；完整构建勿设置此项。
+ */
 function glob_script_files() {
+  const entriesMode = process.env.TAVERN_HELPER_WEBPACK_ENTRIES?.trim();
+  if (entriesMode === 'rules-shell') {
+    const only = ['src/规则/index.ts', 'src/小手机壳/index.ts'];
+    const existing = only.filter(rel => fs.existsSync(path.join(WEBPACK_ROOT, rel)));
+    if (existing.length < only.length) {
+      const missing = only.filter(rel => !existing.includes(rel));
+      console.warn('\x1b[33m[webpack]\x1b[0m rules-shell 模式缺少入口文件:', missing);
+    }
+    console.info(
+      '\x1b[36m[webpack]\x1b[0m TAVERN_HELPER_WEBPACK_ENTRIES=rules-shell → 仅打包：',
+      existing.join(', '),
+    );
+    return existing;
+  }
+
   const results: string[] = [];
 
   fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
@@ -229,6 +248,12 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
   return (_env, argv) => ({
     experiments: {
       outputModule: true,
+    },
+    /**
+     * 默认 maxAssetSize 244KiB；酒馆助手界面多为单 HTML 内联整包，体积大属常态，勿当作 bundle 失败。
+     */
+    performance: {
+      hints: false,
     },
     // 开发勿用 eval-source-map：与 HtmlInlineScript 组合时会把巨量 inline map 写进 index.html（可达十 MB 级）。
     // 生产默认不产出 .map；需要排查生产问题时设置环境变量 TAVERN_HELPER_SOURCE_MAP=true 再构建。

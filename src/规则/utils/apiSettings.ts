@@ -652,7 +652,7 @@ function formatPlayerStagedUpdateVariablePromptSection(joinedInnerBodies: string
   const t = String(joinedInnerBodies || '').trim();
   if (!t) return '';
   return `## 玩家已在 user 消息中附加的变量（须保留）
-请注意：**玩家**已通过发送内容修改或附加了变量。下列为相关 **user** 消息中**成对闭合**的 \`<UpdateVariable>…</UpdateVariable>\` **标签内部**原文（不含外层标签；多段之间以单独一行 \`---\` 分隔；按字面引用，勿改写 path/取值意图）：
+请注意：**玩家**已通过发送内容修改或附加了变量。下列为相关 **user** 消息中：位于 \`<UpdateVariable>\` **外**的说明文字，以及**成对闭合**的 \`<UpdateVariable>…</UpdateVariable>\` **标签内部**原文（不含外层标签；多段之间以单独一行 \`---\` 分隔；按字面引用，勿改写 path/取值意图）：
 
 ${t}
 
