@@ -445,8 +445,13 @@ export interface PanelConfig {
 
 export type InputActionMode = 'send' | 'append';
 
-/** 抢话/防抢话：当前角色世界书中四选一互斥启用的条目 */
-export type SpeechIntentWorldbookMode = 'anti_soft' | 'anti_hard' | 'interrupt_soft' | 'interrupt_hard';
+/** 抢话/防抢话/无玩家：当前角色世界书中五选一互斥启用的条目 */
+export type SpeechIntentWorldbookMode =
+  | 'anti_soft'
+  | 'anti_hard'
+  | 'interrupt_soft'
+  | 'interrupt_hard'
+  | 'no_player';
 
 /** 各模式对应的世界书条目名称（及常见空格变体），用于匹配 `entry.name` */
 export const SPEECH_INTENT_WORLDBOOK_NAME_VARIANTS: Record<SpeechIntentWorldbookMode, readonly string[]> = {
@@ -454,6 +459,7 @@ export const SPEECH_INTENT_WORLDBOOK_NAME_VARIANTS: Record<SpeechIntentWorldbook
   anti_hard: ['【防抢话】强制防抢话！！', '【防抢话】 强制防抢话！！'],
   interrupt_soft: ['【抢话】一般抢话！', '【抢话】 一般抢话！'],
   interrupt_hard: ['【抢话】强制抢话！！', '【抢话】 强制抢话！！'],
+  no_player: ['【无玩家】 自由发展', '【无玩家】自由发展'],
 } as const;
 
 export const SPEECH_INTENT_WORLD_MODES: SpeechIntentWorldbookMode[] = [
@@ -461,6 +467,7 @@ export const SPEECH_INTENT_WORLD_MODES: SpeechIntentWorldbookMode[] = [
   'anti_hard',
   'interrupt_soft',
   'interrupt_hard',
+  'no_player',
 ];
 
 export function parseSpeechIntentWorldbookMode(v: unknown): SpeechIntentWorldbookMode {
@@ -493,7 +500,7 @@ export interface OtherSettings {
   copyStagingChangeHintsToInput: boolean;
   /** 主界面正文区顶部是否显示游戏时间条 */
   showGameTimeHud: boolean;
-  /** 抢话/防抢话：世界书中四选一；默认一般防抢话 */
+  /** 抢话/防抢话/无玩家：世界书中五选一；默认一般防抢话 */
   speechIntentWorldbookMode: SpeechIntentWorldbookMode;
   /**
    * 招募确认「复制到对话框」时，拼在 `<UpdateVariable>` **前面**的固定句（可留空）。

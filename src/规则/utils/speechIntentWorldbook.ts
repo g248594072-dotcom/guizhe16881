@@ -1,5 +1,5 @@
 /**
- * 抢话 / 防抢话：在当前角色绑定世界书中，对四条互斥条目按设置只启用其一。
+ * 抢话 / 防抢话 / 无玩家：在当前角色绑定世界书中，对五条互斥条目按设置只启用其一。
  */
 
 import type { SpeechIntentWorldbookMode } from '../types';
@@ -33,7 +33,7 @@ export type ApplySpeechIntentResult = {
 };
 
 /**
- * 在当前角色卡绑定的世界书中，仅启用 `mode` 对应条目，其余三条同名族条目关闭。
+ * 在当前角色卡绑定的世界书中，仅启用 `mode` 对应条目，其余同名族条目关闭。
  */
 export async function applySpeechIntentWorldbookMode(
   mode: SpeechIntentWorldbookMode,
@@ -60,7 +60,7 @@ export async function applySpeechIntentWorldbookMode(
       return {
         ok: false,
         message:
-          '未找到四条抢话/防抢话条目。请确认世界书条目名称与「【防抢话】一般防抢话！」等完全一致（或仅多一处 】后空格）。',
+          '未找到任一抢话/防抢话/无玩家条目。请确认世界书条目名称与「【防抢话】一般防抢话！」「【无玩家】 自由发展」等完全一致（或仅多一处 】后空格）。',
         intentEntryCount: 0,
       };
     }

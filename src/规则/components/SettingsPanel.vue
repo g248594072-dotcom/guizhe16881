@@ -462,7 +462,7 @@
         </div>
       </div>
 
-      <!-- 抢话 / 防抢话：世界书四选一互斥 -->
+      <!-- 抢话 / 防抢话 / 无玩家：世界书五选一互斥 -->
       <div
         class="edit-staging-cart-toggle speech-intent-wb-card"
         :class="{ dark: isDarkMode, light: !isDarkMode }"
@@ -474,7 +474,7 @@
           <div class="shujuku-master-section-titles">
             <span class="shujuku-master-section-title">抢话与防抢话（世界书）</span>
             <p class="shujuku-master-section-lead">
-              下拉选择当前<strong>唯一启用</strong>的意向条目；其余三条会在当前角色卡绑定的<strong>主世界书</strong>中自动关闭。条目名称须与世界书中一致。
+              下拉选择当前<strong>唯一启用</strong>的意向条目；其余四条会在当前角色卡绑定的<strong>主世界书</strong>中自动关闭。条目名称须与世界书中一致。
             </p>
           </div>
         </div>
@@ -856,7 +856,7 @@ const copyStagingChangeHintsToInput = ref(true);
 /** 主界面顶部游戏时间条（默认显示） */
 const showGameTimeHud = ref(true);
 
-/** 抢话/防抢话世界书四选一（与 OtherSettings 一致，默认一般防抢话） */
+/** 抢话/防抢话/无玩家世界书五选一（与 OtherSettings 一致，默认一般防抢话） */
 const speechIntentWorldbookMode = ref<SpeechIntentWorldbookMode>('anti_soft');
 
 /** 招募复制到对话框：变量块前的固定句、块后模板（含 {IDS}） */
