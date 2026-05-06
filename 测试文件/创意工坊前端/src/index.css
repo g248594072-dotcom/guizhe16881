@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Orbitron", ui-sans-serif, system-ui, sans-serif;
+
+  --color-cyber-cyan: #00f3ff;
+  --color-cyber-magenta: #ff00ff;
+  --color-cyber-purple: #bb9af7;
+  --color-cyber-pink: #f7768e;
+  --color-cyber-yellow: #e0af68;
+  --color-cyber-green: #73daca;
+  
+  --color-cyber-black: #050608;
+  --color-cyber-dark: #0d0e14;
+  --color-cyber-sidebar: #0a0a0f;
+  --color-cyber-panel: #16161e;
+  --color-cyber-gray: #1a1b26;
+  --color-cyber-border: #24283b;
+  --color-cyber-text: #c0caf5;
+  --color-cyber-muted: #565f89;
+}
+
+body {
+  @apply bg-cyber-black text-cyber-text font-sans;
+}
+
+/* Cyberpunk specific utility classes */
+.clip-corner {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+}
+.clip-corner-sm {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+.clip-tab {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+.neo-border {
+  @apply border border-cyber-border;
+}
+
+.neo-border-pink {
+  @apply border border-cyber-pink/40;
+}
+
+.hover-glow:hover {
+  @apply border-cyber-cyan/40;
+}
+
+.hover-glow-pink:hover {
+  @apply border-cyber-pink/40;
+}
+
+/* Subdued scanlines/grid over main content */
+.scanlines::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: radial-gradient(var(--color-cyber-cyan) 0.5px, transparent 0.5px);
+  background-size: 20px 20px;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.03;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-cyber-sidebar border-l border-cyber-border;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-cyber-gray border border-cyber-border;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-cyber-cyan/50;
+}

@@ -1,0 +1,23 @@
+name = "raspy-fire-7d20"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Deployed as: https://raspy-fire-7d20.g248594072.workers.dev
+# Discord OAuth2 Redirect URL must be exactly:
+#   https://raspy-fire-7d20.g248594072.workers.dev/api/auth/callback
+
+[vars]
+DISCORD_CLIENT_ID = "1489184061753786438"
+DISCORD_GUILD_ID = "1259412738971664415"
+# Comma-separated Discord user IDs with admin access.
+ADMIN_DISCORD_IDS = "779603076021485570"
+
+[[kv_namespaces]]
+binding = "KV"
+# Workers KV namespace "guizhe"
+id = "aa14380e6e3c4e21a42b50c1888f0975"
+
+# Secrets — never commit real values; use:
+#   npx wrangler secret put DISCORD_CLIENT_SECRET
+#   npx wrangler secret put JWT_SECRET
+# Local dev: copy dev.vars.example → .dev.vars (gitignored)

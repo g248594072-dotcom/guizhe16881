@@ -1,0 +1,11 @@
+{
+  "type": "script",
+  "enabled": true,
+  "name": "规则创意工坊",
+  "id": "7c2a1b0e-9d4c-4e1f-8a3b-2f6e5d4c3b2a",
+  "content": "import 'http://127.0.0.1:6621/dist/规则创意工坊/index.js'",
+  "info": "需先 pnpm run watch:webpack:dev 或 build:dev 生成 dist/规则创意工坊/index.js，并用酒馆助手「实时监听」或把 import 换成本地/网盘 dist 的 URL。API 根地址存脚本变量 `api_base_url`（默认已指向 Cloudflare Worker）。",
+  "button": { "enabled": true, "buttons": [{ "name": "规则工坊", "visible": true }] },
+  "data": {},
+  "export_with": { "data": true, "button": true }
+}

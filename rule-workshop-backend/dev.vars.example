@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `wrangler dev` (do not commit .dev.vars)
+DISCORD_CLIENT_SECRET=
+JWT_SECRET=
