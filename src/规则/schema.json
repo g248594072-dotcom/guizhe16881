@@ -52,6 +52,7 @@
             "type": "string"
           },
           "描述": {
+            "default": "",
             "type": "string"
           },
           "包含建筑": {
@@ -87,9 +88,11 @@
             "type": "string"
           },
           "描述": {
+            "default": "",
             "type": "string"
           },
           "所属区域ID": {
+            "default": "",
             "type": "string",
             "description": "关联的区域ID，必须存在于区域数据中"
           },
@@ -105,6 +108,7 @@
               "type": "object",
               "properties": {
                 "描述": {
+                  "default": "",
                   "type": "string",
                   "description": "关于这个房间的详细描述"
                 }
@@ -163,6 +167,7 @@
         "type": "object",
         "properties": {
           "所在建筑ID": {
+            "default": "",
             "type": "string",
             "description": "关联的建筑ID，必须存在于建筑数据中"
           },
@@ -171,9 +176,11 @@
             "type": "string"
           },
           "活动内容": {
+            "default": "",
             "type": "string"
           },
           "开始时间": {
+            "default": "",
             "type": "string",
             "description": "记录活动开始的具体游戏时间"
           },
@@ -201,10 +208,6 @@
             "description": "与地图活动阶段对应"
           }
         },
-        "required": [
-          "参与者",
-          "状态"
-        ],
         "additionalProperties": {}
       }
     },
@@ -244,6 +247,7 @@
           "type": "number"
         },
         "分": {
+          "default": 0,
           "type": "number"
         }
       }
@@ -272,6 +276,7 @@
             ]
           },
           "角色简介": {
+            "default": "",
             "type": "string"
           },
           "代表性发言": {
@@ -299,6 +304,7 @@
                   "type": "number"
                 },
                 "喜欢的原因": {
+                  "default": "",
                   "type": "string"
                 }
               },
@@ -306,6 +312,7 @@
             }
           },
           "当前内心想法": {
+            "default": "",
             "type": "string"
           },
           "当前位置": {
@@ -313,14 +320,17 @@
             "type": "object",
             "properties": {
               "区域ID": {
+                "default": "",
                 "type": "string",
                 "description": "当前所在区域的ID"
               },
               "建筑ID": {
+                "default": "",
                 "type": "string",
                 "description": "当前所在建筑的ID"
               },
               "活动ID": {
+                "default": "",
                 "type": "string",
                 "description": "当前参与的活动ID，若无则留空"
               },
@@ -357,9 +367,11 @@
                   "type": "number"
                 },
                 "细节描述": {
+                  "default": "",
                   "type": "string"
                 },
                 "自我合理化": {
+                  "default": "",
                   "type": "string"
                 }
               },
@@ -367,6 +379,7 @@
             }
           },
           "隐藏性癖": {
+            "default": "",
             "type": "string"
           },
           "身体信息": {
@@ -468,6 +481,7 @@
                       "type": "string"
                     },
                     "描述": {
+                      "default": "",
                       "type": "string"
                     }
                   },
@@ -514,9 +528,11 @@
                   "type": "number"
                 },
                 "生理反应": {
+                  "default": "",
                   "type": "string"
                 },
                 "开发细节": {
+                  "default": "",
                   "type": "string"
                 }
               },
@@ -528,12 +544,15 @@
             "type": "object",
             "properties": {
               "好感度": {
+                "default": 0,
                 "type": "number"
               },
               "性癖开发值": {
+                "default": 0,
                 "type": "number"
               },
               "发情值": {
+                "default": 0,
                 "type": "number"
               }
             }
@@ -549,6 +568,7 @@
             }
           },
           "当前综合生理描述": {
+            "default": "",
             "type": "string"
           },
           "参与活动记录": {
@@ -563,9 +583,11 @@
               "type": "object",
               "properties": {
                 "开始时间": {
+                  "default": "",
                   "type": "string"
                 },
                 "结束时间": {
+                  "default": "",
                   "type": "string"
                 },
                 "参与程度": {
@@ -578,17 +600,10 @@
                   ]
                 }
               },
-              "required": [
-                "参与程度"
-              ],
               "additionalProperties": {}
             }
           }
         },
-        "required": [
-          "当前位置",
-          "服装状态"
-        ],
         "additionalProperties": {}
       }
     },
@@ -618,6 +633,7 @@
           "description": "可填入现代、西幻等预设，或玩家自定义世界名称，最长 64 字"
         },
         "世界简介": {
+          "default": "",
           "type": "string",
           "description": "自定义或补充的世界观简介，建议开局由玩家填写"
         },
@@ -626,7 +642,7 @@
           "type": "number"
         },
         "最近更新时间": {
-          "default": 1778051206197,
+          "default": 1778054116256,
           "type": "number"
         }
       }
@@ -648,9 +664,11 @@
       "type": "object",
       "properties": {
         "名称": {
+          "default": "",
           "type": "string"
         },
         "效果描述": {
+          "default": "",
           "type": "string"
         },
         "状态": {
@@ -673,6 +691,7 @@
             "type": "object",
             "properties": {
               "描述": {
+                "default": "",
                 "type": "string"
               },
               "状态": {
@@ -683,22 +702,18 @@
                   "已归档"
                 ]
               }
-            },
-            "required": [
-              "状态"
-            ]
+            }
           }
         },
         "适用对象": {
+          "default": "",
           "type": "string"
         },
         "标记": {
+          "default": "",
           "type": "string"
         }
       },
-      "required": [
-        "状态"
-      ],
       "additionalProperties": {}
     },
     "__schema1": {
@@ -719,6 +734,7 @@
           "type": "string"
         },
         "描述": {
+          "default": "",
           "type": "string"
         }
       },
