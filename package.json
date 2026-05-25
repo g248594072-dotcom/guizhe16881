@@ -105,7 +105,7 @@
     "pixi.js": "^8.18.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "sweetalert2": "^11.26.24",
+    "sweetalert2": "^11.26.25",
     "toastr": "^2.1.4",
     "vue": "^3.5.34",
     "vue-final-modal": "^4.5.5",
