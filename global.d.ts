@@ -1,6 +1,9 @@
+<<<<<<< HEAD
 /** 构建时由 webpack DefinePlugin 注入（git describe / commit 等） */
 declare const __APP_VERSION__: string;
 
+=======
+>>>>>>> 6dc4e35995d4d180a1cd4ff223ac9d21f083e2f5
 declare module '*?raw' {
   const content: string;
   export default content;
@@ -9,6 +12,7 @@ declare module '*?url' {
   const content: string;
   export default content;
 }
+<<<<<<< HEAD
 declare module '*.html' {
   const content: string;
   export default content;
@@ -17,10 +21,27 @@ declare module '*.md' {
   const content: string;
   export default content;
 }
+=======
+>>>>>>> 6dc4e35995d4d180a1cd4ff223ac9d21f083e2f5
 declare module '*.css' {
   const content: unknown;
   export default content;
 }
+<<<<<<< HEAD
+=======
+declare module '*.html' {
+  const content: string;
+  export default content;
+}
+declare module '*.md' {
+  const content: string;
+  export default content;
+}
+declare module '*.yaml' {
+  const content: any;
+  export default content;
+}
+>>>>>>> 6dc4e35995d4d180a1cd4ff223ac9d21f083e2f5
 declare module '*.vue' {
   import { DefineComponent } from 'vue';
   const component: DefineComponent;
@@ -37,6 +58,7 @@ declare namespace z {
 }
 
 declare module 'https://testingcf.jsdelivr.net/gh/StageDog/tavern_resource/dist/util/mvu_zod.js' {
+<<<<<<< HEAD
   export function registerMvuSchema(schema: z.ZodType<Record<string, any>> | (() => z.ZodType<Record<string, any>>)): void;
 }
 
@@ -52,4 +74,9 @@ interface TavernPhoneApi {
 
 interface Window {
   TavernPhone?: TavernPhoneApi;
+=======
+  export function registerMvuSchema(
+    schema: z.ZodType<Record<string, any>> | (() => z.ZodType<Record<string, any>>),
+  ): void;
+>>>>>>> 6dc4e35995d4d180a1cd4ff223ac9d21f083e2f5
 }
