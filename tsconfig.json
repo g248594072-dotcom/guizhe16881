@@ -36,15 +36,22 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
+<<<<<<< HEAD
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
+=======
+    "forceConsistentCasingInFileNames": true
+>>>>>>> 1b593ab69d89d2d5d22e9730e0163f19dd209fac
   },
   "include": [
     "@types",
     "初始模板",
     "示例",
     "src",
+<<<<<<< HEAD
     "测试文件",
+=======
+>>>>>>> 1b593ab69d89d2d5d22e9730e0163f19dd209fac
     "util",
     "*.d.ts",
   ],
