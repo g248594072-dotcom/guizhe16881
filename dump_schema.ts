@@ -3,17 +3,26 @@
 import _ from 'lodash';
 import fs from 'node:fs';
 import path from 'node:path';
+<<<<<<< HEAD
 import { fileURLToPath } from 'node:url';
 import z from 'zod';
 
 const repoRoot = path.dirname(fileURLToPath(import.meta.url));
 
+=======
+import z from 'zod';
+
+>>>>>>> b0b1703a805d03d3a4d97270fa3ebbc17a91f8b8
 fs.globSync('src/**/schema.ts').forEach(async schema_file => {
   try {
     globalThis._ = _;
     globalThis.z = z;
     const module = await import(
+<<<<<<< HEAD
       (process.platform === 'win32' ? 'file://' : '') + path.resolve(repoRoot, schema_file)
+=======
+      (process.platform === 'win32' ? 'file://' : '') + path.resolve(import.meta.dirname, schema_file)
+>>>>>>> b0b1703a805d03d3a4d97270fa3ebbc17a91f8b8
     );
     if (_.has(module, 'Schema')) {
       const schema = _.get(module, 'Schema');
