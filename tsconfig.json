@@ -11,8 +11,13 @@
     ],
     "target": "ESNext",
     "module": "ESNext",
+<<<<<<< HEAD
     "outDir": "dist",
     "baseUrl": ".",
+=======
+    "rootDir": ".",
+    "outDir": "dist",
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "paths": {
       "@util/*": [
         "./util/*"
@@ -36,15 +41,22 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
+<<<<<<< HEAD
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
+=======
+    "forceConsistentCasingInFileNames": true
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
   },
   "include": [
     "@types",
     "初始模板",
     "示例",
     "src",
+<<<<<<< HEAD
     "测试文件",
+=======
+>>>>>>> 9072edeaaddd1166c92d20e75542e4d14d4fdbc2
     "util",
     "*.d.ts",
   ],
