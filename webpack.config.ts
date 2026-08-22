@@ -1,10 +1,17 @@
+<<<<<<< HEAD
 import CssMinimizerPlugin from 'css-minimizer-webpack-plugin';
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
 import { FSWatcher, watch } from 'chokidar';
 import HtmlInlineScriptWebpackPlugin from 'html-inline-script-webpack-plugin';
 import HtmlWebpackPlugin from 'html-webpack-plugin';
 import _ from 'lodash';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
+<<<<<<< HEAD
 import { ChildProcess, exec, execSync, spawn } from 'node:child_process';
+=======
+import { ChildProcess, exec, spawn } from 'node:child_process';
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -21,6 +28,7 @@ import WebpackObfuscator from 'webpack-obfuscator';
 const require = createRequire(import.meta.url);
 const HTMLInlineCSSWebpackPlugin = require('html-inline-css-webpack-plugin').default;
 
+<<<<<<< HEAD
 const WEBPACK_ROOT = import.meta.dirname;
 
 /** 供前端角标：优先展示 Git 标签（git describe），避免用分支名 master/main 盖住 tag */
@@ -53,6 +61,8 @@ function getBuildVersion(): string {
 
 const BUILD_VERSION = getBuildVersion();
 
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
 interface Config {
   port: number;
   entries: Entry[];
@@ -81,6 +91,7 @@ function common_path(lhs: string, rhs: string) {
   return lhs_parts.join(path.sep);
 }
 
+<<<<<<< HEAD
 /**
  * 设置 `TAVERN_HELPER_WEBPACK_ENTRIES=rules-shell` 时仅打包规则界面与小手机壳脚本，
  * 用于调试启动（与 `.vscode` 中「含手机」任务一致）；完整构建勿设置此项。
@@ -109,6 +120,12 @@ function glob_script_files() {
       // 勿匹配 node_modules 内包的 index.js；勿匹配 Vite 子项目 src/手机（由 pnpm build:phone 单独构建）
       return !n.includes('/node_modules/') && !n.startsWith('src/手机/');
     })
+=======
+function glob_script_files() {
+  const results: string[] = [];
+
+  fs.globSync(`{示例,src}/**/index.{ts,tsx,js,jsx}`)
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
     .filter(
       file => process.env.CI !== 'true' || !fs.readFileSync(path.join(import.meta.dirname, file)).includes('@no-ci'),
     )
@@ -249,6 +266,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
     experiments: {
       outputModule: true,
     },
+<<<<<<< HEAD
     /**
      * 默认 maxAssetSize 244KiB；酒馆助手界面多为单 HTML 内联整包，体积大属常态，勿当作 bundle 失败。
      */
@@ -265,6 +283,11 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         : 'eval-cheap-module-source-map',
     watchOptions: {
       ignored: ['**/dist', '**/node_modules', '**/src/手机/**'],
+=======
+    devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
+    watchOptions: {
+      ignored: ['**/dist', '**/node_modules'],
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
     },
     entry: path.join(import.meta.dirname, entry.script),
     target: 'browserslist',
@@ -369,11 +392,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             {
               resourceQuery: /url/,
               type: 'asset/inline',
+<<<<<<< HEAD
               exclude: [/(node_modules|\.ttf|\.otf|\.woff|\.woff2)$/],
             },
             {
               test: /\.(ttf|otf|woff|woff2)(\?url)?$/,
               type: 'asset/inline',
+=======
+              exclude: /node_modules/,
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
             },
             {
               test: /\.tsx?$/,
@@ -419,6 +446,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
               test: /\.ya?ml$/,
               loader: 'yaml-loader',
             },
+<<<<<<< HEAD
             {
               test: /\.(ttf|otf|woff|woff2)$/,
               type: 'asset/resource',
@@ -426,6 +454,8 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 filename: 'fonts/[name][ext]',
               },
             },
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
           ].concat(
             entry.html === undefined
               ? ([
@@ -507,11 +537,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             filename: path.parse(entry.html).base,
             scriptLoading: 'module',
             cache: false,
+<<<<<<< HEAD
             // 仅收 HTML 模板里的空白与注释；不 minify 内联 JS/CSS，避免破坏 ESM / Tailwind
             minify:
               argv.mode === 'production'
                 ? { collapseWhitespace: true, removeComments: true, minifyCSS: false, minifyJS: false }
                 : false,
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
           }),
           new HtmlInlineScriptWebpackPlugin(),
           new MiniCssExtractPlugin(),
@@ -538,6 +571,10 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
             { from: 'klona', imports: ['klona'] },
             { from: 'vue-final-modal', imports: ['useModal'] },
             { from: 'zod', imports: ['z'] },
+<<<<<<< HEAD
+=======
+            { from: 'type-fest', imports: [['*', 'TypeFest']], type: true },
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
           ],
         }),
         unpluginVueComponents({
@@ -549,9 +586,14 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
         new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
         new webpack.DefinePlugin({
           __VUE_OPTIONS_API__: false,
+<<<<<<< HEAD
           __VUE_PROD_DEVTOOLS__: argv.mode === 'production' ? false : process.env.CI !== 'true',
           __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
           __APP_VERSION__: JSON.stringify(BUILD_VERSION),
+=======
+          __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
+          __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
         }),
       )
       .concat(
@@ -569,11 +611,15 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
           : [],
       ),
     optimization: {
+<<<<<<< HEAD
       usedExports: true,
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
       minimize: true,
       minimizer: [
         argv.mode === 'production'
           ? new TerserPlugin({
+<<<<<<< HEAD
               extractComments: false,
               terserOptions: {
                 ecma: 2020,
@@ -585,6 +631,9 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                   pure_funcs: ['console.log', 'console.debug', 'console.trace'],
                 },
               },
+=======
+              terserOptions: { format: { quote_style: 1 }, mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] } },
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
             })
           : new TerserPlugin({
               extractComments: false,
@@ -594,7 +643,10 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
                 mangle: false,
               },
             }),
+<<<<<<< HEAD
         ...(argv.mode === 'production' ? [new CssMinimizerPlugin()] : []),
+=======
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
       ],
       splitChunks: {
         chunks: 'async',
@@ -656,6 +708,7 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       if (request in global) {
         return callback(null, 'var ' + global[request as keyof typeof global]);
       }
+<<<<<<< HEAD
 
       // 处理 @types/ 开头的类型定义模块
       // 这些是 TypeScript 类型声明，运行时不需要，返回空对象即可
@@ -669,6 +722,22 @@ function parse_configuration(entry: Entry): (_env: any, argv: any) => webpack.Co
       return callback(
         null,
         'module-import ' + (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${request}/+esm`),
+=======
+      const cdn = {
+        sass: 'https://jspm.dev/sass',
+      };
+      const package_json = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf-8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const package_versions = { ...package_json.devDependencies, ...package_json.dependencies };
+      const version = package_versions[request]?.replace(/^[~^]/, '');
+      const versioned_request = /^[.\d]+$/.test(version) ? `${request}@${version}` : request;
+      return callback(
+        null,
+        'module-import ' +
+          (cdn[request as keyof typeof cdn] ?? `https://testingcf.jsdelivr.net/npm/${versioned_request}/+esm`),
+>>>>>>> c27dc311feeca88f575184c70cd539091ffeaf47
       );
     },
   });
