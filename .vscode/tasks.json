@@ -6,8 +6,12 @@
       "type": "shell",
       "command": "pnpm",
       "args": [
+<<<<<<< HEAD
         "run",
         "watch:webpack"
+=======
+        "watch"
+>>>>>>> f8b20765c5ce38a1e065c2a84b9882d8fac75f97
       ],
       "problemMatcher": [
         {
@@ -42,6 +46,7 @@
       "isBackground": true
     },
     {
+<<<<<<< HEAD
       "label": "开始监听手机界面 (Vite)",
       "type": "shell",
       "command": "pnpm",
@@ -121,6 +126,12 @@
       "label": "开始任务（含手机）",
       "dependsOn": ["开始监听源代码并编译（含手机）"],
       "dependsOrder": "parallel"
+=======
+      "label": "开始任务",
+      "dependsOn": [
+        "开始监听源代码并编译",
+      ]
+>>>>>>> f8b20765c5ce38a1e065c2a84b9882d8fac75f97
     },
     {
       "label": "结束任务",
